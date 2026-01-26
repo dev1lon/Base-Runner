@@ -701,6 +701,7 @@ function handleAccountsChanged(accounts) {
     checkinState.streak = 0;
     checkinState.message = "";
     clearWalletMessages();
+    openWalletMenu();
     updateWalletUI();
     if (walletAddress) {
         void restoreAuthSession().then(updateWalletUI);
@@ -712,6 +713,7 @@ function handleChainChanged(chainId) {
     resetAuthState();
     checkinState.message = "";
     clearWalletMessages();
+    openWalletMenu();
     updateWalletUI();
     if (walletAddress) {
         void restoreAuthSession().then(updateWalletUI);
@@ -1136,6 +1138,16 @@ function openPauseMenu() {
     if (!gameActive || gameOver) return;
     isPaused = true;
     showWelcome = true;
+    updateWelcomeVisibility();
+    updateMenuState();
+    updatePauseButtonVisibility();
+}
+
+function openWalletMenu() {
+    showWelcome = true;
+    isPaused = false;
+    gameActive = false;
+    resetBackendSession();
     updateWelcomeVisibility();
     updateMenuState();
     updatePauseButtonVisibility();
