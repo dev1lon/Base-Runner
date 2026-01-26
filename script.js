@@ -48,6 +48,8 @@ const BASE_SEPOLIA_PARAMS = {
     blockExplorerUrls: ["https://sepolia.basescan.org"]
 };
 const CHECKIN_CONTRACT_ADDRESS = "0xB56948C6622AB711cE9dea00a2e602DC2EF363aD"; // TODO: set after deploy
+const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
+const BACKEND_TIMEOUT_MS = 8000;
 let welcomeOverlay;
 let startButton;
 let pauseButton;
@@ -66,6 +68,13 @@ let isConnectingWallet = false;
 let isCheckinPending = false;
 let walletErrorMessage = "";
 let walletInfoMessage = "";
+let backendSessionId = null;
+let backendSeed = null;
+let backendInputLog = [];
+let backendSessionStartMs = 0;
+let backendSessionActive = false;
+let backendRunSubmitted = false;
+let rng = null;
 
 function getViewportSize() {
     if (window.visualViewport) {
@@ -116,6 +125,138 @@ function normalizeChainId(chainId) {
         }
     }
     return null;
+}
+
+function hashSeedToInt(seed) {
+    let h = 2166136261;
+    const str = String(seed);
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function mulberry32(a) {
+    return function rng() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function createRng(seed) {
+    const intSeed = hashSeedToInt(seed);
+    return mulberry32(intSeed);
+}
+
+function getRandom() {
+    return rng ? rng() : Math.random();
+}
+
+function resetBackendSession() {
+    backendSessionId = null;
+    backendSeed = null;
+    backendInputLog = [];
+    backendSessionStartMs = 0;
+    backendSessionActive = false;
+    backendRunSubmitted = false;
+    rng = null;
+}
+
+function recordInput(type) {
+    if (!backendSessionActive || gameOver || showWelcome || isPaused) {
+        return;
+    }
+    const elapsed = Math.round(performance.now() - backendSessionStartMs);
+    backendInputLog.push({ t: elapsed, type });
+}
+
+async function startBackendSession() {
+    resetBackendSession();
+    if (!BACKEND_URL) {
+        return false;
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/session/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                address: walletAddress || null,
+                layout: isMobileLayout ? "mobile" : "desktop"
+            }),
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            throw new Error(`Backend start failed: ${response.status}`);
+        }
+        const data = await response.json();
+        backendSessionId = data.sessionId || null;
+        backendSeed = data.seed || null;
+        backendSessionStartMs = performance.now();
+        backendInputLog = [];
+        backendSessionActive = !!backendSessionId;
+        rng = backendSeed ? createRng(backendSeed) : null;
+        return backendSessionActive;
+    } catch (err) {
+        console.warn("Backend session start failed", err);
+        resetBackendSession();
+        return false;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+async function submitBackendRun(finalScore) {
+    if (!backendSessionActive || backendRunSubmitted || !BACKEND_URL) {
+        return;
+    }
+    backendRunSubmitted = true;
+    const durationMs = Math.round(performance.now() - backendSessionStartMs);
+    const payload = {
+        sessionId: backendSessionId,
+        address: walletAddress || null,
+        durationMs,
+        reportedScore: finalScore,
+        inputLog: backendInputLog
+    };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/session/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            throw new Error(`Backend submit failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data && data.ok) {
+            if (Number.isFinite(data.coinBalance)) {
+                coinCount = data.coinBalance;
+                saveCoins();
+            }
+            if (Number.isFinite(data.bestScore)) {
+                bestScore = data.bestScore;
+                localStorage.setItem("baseapp_runner_best_score", String(bestScore));
+            }
+        }
+    } catch (err) {
+        console.warn("Backend submit failed", err);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function handleGameOver() {
+    if (backendSessionActive && !backendRunSubmitted) {
+        submitBackendRun(score);
+    }
 }
 
 function setWalletStatus(message, isError) {
@@ -647,18 +788,18 @@ function updatePauseButtonVisibility() {
     pauseButton.classList.toggle("hidden", !shouldShow);
 }
 
-function startGameFromWelcome() {
+async function startGameFromWelcome() {
     if (!walletReady) {
         updateWalletUI();
         return;
     }
     showWelcome = false;
-    gameActive = true;
+    gameActive = false;
     isPaused = false;
     updateWelcomeVisibility();
     updateWalletUI();
     updatePauseButtonVisibility();
-    restartGame();
+    await restartGame();
 }
 
 function togglePause() {
@@ -1033,6 +1174,10 @@ function update(timestamp) {
         }
     }
 
+    if (gameOver) {
+        handleGameOver();
+    }
+
     // Arrays are already cleaned in the loops above
 
     //score (правый верхний угол)
@@ -1049,7 +1194,7 @@ function update(timestamp) {
         score = nextScore;
     }
 
-    if (score >= nextCoinScore) {
+    if (!backendSessionActive && score >= nextCoinScore) {
         const increments = Math.floor((score - nextCoinScore) / 10000) + 1;
         addCoins(increments);
         nextCoinScore += increments * 10000;
@@ -1180,17 +1325,26 @@ function triggerJump() {
     if (player.y >= groundY - 1) {
         //jump - tuned for reliable obstacle clearing with good airtime
         velocityY = jumpVelocity;
+        recordInput("jump");
     }
 }
 
-function stopDucking() {
-    isDucking = false;
+function setDucking(nextState) {
+    if (isDucking === nextState) {
+        return;
+    }
+    isDucking = nextState;
+    recordInput(nextState ? "duck_down" : "duck_up");
 }
 
-function movePlayer(e) {
+function stopDucking() {
+    setDucking(false);
+}
+
+async function movePlayer(e) {
     if (showWelcome) {
         if (e.code === "Space" || e.code === "Enter") {
-            startGameFromWelcome();
+            await startGameFromWelcome();
         }
         return;
     }
@@ -1204,7 +1358,7 @@ function movePlayer(e) {
     if (gameOver) {
         if (e.code == "Space") {
             //restart game
-            restartGame();
+            await restartGame();
         }
         return;
     }
@@ -1214,7 +1368,7 @@ function movePlayer(e) {
     }
     else if (e.code == "ArrowDown" || e.code == "KeyS") {
         //duck - works both on ground and in air (like Chrome Dino)
-        isDucking = true;
+        setDucking(true);
     }
 }
 
@@ -1225,7 +1379,7 @@ document.addEventListener("keyup", function(e) {
     }
 });
 
-function handleTouchStart(e) {
+async function handleTouchStart(e) {
     if (!isMobileLayout) return;
     if (pauseButton && pauseButton.contains(e.target)) {
         return;
@@ -1241,14 +1395,14 @@ function handleTouchStart(e) {
     }
 
     if (gameOver) {
-        restartGame();
+        await restartGame();
         return;
     }
 
     for (const touch of e.changedTouches) {
         if (touch.clientX >= midX) {
             activeRightTouches.add(touch.identifier);
-            isDucking = true;
+            setDucking(true);
         } else {
             triggerJump();
         }
@@ -1275,11 +1429,11 @@ function placeObstacle() {
         return;
     }
 
-    let placeObstacleChance = Math.random(); //0 - 0.9999...
+    let placeObstacleChance = getRandom(); //0 - 0.9999...
 
     if (placeObstacleChance > .55) { //45% chance for token (ground obstacle)
         // Determine token type based on Chrome Dino probabilities
-        let tokenTypeChance = Math.random();
+        let tokenTypeChance = getRandom();
         let tokenType, tokenWidth;
         
         if (tokenTypeChance > .90) { // 10% chance for triple
@@ -1422,7 +1576,7 @@ function detectCollision(a, b) {
     return xOverlap && yOverlap; // Both must be true
 }
 
-function restartGame() {
+async function restartGame() {
     // Reset all game state variables
     gameOver = false;
     score = 0;
@@ -1434,6 +1588,7 @@ function restartGame() {
     isDucking = false; // Reset duck state
     isPaused = false;
     lastFrameTime = null;
+    gameActive = false;
     
     // Reset player position and size
     player.x = playerX + mobileEdgeGapWorld + mobileSafeLeftWorld;
@@ -1444,4 +1599,6 @@ function restartGame() {
     // Clear obstacle arrays
     tokenArray = [];
     birdArray = [];
+    await startBackendSession();
+    gameActive = true;
 }
