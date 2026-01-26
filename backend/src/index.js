@@ -118,15 +118,15 @@ app.post("/api/session/submit", async (req, res) => {
     }
   }
 
-  const runDuration = Math.min(Number(durationMs || 0), MAX_DURATION_MS);
-  if (!Number.isFinite(runDuration) || runDuration <= 0) {
+  const serverDurationMs = Math.min(Date.now() - session.issuedAt, MAX_DURATION_MS);
+  if (!Number.isFinite(serverDurationMs) || serverDurationMs <= 0) {
     res.status(400).json({ ok: false, error: "Invalid duration" });
     return;
   }
 
   const simResult = simulateRun({
     seed: session.seed,
-    durationMs: runDuration,
+    durationMs: serverDurationMs,
     inputEvents: inputLog
   });
 
@@ -135,26 +135,35 @@ app.post("/api/session/submit", async (req, res) => {
     ? Number(reportedScore)
     : null;
   const tolerance = 2;
+  const maxScore = Math.floor(serverDurationMs / DEFAULT_CONFIG.frameMs) + tolerance;
 
-  if (reported !== null && reported > simScore + tolerance) {
+  if (reported === null) {
+    res.status(400).json({ ok: false, error: "Missing reportedScore" });
+    return;
+  }
+
+  if (reported > maxScore) {
     res.status(403).json({
       ok: false,
-      error: "Score exceeds simulation",
-      simScore
+      error: "Score exceeds time limit",
+      maxScore
     });
     return;
   }
 
-  const coinsAwarded = Math.floor(simScore / 10000);
-  const user = applyGameResult(addressNorm, simScore, coinsAwarded);
+  const finalScore = Math.min(reported, maxScore);
+  const coinsAwarded = Math.floor(finalScore / 10000);
+  const user = applyGameResult(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
 
   res.json({
     ok: true,
     simScore,
+    finalScore,
+    maxScore,
     coinsAwarded,
     coinBalance: user ? user.coinBalance : 0,
-    bestScore: user ? user.bestScore : simScore,
+    bestScore: user ? user.bestScore : finalScore,
     collidedAtMs: simResult.collidedAtMs
   });
 });
