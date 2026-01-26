@@ -1,0 +1,16 @@
+{
+  "name": "baseapp-runner",
+  "version": "1.0.0",
+  "description": "Chrome Dinosaur Game clone with BaseApp themed assets",
+  "main": "index.html",
+  "scripts": {
+    "dev": "http-server -p 4000 -c-1 --cors",
+    "start": "npm run dev"
+  },
+  "keywords": ["game", "chrome-dino", "baseapp", "runner"],
+  "author": "BaseApp Team",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

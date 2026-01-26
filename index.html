@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+        <title>BaseApp Runner</title>
+        <link rel="stylesheet" href="style.css">
+        <script src="script.js"></script>
+    </head>
+    <body>
+        <h1>BaseApp Runner</h1>
+        <canvas id="board"></canvas>
+        <button id="pause-button" class="pause-button hidden" aria-label="Pause">
+            <span class="pause-bar"></span>
+            <span class="pause-bar"></span>
+        </button>
+        <div id="welcome-overlay" class="overlay hidden">
+            <div class="overlay-card">
+                <h2>Добро пожаловать!</h2>
+                <p>Правила:</p>
+                <ul>
+                    <li>Прыжок: Space / ↑ (на телефоне — тап слева).</li>
+                    <li>Уклон: ↓ / S (на телефоне — удержание справа).</li>
+                    <li>Избегайте монет и птиц как препятствий.</li>
+                    <li>Каждые 10&nbsp;000 очков вы получаете 1 coin.</li>
+                </ul>
+                <div class="wallet">
+                    <p>Подключите кошелёк Base Sepolia:</p>
+                    <button id="connect-button" class="connect-button">Connect wallet</button>
+                    <div id="wallet-status" class="wallet-status"></div>
+                </div>
+                <div id="post-connect" class="post-connect hidden">
+                    <div class="checkin">
+                        <p>Ежедневный check-in (бесплатная транзакция):</p>
+                        <button id="checkin-button" class="checkin-button">Получить</button>
+                        <div id="checkin-status" class="checkin-status"></div>
+                    </div>
+                    <button id="start-button">Начать игру</button>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
