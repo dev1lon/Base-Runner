@@ -37,6 +37,9 @@ let gameActive = true;
 let showWelcome = false;
 let isPaused = false;
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
+const AUTH_TOKEN_STORAGE_KEY = "runner_auth_token";
+const AUTH_ADDRESS_STORAGE_KEY = "runner_auth_address";
+const AUTH_CHAIN_STORAGE_KEY = "runner_auth_chain";
 const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532
 const BASE_SEPOLIA_PARAMS = {
     chainId: BASE_SEPOLIA_CHAIN_ID,
@@ -185,6 +188,71 @@ function getWalletDisplayName() {
     return walletAddress || "";
 }
 
+function getStoredAuthSession() {
+    return {
+        token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "",
+        address: (localStorage.getItem(AUTH_ADDRESS_STORAGE_KEY) || "").toLowerCase(),
+        chainId: (localStorage.getItem(AUTH_CHAIN_STORAGE_KEY) || "").toLowerCase()
+    };
+}
+
+function storeAuthSession(token, address, chainId) {
+    if (!token || !address) return;
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    localStorage.setItem(AUTH_ADDRESS_STORAGE_KEY, address.toLowerCase());
+    if (chainId) {
+        localStorage.setItem(AUTH_CHAIN_STORAGE_KEY, chainId.toLowerCase());
+    }
+}
+
+function clearStoredAuthSession() {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(AUTH_ADDRESS_STORAGE_KEY);
+    localStorage.removeItem(AUTH_CHAIN_STORAGE_KEY);
+}
+
+function resetAuthState() {
+    walletAuthenticated = false;
+    authToken = "";
+    authAttempted = false;
+}
+
+function shouldRestoreAuth() {
+    const stored = getStoredAuthSession();
+    if (!stored.token) return false;
+    const address = walletAddress ? walletAddress.toLowerCase() : "";
+    const chainId = normalizeChainId(walletChainId) || "";
+    if (!address || stored.address !== address) return false;
+    if (stored.chainId && chainId && stored.chainId !== chainId) return false;
+    return true;
+}
+
+async function restoreAuthSession() {
+    if (!BACKEND_URL) return false;
+    if (!shouldRestoreAuth()) return false;
+    const stored = getStoredAuthSession();
+    authToken = stored.token;
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/user/me`, {
+            headers: { Authorization: `Bearer ${authToken}` }
+        });
+        if (!response.ok) {
+            throw new Error(`Session invalid: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!data || !data.ok) {
+            throw new Error("Session rejected");
+        }
+        walletAuthenticated = true;
+        applyProfileData(data);
+        return true;
+    } catch (err) {
+        resetAuthState();
+        clearStoredAuthSession();
+        return false;
+    }
+}
+
 function buildAuthMessage({ address, nonce, chainId, issuedAt }) {
     return [
         "Base Runner",
@@ -267,11 +335,13 @@ async function authenticateWallet() {
         }
         authToken = data.token || "";
         walletAuthenticated = true;
+        storeAuthSession(authToken, walletAddress, normalizeChainId(walletChainId) || walletChainId);
         applyProfileData(data);
     } catch (err) {
         console.warn("Auth failed", err);
         walletAuthenticated = false;
         authToken = "";
+        clearStoredAuthSession();
         setWalletError("Авторизация не удалась. Повторите попытку.");
     } finally {
         authInProgress = false;
@@ -430,14 +500,16 @@ function updateWalletUI() {
     walletReady = walletConnected && walletAuthenticated;
 
     if (connectButton) {
-        connectButton.disabled = !hasProvider || isConnectingWallet;
+        connectButton.disabled = !hasProvider || isConnectingWallet || authInProgress;
         if (!hasProvider) {
             connectButton.textContent = "Wallet not found";
+        } else if (isConnectingWallet) {
+            connectButton.textContent = "Connecting...";
+        } else if (authInProgress) {
+            connectButton.textContent = "Signing...";
         } else if (isConnected && !isOnBaseSepolia) {
             connectButton.textContent = "Switch to Base Sepolia";
-        } else if (isConnected && !walletAuthenticated) {
-            connectButton.textContent = "Sign in";
-        } else if (isConnected) {
+        } else if (isConnected && walletAuthenticated) {
             connectButton.textContent = `Connected: ${formatAddress(walletAddress)}`;
         } else {
             connectButton.textContent = "Connect wallet";
@@ -462,7 +534,7 @@ function updateWalletUI() {
     } else if (!isOnBaseSepolia) {
         setWalletStatus("Переключите сеть на Base Sepolia.");
     } else if (!walletAuthenticated) {
-        setWalletStatus("Подтвердите авторизацию подписью.");
+        setWalletStatus("Нажмите Connect wallet и подтвердите подпись.");
     } else {
         setWalletStatus("Кошелёк подключён.");
     }
@@ -471,9 +543,7 @@ function updateWalletUI() {
         startButton.disabled = !walletReady;
     }
     updateMenuState();
-    if (walletConnected && !walletAuthenticated && !authInProgress && !authAttempted) {
-        authenticateWallet();
-    }
+    // Auth is triggered only from explicit connect action.
 }
 
 async function initWalletState() {
@@ -490,10 +560,14 @@ async function initWalletState() {
 
     try {
         const accounts = await provider.request({ method: "eth_accounts" });
-        handleAccountsChanged(accounts);
+        walletAddress = accounts && accounts.length ? accounts[0] : null;
         const chainId = await provider.request({ method: "eth_chainId" });
-        handleChainChanged(chainId);
+        walletChainId = normalizeChainId(chainId) || chainId;
+        resetAuthState();
+        await restoreAuthSession();
     } catch (err) {
+        // ignore
+    } finally {
         updateWalletUI();
     }
 }
@@ -544,8 +618,11 @@ async function connectWallet() {
         }
         const activeChainId = normalizeChainId(walletChainId);
         if (walletAddress && activeChainId === BASE_SEPOLIA_CHAIN_ID && !walletAuthenticated) {
-            authAttempted = false;
-            await authenticateWallet();
+            const restored = await restoreAuthSession();
+            if (!restored) {
+                authAttempted = false;
+                await authenticateWallet();
+            }
         }
     } catch (err) {
         if (err && err.code === 4001) {
@@ -596,24 +673,46 @@ function handleAccountsChanged(accounts) {
     } else {
         walletAddress = null;
     }
-    walletAuthenticated = false;
-    authToken = "";
-    authAttempted = false;
+    resetAuthState();
+    const stored = getStoredAuthSession();
+    const currentAddress = walletAddress ? walletAddress.toLowerCase() : "";
+    const currentChainId = normalizeChainId(walletChainId) || "";
+    const shouldKeep = !!stored.token
+        && !!currentAddress
+        && stored.address === currentAddress
+        && (!stored.chainId || !currentChainId || stored.chainId === currentChainId);
+    if (!shouldKeep) {
+        clearStoredAuthSession();
+    }
     checkinState.lastCheckin = null;
     checkinState.streak = 0;
     checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
+    if (shouldKeep) {
+        void restoreAuthSession().then(updateWalletUI);
+    }
 }
 
 function handleChainChanged(chainId) {
     walletChainId = normalizeChainId(chainId) || chainId;
-    walletAuthenticated = false;
-    authToken = "";
-    authAttempted = false;
+    resetAuthState();
+    const stored = getStoredAuthSession();
+    const currentAddress = walletAddress ? walletAddress.toLowerCase() : "";
+    const currentChainId = normalizeChainId(walletChainId) || "";
+    const shouldKeep = !!stored.token
+        && !!currentAddress
+        && stored.address === currentAddress
+        && (!stored.chainId || !currentChainId || stored.chainId === currentChainId);
+    if (!shouldKeep) {
+        clearStoredAuthSession();
+    }
     checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
+    if (shouldKeep) {
+        void restoreAuthSession().then(updateWalletUI);
+    }
 }
 
 //player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
