@@ -3,14 +3,13 @@ const crypto = require("crypto");
 const sessions = new Map();
 const users = new Map();
 
-function createSession({ address, layout, seed, ttlMs }) {
+function createSession({ address, seed, ttlMs }) {
   const sessionId = crypto.randomUUID();
   const issuedAt = Date.now();
   const expiresAt = issuedAt + ttlMs;
   sessions.set(sessionId, {
     sessionId,
     address: address || null,
-    layout: layout || "desktop",
     seed,
     issuedAt,
     expiresAt,

@@ -42,11 +42,10 @@ app.get("/health", (req, res) => {
 });
 
 app.post("/api/session/start", (req, res) => {
-  const { address, layout } = req.body || {};
+  const { address } = req.body || {};
   const seed = randomSeed();
   const session = createSession({
     address: normalizeAddress(address),
-    layout: layout === "mobile" ? "mobile" : "desktop",
     seed,
     ttlMs: SESSION_TTL_MS
   });

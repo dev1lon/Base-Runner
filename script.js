@@ -36,7 +36,6 @@ let mobileSafeLeftWorld = 0;
 let gameActive = true;
 let showWelcome = false;
 let isPaused = false;
-const RULES_STORAGE_KEY = "baseapp_runner_rules_seen";
 const CHECKIN_STORAGE_KEY = "baseapp_runner_checkin_date";
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
 const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532
@@ -185,8 +184,7 @@ async function startBackendSession() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                address: walletAddress || null,
-                layout: isMobileLayout ? "mobile" : "desktop"
+                address: walletAddress || null
             }),
             signal: controller.signal
         });
@@ -502,7 +500,6 @@ const birdHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const playerBirdHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const coinHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const stickHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
-const combinedHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const playerDrawRectScratch = { x: 0, y: 0, width: 0, height: 0 };
 
 // Small insets for fair but tight collisions
