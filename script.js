@@ -38,8 +38,6 @@ let showWelcome = false;
 let isPaused = false;
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
 const AUTH_TOKEN_STORAGE_KEY = "runner_auth_token";
-const AUTH_ADDRESS_STORAGE_KEY = "runner_auth_address";
-const AUTH_CHAIN_STORAGE_KEY = "runner_auth_chain";
 const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532
 const BASE_SEPOLIA_PARAMS = {
     chainId: BASE_SEPOLIA_CHAIN_ID,
@@ -190,25 +188,17 @@ function getWalletDisplayName() {
 
 function getStoredAuthSession() {
     return {
-        token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "",
-        address: (localStorage.getItem(AUTH_ADDRESS_STORAGE_KEY) || "").toLowerCase(),
-        chainId: (localStorage.getItem(AUTH_CHAIN_STORAGE_KEY) || "").toLowerCase()
+        token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ""
     };
 }
 
-function storeAuthSession(token, address, chainId) {
-    if (!token || !address) return;
+function storeAuthSession(token) {
+    if (!token) return;
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-    localStorage.setItem(AUTH_ADDRESS_STORAGE_KEY, address.toLowerCase());
-    if (chainId) {
-        localStorage.setItem(AUTH_CHAIN_STORAGE_KEY, chainId.toLowerCase());
-    }
 }
 
 function clearStoredAuthSession() {
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    localStorage.removeItem(AUTH_ADDRESS_STORAGE_KEY);
-    localStorage.removeItem(AUTH_CHAIN_STORAGE_KEY);
 }
 
 function resetAuthState() {
@@ -219,12 +209,7 @@ function resetAuthState() {
 
 function shouldRestoreAuth() {
     const stored = getStoredAuthSession();
-    if (!stored.token) return false;
-    const address = walletAddress ? walletAddress.toLowerCase() : "";
-    const chainId = normalizeChainId(walletChainId) || "";
-    if (!address || stored.address !== address) return false;
-    if (stored.chainId && chainId && stored.chainId !== chainId) return false;
-    return true;
+    return !!stored.token;
 }
 
 async function restoreAuthSession() {
@@ -335,7 +320,7 @@ async function authenticateWallet() {
         }
         authToken = data.token || "";
         walletAuthenticated = true;
-        storeAuthSession(authToken, walletAddress, normalizeChainId(walletChainId) || walletChainId);
+        storeAuthSession(authToken);
         applyProfileData(data);
     } catch (err) {
         console.warn("Auth failed", err);
@@ -534,7 +519,7 @@ function updateWalletUI() {
     } else if (!isOnBaseSepolia) {
         setWalletStatus("Переключите сеть на Base Sepolia.");
     } else if (!walletAuthenticated) {
-        setWalletStatus("Нажмите Connect wallet и подтвердите подпись.");
+        setWalletStatus("Нажмите Connect wallet.");
     } else {
         setWalletStatus("Кошелёк подключён.");
     }
@@ -673,46 +658,22 @@ function handleAccountsChanged(accounts) {
     } else {
         walletAddress = null;
     }
-    resetAuthState();
-    const stored = getStoredAuthSession();
-    const currentAddress = walletAddress ? walletAddress.toLowerCase() : "";
-    const currentChainId = normalizeChainId(walletChainId) || "";
-    const shouldKeep = !!stored.token
-        && !!currentAddress
-        && stored.address === currentAddress
-        && (!stored.chainId || !currentChainId || stored.chainId === currentChainId);
-    if (!shouldKeep) {
-        clearStoredAuthSession();
-    }
+    walletAuthenticated = false;
+    authAttempted = false;
     checkinState.lastCheckin = null;
     checkinState.streak = 0;
     checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
-    if (shouldKeep) {
-        void restoreAuthSession().then(updateWalletUI);
-    }
 }
 
 function handleChainChanged(chainId) {
     walletChainId = normalizeChainId(chainId) || chainId;
-    resetAuthState();
-    const stored = getStoredAuthSession();
-    const currentAddress = walletAddress ? walletAddress.toLowerCase() : "";
-    const currentChainId = normalizeChainId(walletChainId) || "";
-    const shouldKeep = !!stored.token
-        && !!currentAddress
-        && stored.address === currentAddress
-        && (!stored.chainId || !currentChainId || stored.chainId === currentChainId);
-    if (!shouldKeep) {
-        clearStoredAuthSession();
-    }
+    walletAuthenticated = false;
+    authAttempted = false;
     checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
-    if (shouldKeep) {
-        void restoreAuthSession().then(updateWalletUI);
-    }
 }
 
 //player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
