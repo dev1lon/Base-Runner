@@ -37,7 +37,7 @@ let gameActive = true;
 let showWelcome = false;
 let isPaused = false;
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
-const AUTH_TOKEN_STORAGE_KEY = "runner_auth_token";
+const AUTH_TOKENS_STORAGE_KEY = "runner_auth_token";
 const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532
 const BASE_SEPOLIA_PARAMS = {
     chainId: BASE_SEPOLIA_CHAIN_ID,
@@ -186,19 +186,57 @@ function getWalletDisplayName() {
     return walletAddress || "";
 }
 
-function getStoredAuthSession() {
-    return {
-        token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || ""
-    };
+function getAuthTokensMap() {
+    const raw = localStorage.getItem(AUTH_TOKENS_STORAGE_KEY);
+    if (!raw) return {};
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+            return parsed;
+        }
+    } catch (err) {
+        // legacy token stored as plain string
+    }
+    return {};
 }
 
-function storeAuthSession(token) {
-    if (!token) return;
-    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+function getAuthTokenForAddress(address) {
+    if (!address) return "";
+    const raw = localStorage.getItem(AUTH_TOKENS_STORAGE_KEY);
+    if (!raw) return "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+            const token = parsed[address.toLowerCase()];
+            return typeof token === "string" ? token : "";
+        }
+    } catch (err) {
+        if (raw && raw.includes(".")) {
+            const map = { [address.toLowerCase()]: raw };
+            localStorage.setItem(AUTH_TOKENS_STORAGE_KEY, JSON.stringify(map));
+            return raw;
+        }
+    }
+    return "";
 }
 
-function clearStoredAuthSession() {
-    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+function storeAuthSession(token, address) {
+    if (!token || !address) return;
+    const map = getAuthTokensMap();
+    map[address.toLowerCase()] = token;
+    localStorage.setItem(AUTH_TOKENS_STORAGE_KEY, JSON.stringify(map));
+}
+
+function clearAuthTokenForAddress(address) {
+    if (!address) return;
+    const map = getAuthTokensMap();
+    delete map[address.toLowerCase()];
+    const keys = Object.keys(map);
+    if (keys.length === 0) {
+        localStorage.removeItem(AUTH_TOKENS_STORAGE_KEY);
+    } else {
+        localStorage.setItem(AUTH_TOKENS_STORAGE_KEY, JSON.stringify(map));
+    }
 }
 
 function resetAuthState() {
@@ -208,15 +246,15 @@ function resetAuthState() {
 }
 
 function shouldRestoreAuth() {
-    const stored = getStoredAuthSession();
-    return !!stored.token;
+    if (!walletAddress) return false;
+    const token = getAuthTokenForAddress(walletAddress);
+    return !!token;
 }
 
 async function restoreAuthSession() {
     if (!BACKEND_URL) return false;
     if (!shouldRestoreAuth()) return false;
-    const stored = getStoredAuthSession();
-    authToken = stored.token;
+    authToken = getAuthTokenForAddress(walletAddress);
     try {
         const response = await fetch(`${BACKEND_URL}/api/user/me`, {
             headers: { Authorization: `Bearer ${authToken}` }
@@ -233,7 +271,7 @@ async function restoreAuthSession() {
         return true;
     } catch (err) {
         resetAuthState();
-        clearStoredAuthSession();
+        clearAuthTokenForAddress(walletAddress);
         return false;
     }
 }
@@ -320,13 +358,13 @@ async function authenticateWallet() {
         }
         authToken = data.token || "";
         walletAuthenticated = true;
-        storeAuthSession(authToken);
+        storeAuthSession(authToken, walletAddress);
         applyProfileData(data);
     } catch (err) {
         console.warn("Auth failed", err);
         walletAuthenticated = false;
         authToken = "";
-        clearStoredAuthSession();
+        clearAuthTokenForAddress(walletAddress);
         setWalletError("Авторизация не удалась. Повторите попытку.");
     } finally {
         authInProgress = false;
@@ -658,22 +696,26 @@ function handleAccountsChanged(accounts) {
     } else {
         walletAddress = null;
     }
-    walletAuthenticated = false;
-    authAttempted = false;
+    resetAuthState();
     checkinState.lastCheckin = null;
     checkinState.streak = 0;
     checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
+    if (walletAddress) {
+        void restoreAuthSession().then(updateWalletUI);
+    }
 }
 
 function handleChainChanged(chainId) {
     walletChainId = normalizeChainId(chainId) || chainId;
-    walletAuthenticated = false;
-    authAttempted = false;
+    resetAuthState();
     checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
+    if (walletAddress) {
+        void restoreAuthSession().then(updateWalletUI);
+    }
 }
 
 //player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
