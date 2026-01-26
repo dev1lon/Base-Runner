@@ -12,6 +12,7 @@ const { getOrCreateUser } = require("./modules/user/userRepo");
 const { applyScore } = require("./modules/user/userService");
 const { startCheckin, submitCheckin } = require("./modules/checkin/checkinService");
 const { buildSessionMessage } = require("./shared/messages");
+const { ensureSchema } = require("./shared/db");
 const { normalizeAddress, verifySignature } = require("./shared/auth");
 const { createNonce } = require("./shared/nonce");
 
@@ -32,6 +33,36 @@ function randomSeed() {
 
 app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { address, signature, message } = req.body || {};
+  const addressNorm = normalizeAddress(address);
+  if (!addressNorm) {
+    res.status(400).json({ ok: false, error: "Invalid address" });
+    return;
+  }
+  if (!signature || !message) {
+    res.status(400).json({ ok: false, error: "Missing signature" });
+    return;
+  }
+  if (!message.startsWith("Welcome '") || !message.endsWith(" to runner.base")) {
+    res.status(400).json({ ok: false, error: "Invalid message" });
+    return;
+  }
+  if (!verifySignature(addressNorm, message, signature)) {
+    res.status(400).json({ ok: false, error: "Invalid signature" });
+    return;
+  }
+  const user = await getOrCreateUser(addressNorm);
+  res.json({
+    ok: true,
+    address: user.address,
+    coinBalance: user.coins,
+    bestScore: user.best_score,
+    streak: user.streak,
+    lastCheckin: user.last_checkin
+  });
 });
 
 app.post("/api/session/start", (req, res) => {
@@ -138,7 +169,7 @@ app.post("/api/session/submit", async (req, res) => {
 
   const finalScore = Math.min(reported, maxScore);
   const coinsAwarded = Math.floor(finalScore / 10000);
-  const user = applyScore(addressNorm, finalScore, coinsAwarded);
+  const user = await applyScore(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
 
   res.json({
@@ -153,13 +184,13 @@ app.post("/api/session/submit", async (req, res) => {
   });
 });
 
-app.get("/api/user/:address", (req, res) => {
+app.get("/api/user/:address", async (req, res) => {
   const addressNorm = normalizeAddress(req.params.address);
   if (!addressNorm) {
     res.status(400).json({ ok: false, error: "Invalid address" });
     return;
   }
-  const user = getOrCreateUser(addressNorm);
+  const user = await getOrCreateUser(addressNorm);
   res.json({
     ok: true,
     address: user.address,
@@ -170,14 +201,14 @@ app.get("/api/user/:address", (req, res) => {
   });
 });
 
-app.post("/api/checkin/start", (req, res) => {
+app.post("/api/checkin/start", async (req, res) => {
   const { address } = req.body || {};
   const addressNorm = normalizeAddress(address);
   if (!addressNorm) {
     res.status(400).json({ ok: false, error: "Invalid address" });
     return;
   }
-  const result = startCheckin(addressNorm);
+  const result = await startCheckin(addressNorm);
   res.json({
     ok: true,
     alreadyCheckedIn: result.alreadyCheckedIn,
@@ -189,7 +220,7 @@ app.post("/api/checkin/start", (req, res) => {
   });
 });
 
-app.post("/api/checkin/submit", (req, res) => {
+app.post("/api/checkin/submit", async (req, res) => {
   const { address, signature } = req.body || {};
   const addressNorm = normalizeAddress(address);
   if (!addressNorm) {
@@ -200,7 +231,7 @@ app.post("/api/checkin/submit", (req, res) => {
     res.status(400).json({ ok: false, error: "Missing signature" });
     return;
   }
-  const result = submitCheckin(addressNorm, signature);
+  const result = await submitCheckin(addressNorm, signature);
   if (!result.ok) {
     res.status(400).json({ ok: false, error: result.error });
     return;
@@ -218,6 +249,16 @@ app.post("/api/checkin/submit", (req, res) => {
 
 setInterval(cleanupSessions, 60 * 1000);
 
-app.listen(PORT, () => {
-  console.log(`Backend listening on :${PORT}`);
-});
+async function startServer() {
+  try {
+    await ensureSchema();
+    app.listen(PORT, () => {
+      console.log(`Backend listening on :${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to start backend", err);
+    process.exit(1);
+  }
+}
+
+startServer();

@@ -1,34 +1,73 @@
-const { getUserRecord, setUserRecord } = require("../../shared/db");
+const { query } = require("../../shared/db");
 
-function getUser(address) {
-  return getUserRecord(address);
+const USER_COLUMNS = `
+  address,
+  coins,
+  best_score,
+  streak,
+  last_checkin,
+  checkin_nonce,
+  created_at,
+  updated_at
+`;
+
+async function getUser(address) {
+  const result = await query(
+    `SELECT ${USER_COLUMNS} FROM users WHERE address = $1`,
+    [address]
+  );
+  return result.rows[0] || null;
 }
 
-function createUser(address) {
-  const now = new Date().toISOString();
-  const user = {
-    address,
-    coins: 0,
-    best_score: 0,
-    streak: 0,
-    last_checkin: null,
-    checkin_nonce: null,
-    created_at: now,
-    updated_at: now
-  };
-  return setUserRecord(address, user);
+async function createUser(address) {
+  const result = await query(
+    `INSERT INTO users (address)
+     VALUES ($1)
+     RETURNING ${USER_COLUMNS}`,
+    [address]
+  );
+  return result.rows[0];
 }
 
-function getOrCreateUser(address) {
-  const existing = getUser(address);
+async function getOrCreateUser(address) {
+  const existing = await getUser(address);
   if (existing) return existing;
   return createUser(address);
 }
 
-function updateUser(address, updates) {
-  const user = getOrCreateUser(address);
-  const next = { ...user, ...updates, updated_at: new Date().toISOString() };
-  return setUserRecord(address, next);
+async function updateUser(address, updates) {
+  const allowed = {
+    coins: "coins",
+    best_score: "best_score",
+    streak: "streak",
+    last_checkin: "last_checkin",
+    checkin_nonce: "checkin_nonce"
+  };
+  const sets = [];
+  const values = [];
+  let idx = 1;
+
+  for (const [key, value] of Object.entries(updates || {})) {
+    if (allowed[key]) {
+      sets.push(`${allowed[key]} = $${idx}`);
+      values.push(value);
+      idx += 1;
+    }
+  }
+
+  if (sets.length === 0) {
+    return getUser(address);
+  }
+
+  sets.push(`updated_at = NOW()`);
+  values.push(address);
+  const result = await query(
+    `UPDATE users SET ${sets.join(", ")}
+     WHERE address = $${idx}
+     RETURNING ${USER_COLUMNS}`,
+    values
+  );
+  return result.rows[0];
 }
 
 module.exports = {

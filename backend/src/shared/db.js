@@ -1,45 +1,38 @@
-const fs = require("fs");
-const path = require("path");
+const { Pool } = require("pg");
 
-const dbPath = process.env.DB_PATH
-  ? path.resolve(process.env.DB_PATH)
-  : path.join(__dirname, "..", "..", "data", "db.json");
+const hasDatabaseUrl = !!process.env.DATABASE_URL;
+const pool = new Pool({
+  connectionString: hasDatabaseUrl ? process.env.DATABASE_URL : undefined,
+  host: hasDatabaseUrl ? undefined : process.env.PGHOST,
+  port: hasDatabaseUrl ? undefined : Number(process.env.PGPORT || 5432),
+  user: hasDatabaseUrl ? undefined : process.env.PGUSER,
+  password: hasDatabaseUrl ? undefined : process.env.PGPASSWORD,
+  database: hasDatabaseUrl ? undefined : process.env.PGDATABASE,
+  ssl: String(process.env.PG_SSL || "false").toLowerCase() === "true"
+    ? { rejectUnauthorized: false }
+    : undefined
+});
 
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-
-const defaultState = { users: {} };
-let state = defaultState;
-
-function load() {
-  if (!fs.existsSync(dbPath)) {
-    fs.writeFileSync(dbPath, JSON.stringify(defaultState, null, 2));
-    state = { ...defaultState };
-    return;
-  }
-  const raw = fs.readFileSync(dbPath, "utf-8");
-  state = raw ? JSON.parse(raw) : { ...defaultState };
-  if (!state.users) {
-    state.users = {};
-  }
+async function ensureSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      address TEXT PRIMARY KEY,
+      coins INTEGER NOT NULL DEFAULT 0,
+      best_score INTEGER NOT NULL DEFAULT 0,
+      streak INTEGER NOT NULL DEFAULT 0,
+      last_checkin TEXT,
+      checkin_nonce TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }
 
-function save() {
-  fs.writeFileSync(dbPath, JSON.stringify(state, null, 2));
+async function query(text, params) {
+  return pool.query(text, params);
 }
-
-function getUserRecord(address) {
-  return state.users[address] || null;
-}
-
-function setUserRecord(address, data) {
-  state.users[address] = data;
-  save();
-  return state.users[address];
-}
-
-load();
 
 module.exports = {
-  getUserRecord,
-  setUserRecord
+  query,
+  ensureSchema
 };

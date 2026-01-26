@@ -69,7 +69,11 @@ let walletReady = false;
 let isConnectingWallet = false;
 let walletErrorMessage = "";
 let walletInfoMessage = "";
-let lastProfileAddress = null;
+let walletAuthenticated = false;
+let authInProgress = false;
+let authAttempted = false;
+let authMessage = "";
+let authSignature = "";
 let backendSessionMessage = "";
 let backendSessionSignature = "";
 let checkinState = {
@@ -176,6 +180,14 @@ function isToday(dateKey) {
     return !!dateKey && dateKey === getDateKey();
 }
 
+function getWalletDisplayName() {
+    const stored = localStorage.getItem("runner_base_nickname");
+    if (stored && stored.trim()) {
+        return stored.trim();
+    }
+    return walletAddress || "";
+}
+
 async function signWalletMessage(message) {
     const provider = getEthereumProvider();
     if (!provider || !walletAddress) {
@@ -195,6 +207,48 @@ async function signWalletMessage(message) {
         } catch (fallbackErr) {
             throw err;
         }
+    }
+}
+
+async function authenticateWallet() {
+    if (!walletAddress || authInProgress || walletAuthenticated) {
+        return;
+    }
+    authInProgress = true;
+    authAttempted = true;
+    clearWalletMessages();
+    authMessage = `Welcome '${getWalletDisplayName()}' to runner.base`;
+    setWalletInfo("Подтвердите авторизацию.");
+    updateWalletUI();
+    try {
+        const signature = await signWalletMessage(authMessage);
+        const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                address: walletAddress,
+                signature,
+                message: authMessage
+            })
+        });
+        if (!response.ok) {
+            throw new Error(`Auth failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!data || !data.ok) {
+            throw new Error("Auth rejected");
+        }
+        authSignature = signature;
+        walletAuthenticated = true;
+        applyProfileData(data);
+    } catch (err) {
+        console.warn("Auth failed", err);
+        walletAuthenticated = false;
+        authSignature = "";
+        setWalletError("Авторизация не удалась. Повторите попытку.");
+    } finally {
+        authInProgress = false;
+        updateWalletUI();
     }
 }
 
@@ -357,7 +411,8 @@ function updateWalletUI() {
     const isConnected = !!walletAddress;
     const normalizedChainId = normalizeChainId(walletChainId);
     const isOnBaseSepolia = normalizedChainId === BASE_SEPOLIA_CHAIN_ID;
-    walletReady = isConnected && isOnBaseSepolia;
+    const walletConnected = isConnected && isOnBaseSepolia;
+    walletReady = walletConnected && walletAuthenticated;
 
     if (connectButton) {
         connectButton.disabled = !hasProvider || isConnectingWallet;
@@ -365,6 +420,8 @@ function updateWalletUI() {
             connectButton.textContent = "Wallet not found";
         } else if (isConnected && !isOnBaseSepolia) {
             connectButton.textContent = "Switch to Base Sepolia";
+        } else if (isConnected && !walletAuthenticated) {
+            connectButton.textContent = "Sign in";
         } else if (isConnected) {
             connectButton.textContent = `Connected: ${formatAddress(walletAddress)}`;
         } else {
@@ -389,6 +446,8 @@ function updateWalletUI() {
         setWalletStatus("Подключите кошелёк, чтобы продолжить.");
     } else if (!isOnBaseSepolia) {
         setWalletStatus("Переключите сеть на Base Sepolia.");
+    } else if (!walletAuthenticated) {
+        setWalletStatus("Подтвердите авторизацию подписью.");
     } else {
         setWalletStatus("Кошелёк подключён.");
     }
@@ -397,6 +456,9 @@ function updateWalletUI() {
         startButton.disabled = !walletReady;
     }
     updateMenuState();
+    if (walletConnected && !walletAuthenticated && !authInProgress && !authAttempted) {
+        authenticateWallet();
+    }
 }
 
 async function initWalletState() {
@@ -465,6 +527,11 @@ async function connectWallet() {
                 handleChainChanged(nextChainId);
             }
         }
+        const activeChainId = normalizeChainId(walletChainId);
+        if (walletAddress && activeChainId === BASE_SEPOLIA_CHAIN_ID && !walletAuthenticated) {
+            authAttempted = false;
+            await authenticateWallet();
+        }
     } catch (err) {
         if (err && err.code === 4001) {
             setWalletError("Отменено в кошельке.");
@@ -514,12 +581,24 @@ function handleAccountsChanged(accounts) {
     } else {
         walletAddress = null;
     }
+    walletAuthenticated = false;
+    authSignature = "";
+    authMessage = "";
+    authAttempted = false;
+    checkinState.lastCheckin = null;
+    checkinState.streak = 0;
+    checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
 }
 
 function handleChainChanged(chainId) {
     walletChainId = normalizeChainId(chainId) || chainId;
+    walletAuthenticated = false;
+    authSignature = "";
+    authMessage = "";
+    authAttempted = false;
+    checkinState.message = "";
     clearWalletMessages();
     updateWalletUI();
 }
@@ -791,42 +870,23 @@ function updateMenuState() {
         leaderboardButton.disabled = true;
     }
     updateCheckinUI();
-    if (walletReady) {
-        refreshUserProfile();
-    }
+    updateCheckinUI();
 }
 
-async function refreshUserProfile() {
-    if (!walletReady || !walletAddress || !BACKEND_URL) {
-        return;
+function applyProfileData(data) {
+    if (!data) return;
+    if (Number.isFinite(data.coinBalance)) {
+        coinCount = data.coinBalance;
+        saveCoins();
     }
-    if (lastProfileAddress === walletAddress && !checkinState.loading) {
-        return;
+    if (Number.isFinite(data.bestScore)) {
+        bestScore = data.bestScore;
+        localStorage.setItem("baseapp_runner_best_score", String(bestScore));
     }
-    lastProfileAddress = walletAddress;
-    try {
-        const response = await fetch(`${BACKEND_URL}/api/user/${walletAddress}`);
-        if (!response.ok) {
-            throw new Error(`Profile fetch failed: ${response.status}`);
-        }
-        const data = await response.json();
-        if (data && data.ok) {
-            if (Number.isFinite(data.coinBalance)) {
-                coinCount = data.coinBalance;
-                saveCoins();
-            }
-            if (Number.isFinite(data.bestScore)) {
-                bestScore = data.bestScore;
-                localStorage.setItem("baseapp_runner_best_score", String(bestScore));
-            }
-            checkinState.lastCheckin = data.lastCheckin || null;
-            checkinState.streak = Number.isFinite(data.streak) ? data.streak : 0;
-            checkinState.message = "";
-            updateCheckinUI();
-        }
-    } catch (err) {
-        console.warn("Profile fetch failed", err);
-    }
+    checkinState.lastCheckin = data.lastCheckin || null;
+    checkinState.streak = Number.isFinite(data.streak) ? data.streak : 0;
+    checkinState.message = "";
+    updateCheckinUI();
 }
 
 function updateCheckinUI() {

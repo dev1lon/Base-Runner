@@ -4,8 +4,8 @@ const { createNonce } = require("../../shared/nonce");
 const { buildCheckinMessage } = require("../../shared/messages");
 const { verifySignature } = require("../../shared/auth");
 
-function startCheckin(address) {
-  const user = getOrCreateUser(address);
+async function startCheckin(address) {
+  const user = await getOrCreateUser(address);
   if (isToday(user.last_checkin)) {
     return {
       alreadyCheckedIn: true,
@@ -16,7 +16,7 @@ function startCheckin(address) {
   }
   const nonce = createNonce();
   const message = buildCheckinMessage(nonce);
-  const updated = updateUser(address, { checkin_nonce: nonce });
+  const updated = await updateUser(address, { checkin_nonce: nonce });
   return {
     alreadyCheckedIn: false,
     message,
@@ -25,8 +25,8 @@ function startCheckin(address) {
   };
 }
 
-function submitCheckin(address, signature) {
-  const user = getOrCreateUser(address);
+async function submitCheckin(address, signature) {
+  const user = await getOrCreateUser(address);
   if (!user.checkin_nonce) {
     return { ok: false, error: "No checkin nonce" };
   }
@@ -35,7 +35,7 @@ function submitCheckin(address, signature) {
     return { ok: false, error: "Invalid signature" };
   }
   if (isToday(user.last_checkin)) {
-    const cleared = updateUser(address, { checkin_nonce: null });
+    const cleared = await updateUser(address, { checkin_nonce: null });
     return {
       ok: true,
       alreadyCheckedIn: true,
@@ -48,7 +48,7 @@ function submitCheckin(address, signature) {
   const nextStreak = isYesterday(user.last_checkin) ? user.streak + 1 : 1;
   const bonusAwarded = nextStreak % 5 === 0 ? 1 : 0;
   const coinsAwarded = 1 + bonusAwarded;
-  const updated = updateUser(address, {
+  const updated = await updateUser(address, {
     coins: user.coins + coinsAwarded,
     streak: nextStreak,
     last_checkin: getDateKey(),

@@ -18,10 +18,25 @@ npm run dev
 ```
 
 ## API
+### `POST /api/auth/login`
+**Body**:
+```json
+{ "address": "0x...", "signature": "0x...", "message": "Welcome '<name>' to runner.base" }
+```
+**Response**:
+```json
+{
+  "ok": true,
+  "coinBalance": 3,
+  "bestScore": 1200,
+  "streak": 2
+}
+```
+
 ### `POST /api/session/start`
 **Body** (опционально):
 ```json
-{ "address": "0x...", "layout": "desktop" }
+{ "address": "0x..." }
 ```
 **Response**:
 ```json
@@ -110,8 +125,13 @@ BaseApp Runner session <sessionId>
 ```
 и отправить подпись в `POST /api/session/submit`.
 
+Для авторизации используется подпись сообщения:
+```
+Welcome '<name>' to runner.base
+```
+
 ## Ограничения (текущие)
 - Сессии в памяти процесса (после рестарта всё сбрасывается)
 - Нет rate‑limit
 
-Данные хранятся в JSON‑файле (`DB_PATH`). Для продакшена лучше Postgres.
+Хранилище: Postgres (переменные `DATABASE_URL`, `PG_SSL`).

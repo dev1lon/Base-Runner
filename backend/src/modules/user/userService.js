@@ -1,7 +1,7 @@
 const { getOrCreateUser, updateUser } = require("./userRepo");
 
-function applyScore(address, score, coinsAwarded) {
-  const user = getOrCreateUser(address);
+async function applyScore(address, score, coinsAwarded) {
+  const user = await getOrCreateUser(address);
   const nextCoins = user.coins + coinsAwarded;
   const nextBest = Math.max(user.best_score, score);
   return updateUser(address, {
