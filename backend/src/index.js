@@ -11,65 +11,88 @@ const {
 const { getOrCreateUser } = require("./modules/user/userRepo");
 const { applyScore } = require("./modules/user/userService");
 const { startCheckin, submitCheckin } = require("./modules/checkin/checkinService");
-const { buildSessionMessage } = require("./shared/messages");
 const { ensureSchema } = require("./shared/db");
-const { normalizeAddress, verifySignature } = require("./shared/auth");
-const { createNonce } = require("./shared/nonce");
+const { normalizeAddress, verifyJwt } = require("./shared/auth");
+const { issueNonce, verifyNonce } = require("./modules/auth/authService");
 
 const app = express();
 
 const PORT = Number(process.env.PORT || 8787);
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 10 * 60 * 1000);
 const MAX_DURATION_MS = Number(process.env.MAX_DURATION_MS || 5 * 60 * 1000);
-const REQUIRE_SIGNATURE = String(process.env.REQUIRE_SIGNATURE ?? "true").toLowerCase() === "true";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 function randomSeed() {
-  return createNonce();
+  return `seed-${Math.random().toString(16).slice(2)}`;
 }
 
 app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-app.post("/api/auth/login", async (req, res) => {
-  const { address, signature, message } = req.body || {};
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    res.status(401).json({ ok: false, error: "Missing token" });
+    return;
+  }
+  try {
+    const payload = verifyJwt(token);
+    const addressNorm = normalizeAddress(payload.address);
+    if (!addressNorm) {
+      res.status(401).json({ ok: false, error: "Invalid token" });
+      return;
+    }
+    req.user = { address: addressNorm };
+    next();
+  } catch (err) {
+    res.status(401).json({ ok: false, error: "Invalid token" });
+  }
+}
+
+app.post("/auth/nonce", async (req, res) => {
+  const { address, chainId } = req.body || {};
   const addressNorm = normalizeAddress(address);
-  if (!addressNorm) {
+  if (!addressNorm || !chainId) {
     res.status(400).json({ ok: false, error: "Invalid address" });
     return;
   }
-  if (!signature || !message) {
-    res.status(400).json({ ok: false, error: "Missing signature" });
+  const result = await issueNonce(addressNorm, String(chainId));
+  res.json({ ok: true, nonce: result.nonce, issuedAt: result.issuedAt });
+});
+
+app.post("/auth/verify", async (req, res) => {
+  const { address, signature } = req.body || {};
+  const addressNorm = normalizeAddress(address);
+  if (!addressNorm || !signature) {
+    res.status(400).json({ ok: false, error: "Invalid address" });
     return;
   }
-  if (!message.startsWith("Welcome '") || !message.endsWith(" to runner.base")) {
-    res.status(400).json({ ok: false, error: "Invalid message" });
+  const result = await verifyNonce({ address: addressNorm, signature });
+  if (!result.ok) {
+    res.status(400).json({ ok: false, error: result.error });
     return;
   }
-  if (!verifySignature(addressNorm, message, signature)) {
-    res.status(400).json({ ok: false, error: "Invalid signature" });
-    return;
-  }
-  const user = await getOrCreateUser(addressNorm);
   res.json({
     ok: true,
-    address: user.address,
-    coinBalance: user.coins,
-    bestScore: user.best_score,
-    streak: user.streak,
-    lastCheckin: user.last_checkin
+    token: result.token,
+    address: result.user.address,
+    coinBalance: result.user.coins,
+    bestScore: result.user.best_score,
+    streak: result.user.streak,
+    lastCheckin: result.user.last_checkin
   });
 });
 
-app.post("/api/session/start", (req, res) => {
-  const { address } = req.body || {};
+app.post("/api/session/start", requireAuth, (req, res) => {
+  const addressNorm = req.user.address;
   const seed = randomSeed();
   const session = createSession({
-    address: normalizeAddress(address),
+    address: addressNorm,
     seed,
     ttlMs: SESSION_TTL_MS
   });
@@ -78,7 +101,6 @@ app.post("/api/session/start", (req, res) => {
     seed: session.seed,
     issuedAt: session.issuedAt,
     expiresAt: session.expiresAt,
-    signMessage: buildSessionMessage(session.sessionId),
     config: {
       frameMs: DEFAULT_CONFIG.frameMs,
       speedStart: DEFAULT_CONFIG.speedStart,
@@ -90,14 +112,8 @@ app.post("/api/session/start", (req, res) => {
   });
 });
 
-app.post("/api/session/submit", async (req, res) => {
-  const {
-    sessionId,
-    address,
-    inputLog,
-    reportedScore,
-    signature
-  } = req.body || {};
+app.post("/api/session/submit", requireAuth, async (req, res) => {
+  const { sessionId, inputLog, reportedScore } = req.body || {};
 
   if (!sessionId) {
     res.status(400).json({ ok: false, error: "Missing sessionId" });
@@ -117,21 +133,10 @@ app.post("/api/session/submit", async (req, res) => {
     return;
   }
 
-  const addressNorm = normalizeAddress(address || session.address);
-  if (!addressNorm) {
-    res.status(400).json({ ok: false, error: "Missing address" });
+  const addressNorm = req.user.address;
+  if (!addressNorm || addressNorm !== session.address) {
+    res.status(403).json({ ok: false, error: "Session address mismatch" });
     return;
-  }
-
-  if (REQUIRE_SIGNATURE) {
-    if (!signature) {
-      res.status(400).json({ ok: false, error: "Missing signature" });
-      return;
-    }
-    if (!verifySignature(addressNorm, buildSessionMessage(sessionId), signature)) {
-      res.status(400).json({ ok: false, error: "Invalid signature" });
-      return;
-    }
   }
 
   const serverDurationMs = Math.min(Date.now() - session.issuedAt, MAX_DURATION_MS);
@@ -184,13 +189,8 @@ app.post("/api/session/submit", async (req, res) => {
   });
 });
 
-app.get("/api/user/:address", async (req, res) => {
-  const addressNorm = normalizeAddress(req.params.address);
-  if (!addressNorm) {
-    res.status(400).json({ ok: false, error: "Invalid address" });
-    return;
-  }
-  const user = await getOrCreateUser(addressNorm);
+app.get("/api/user/me", requireAuth, async (req, res) => {
+  const user = await getOrCreateUser(req.user.address);
   res.json({
     ok: true,
     address: user.address,
@@ -201,14 +201,8 @@ app.get("/api/user/:address", async (req, res) => {
   });
 });
 
-app.post("/api/checkin/start", async (req, res) => {
-  const { address } = req.body || {};
-  const addressNorm = normalizeAddress(address);
-  if (!addressNorm) {
-    res.status(400).json({ ok: false, error: "Invalid address" });
-    return;
-  }
-  const result = await startCheckin(addressNorm);
+app.post("/api/checkin/start", requireAuth, async (req, res) => {
+  const result = await startCheckin(req.user.address);
   res.json({
     ok: true,
     alreadyCheckedIn: result.alreadyCheckedIn,
@@ -220,18 +214,13 @@ app.post("/api/checkin/start", async (req, res) => {
   });
 });
 
-app.post("/api/checkin/submit", async (req, res) => {
-  const { address, signature } = req.body || {};
-  const addressNorm = normalizeAddress(address);
-  if (!addressNorm) {
-    res.status(400).json({ ok: false, error: "Invalid address" });
-    return;
-  }
+app.post("/api/checkin/submit", requireAuth, async (req, res) => {
+  const { signature } = req.body || {};
   if (!signature) {
     res.status(400).json({ ok: false, error: "Missing signature" });
     return;
   }
-  const result = await submitCheckin(addressNorm, signature);
+  const result = await submitCheckin(req.user.address, signature);
   if (!result.ok) {
     res.status(400).json({ ok: false, error: result.error });
     return;

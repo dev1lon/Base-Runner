@@ -7,6 +7,7 @@ const USER_COLUMNS = `
   streak,
   last_checkin,
   checkin_nonce,
+  last_login_at,
   created_at,
   updated_at
 `;
@@ -41,7 +42,8 @@ async function updateUser(address, updates) {
     best_score: "best_score",
     streak: "streak",
     last_checkin: "last_checkin",
-    checkin_nonce: "checkin_nonce"
+    checkin_nonce: "checkin_nonce",
+    last_login_at: "last_login_at"
   };
   const sets = [];
   const values = [];

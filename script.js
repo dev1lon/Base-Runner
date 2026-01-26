@@ -72,10 +72,7 @@ let walletInfoMessage = "";
 let walletAuthenticated = false;
 let authInProgress = false;
 let authAttempted = false;
-let authMessage = "";
-let authSignature = "";
-let backendSessionMessage = "";
-let backendSessionSignature = "";
+let authToken = "";
 let checkinState = {
     lastCheckin: null,
     streak: 0,
@@ -188,6 +185,16 @@ function getWalletDisplayName() {
     return walletAddress || "";
 }
 
+function buildAuthMessage({ address, nonce, chainId, issuedAt }) {
+    return [
+        "Base Runner",
+        `Address: ${address}`,
+        `Nonce: ${nonce}`,
+        `ChainId: ${chainId}`,
+        `IssuedAt: ${issuedAt}`
+    ].join("\n");
+}
+
 async function signWalletMessage(message) {
     const provider = getEthereumProvider();
     if (!provider || !walletAddress) {
@@ -217,18 +224,38 @@ async function authenticateWallet() {
     authInProgress = true;
     authAttempted = true;
     clearWalletMessages();
-    authMessage = `Welcome '${getWalletDisplayName()}' to runner.base`;
     setWalletInfo("Подтвердите авторизацию.");
     updateWalletUI();
     try {
-        const signature = await signWalletMessage(authMessage);
-        const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        const chainId = normalizeChainId(walletChainId) || walletChainId;
+        if (!chainId) {
+            throw new Error("ChainId missing");
+        }
+        const nonceResponse = await fetch(`${BACKEND_URL}/auth/nonce`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 address: walletAddress,
-                signature,
-                message: authMessage
+                chainId
+            })
+        });
+        if (!nonceResponse.ok) {
+            throw new Error(`Nonce failed: ${nonceResponse.status}`);
+        }
+        const nonceData = await nonceResponse.json();
+        const message = buildAuthMessage({
+            address: walletAddress,
+            nonce: nonceData.nonce,
+            chainId,
+            issuedAt: nonceData.issuedAt
+        });
+        const signature = await signWalletMessage(message);
+        const response = await fetch(`${BACKEND_URL}/auth/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                address: walletAddress,
+                signature
             })
         });
         if (!response.ok) {
@@ -238,13 +265,13 @@ async function authenticateWallet() {
         if (!data || !data.ok) {
             throw new Error("Auth rejected");
         }
-        authSignature = signature;
+        authToken = data.token || "";
         walletAuthenticated = true;
         applyProfileData(data);
     } catch (err) {
         console.warn("Auth failed", err);
         walletAuthenticated = false;
-        authSignature = "";
+        authToken = "";
         setWalletError("Авторизация не удалась. Повторите попытку.");
     } finally {
         authInProgress = false;
@@ -279,8 +306,6 @@ function resetBackendSession() {
     backendSessionActive = false;
     backendRunSubmitted = false;
     rng = null;
-    backendSessionMessage = "";
-    backendSessionSignature = "";
 }
 
 function recordInput(type) {
@@ -293,7 +318,7 @@ function recordInput(type) {
 
 async function startBackendSession() {
     resetBackendSession();
-    if (!BACKEND_URL) {
+    if (!BACKEND_URL || !authToken) {
         return false;
     }
     const controller = new AbortController();
@@ -301,10 +326,10 @@ async function startBackendSession() {
     try {
         const response = await fetch(`${BACKEND_URL}/api/session/start`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                address: walletAddress || null
-            }),
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
             signal: controller.signal
         });
         if (!response.ok) {
@@ -313,21 +338,10 @@ async function startBackendSession() {
         const data = await response.json();
         backendSessionId = data.sessionId || null;
         backendSeed = data.seed || null;
-        backendSessionMessage = data.signMessage || "";
         backendSessionStartMs = performance.now();
         backendInputLog = [];
         backendSessionActive = !!backendSessionId;
         rng = backendSeed ? createRng(backendSeed) : null;
-        if (backendSessionMessage) {
-            try {
-                backendSessionSignature = await signWalletMessage(backendSessionMessage);
-            } catch (err) {
-                setWalletError("Нужно подписать сообщение для старта игры.");
-                updateWalletUI();
-                resetBackendSession();
-                return false;
-            }
-        }
         return backendSessionActive;
     } catch (err) {
         console.warn("Backend session start failed", err);
@@ -345,17 +359,18 @@ async function submitBackendRun(finalScore) {
     backendRunSubmitted = true;
     const payload = {
         sessionId: backendSessionId,
-        address: walletAddress || null,
         reportedScore: finalScore,
-        inputLog: backendInputLog,
-        signature: backendSessionSignature || null
+        inputLog: backendInputLog
     };
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
     try {
         const response = await fetch(`${BACKEND_URL}/api/session/submit`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
             body: JSON.stringify(payload),
             signal: controller.signal
         });
@@ -582,8 +597,7 @@ function handleAccountsChanged(accounts) {
         walletAddress = null;
     }
     walletAuthenticated = false;
-    authSignature = "";
-    authMessage = "";
+    authToken = "";
     authAttempted = false;
     checkinState.lastCheckin = null;
     checkinState.streak = 0;
@@ -595,8 +609,7 @@ function handleAccountsChanged(accounts) {
 function handleChainChanged(chainId) {
     walletChainId = normalizeChainId(chainId) || chainId;
     walletAuthenticated = false;
-    authSignature = "";
-    authMessage = "";
+    authToken = "";
     authAttempted = false;
     checkinState.message = "";
     clearWalletMessages();
@@ -932,8 +945,11 @@ async function handleCheckin() {
     try {
         const startResponse = await fetch(`${BACKEND_URL}/api/checkin/start`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address: walletAddress })
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify({})
         });
         if (!startResponse.ok) {
             throw new Error(`Check-in start failed: ${startResponse.status}`);
@@ -959,9 +975,11 @@ async function handleCheckin() {
         const signature = await signWalletMessage(message);
         const submitResponse = await fetch(`${BACKEND_URL}/api/checkin/submit`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
             body: JSON.stringify({
-                address: walletAddress,
                 signature
             })
         });

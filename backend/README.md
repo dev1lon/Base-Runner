@@ -18,26 +18,28 @@ npm run dev
 ```
 
 ## API
-### `POST /api/auth/login`
+### `POST /auth/nonce`
 **Body**:
 ```json
-{ "address": "0x...", "signature": "0x...", "message": "Welcome '<name>' to runner.base" }
+{ "address": "0x...", "chainId": "0x14a34" }
 ```
 **Response**:
 ```json
-{
-  "ok": true,
-  "coinBalance": 3,
-  "bestScore": 1200,
-  "streak": 2
-}
+{ "ok": true, "nonce": "hex", "issuedAt": "2026-01-26T00:00:00.000Z" }
+```
+
+### `POST /auth/verify`
+**Body**:
+```json
+{ "address": "0x...", "signature": "0x..." }
+```
+**Response**:
+```json
+{ "ok": true, "token": "jwt" }
 ```
 
 ### `POST /api/session/start`
-**Body** (опционально):
-```json
-{ "address": "0x..." }
-```
+**Auth**: Bearer token
 **Response**:
 ```json
 {
@@ -51,6 +53,7 @@ npm run dev
 ```
 
 ### `POST /api/session/submit`
+**Auth**: Bearer token
 **Body**:
 ```json
 {
@@ -78,10 +81,12 @@ npm run dev
 }
 ```
 
-### `GET /api/user/:address`
+### `GET /api/user/me`
+**Auth**: Bearer token
 Возвращает баланс coins, best score, streak и last check-in.
 
 ### `POST /api/checkin/start`
+**Auth**: Bearer token
 **Body**:
 ```json
 { "address": "0x..." }
@@ -96,6 +101,7 @@ npm run dev
 ```
 
 ### `POST /api/checkin/submit`
+**Auth**: Bearer token
 **Body**:
 ```json
 { "address": "0x...", "signature": "0x..." }
@@ -119,15 +125,13 @@ npm run dev
 Если ты меняешь эти параметры на клиенте — **обнови их в `src/sim.js`**.
 
 ## Подпись кошельком
-Если `REQUIRE_SIGNATURE=true`, нужно подписать сообщение:
+Авторизация проходит через nonce:
 ```
-BaseApp Runner session <sessionId>
-```
-и отправить подпись в `POST /api/session/submit`.
-
-Для авторизации используется подпись сообщения:
-```
-Welcome '<name>' to runner.base
+Base Runner
+Address: 0x...
+Nonce: <nonce>
+ChainId: 0x14a34
+IssuedAt: 2026-01-26T00:00:00.000Z
 ```
 
 ## Ограничения (текущие)

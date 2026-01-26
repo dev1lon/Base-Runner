@@ -1,4 +1,5 @@
 const { verifyMessage } = require("ethers");
+const jwt = require("jsonwebtoken");
 
 function normalizeAddress(address) {
   if (!address || typeof address !== "string") return null;
@@ -15,7 +16,26 @@ function verifySignature(address, message, signature) {
   }
 }
 
+function signJwt(address) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET is missing");
+  }
+  const expiresIn = process.env.JWT_EXPIRES || "7d";
+  return jwt.sign({ address }, secret, { expiresIn });
+}
+
+function verifyJwt(token) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET is missing");
+  }
+  return jwt.verify(token, secret);
+}
+
 module.exports = {
   normalizeAddress,
-  verifySignature
+  verifySignature,
+  signJwt,
+  verifyJwt
 };
