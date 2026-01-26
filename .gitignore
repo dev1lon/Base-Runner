@@ -23,6 +23,11 @@ out/
 .turbo/
 coverage/
 
+# Backend database
+backend/data/
+*.db
+*.sqlite
+
 # Logs
 logs/
 *.log

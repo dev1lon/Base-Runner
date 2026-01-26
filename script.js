@@ -36,7 +36,6 @@ let mobileSafeLeftWorld = 0;
 let gameActive = true;
 let showWelcome = false;
 let isPaused = false;
-const CHECKIN_STORAGE_KEY = "baseapp_runner_checkin_date";
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
 const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532
 const BASE_SEPOLIA_PARAMS = {
@@ -46,17 +45,21 @@ const BASE_SEPOLIA_PARAMS = {
     rpcUrls: ["https://sepolia.base.org"],
     blockExplorerUrls: ["https://sepolia.basescan.org"]
 };
-const CHECKIN_CONTRACT_ADDRESS = "0xB56948C6622AB711cE9dea00a2e602DC2EF363aD"; // TODO: set after deploy
+const CHECKIN_CONTRACT_ADDRESS = "0xc24F4140df57BEadB3F19C9F7bEF0e49E8F47b44";
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
 let welcomeOverlay;
 let startButton;
 let pauseButton;
-let checkinButton;
-let checkinStatus;
 let connectButton;
 let walletStatus;
-let postConnectSection;
+let connectSection;
+let menuSection;
+let menuTitle;
+let collectionButton;
+let leaderboardButton;
+let checkinButton;
+let checkinStatus;
 let ethImg;
 let coinCount = 0;
 let nextCoinScore = 10000;
@@ -64,9 +67,17 @@ let walletAddress = null;
 let walletChainId = null;
 let walletReady = false;
 let isConnectingWallet = false;
-let isCheckinPending = false;
 let walletErrorMessage = "";
 let walletInfoMessage = "";
+let lastProfileAddress = null;
+let backendSessionMessage = "";
+let backendSessionSignature = "";
+let checkinState = {
+    lastCheckin: null,
+    streak: 0,
+    loading: false,
+    message: ""
+};
 let backendSessionId = null;
 let backendSeed = null;
 let backendInputLog = [];
@@ -154,6 +165,58 @@ function getRandom() {
     return rng ? rng() : Math.random();
 }
 
+function getDateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function isToday(dateKey) {
+    return !!dateKey && dateKey === getDateKey();
+}
+
+async function signWalletMessage(message) {
+    const provider = getEthereumProvider();
+    if (!provider || !walletAddress) {
+        throw new Error("Wallet not connected");
+    }
+    try {
+        return await provider.request({
+            method: "personal_sign",
+            params: [message, walletAddress]
+        });
+    } catch (err) {
+        try {
+            return await provider.request({
+                method: "eth_sign",
+                params: [walletAddress, message]
+            });
+        } catch (fallbackErr) {
+            throw err;
+        }
+    }
+}
+
+async function sendCheckinTransaction() {
+    const provider = getEthereumProvider();
+    if (!provider || !walletAddress) {
+        throw new Error("Wallet not connected");
+    }
+    if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
+        throw new Error("Checkin contract not set");
+    }
+    const tx = {
+        from: walletAddress,
+        to: CHECKIN_CONTRACT_ADDRESS,
+        value: "0x0"
+    };
+    return await provider.request({
+        method: "eth_sendTransaction",
+        params: [tx]
+    });
+}
+
 function resetBackendSession() {
     backendSessionId = null;
     backendSeed = null;
@@ -162,6 +225,8 @@ function resetBackendSession() {
     backendSessionActive = false;
     backendRunSubmitted = false;
     rng = null;
+    backendSessionMessage = "";
+    backendSessionSignature = "";
 }
 
 function recordInput(type) {
@@ -194,10 +259,21 @@ async function startBackendSession() {
         const data = await response.json();
         backendSessionId = data.sessionId || null;
         backendSeed = data.seed || null;
+        backendSessionMessage = data.signMessage || "";
         backendSessionStartMs = performance.now();
         backendInputLog = [];
         backendSessionActive = !!backendSessionId;
         rng = backendSeed ? createRng(backendSeed) : null;
+        if (backendSessionMessage) {
+            try {
+                backendSessionSignature = await signWalletMessage(backendSessionMessage);
+            } catch (err) {
+                setWalletError("Нужно подписать сообщение для старта игры.");
+                updateWalletUI();
+                resetBackendSession();
+                return false;
+            }
+        }
         return backendSessionActive;
     } catch (err) {
         console.warn("Backend session start failed", err);
@@ -213,13 +289,12 @@ async function submitBackendRun(finalScore) {
         return;
     }
     backendRunSubmitted = true;
-    const durationMs = Math.round(performance.now() - backendSessionStartMs);
     const payload = {
         sessionId: backendSessionId,
         address: walletAddress || null,
-        durationMs,
         reportedScore: finalScore,
-        inputLog: backendInputLog
+        inputLog: backendInputLog,
+        signature: backendSessionSignature || null
     };
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
@@ -297,8 +372,11 @@ function updateWalletUI() {
         }
     }
 
-    if (postConnectSection) {
-        postConnectSection.classList.toggle("hidden", !isConnected);
+    if (connectSection) {
+        connectSection.classList.toggle("hidden", walletReady);
+    }
+    if (menuSection) {
+        menuSection.classList.toggle("hidden", !walletReady);
     }
 
     if (walletErrorMessage && !walletReady) {
@@ -318,7 +396,7 @@ function updateWalletUI() {
     if (startButton) {
         startButton.disabled = !walletReady;
     }
-    updateCheckinUI();
+    updateMenuState();
 }
 
 async function initWalletState() {
@@ -444,25 +522,6 @@ function handleChainChanged(chainId) {
     walletChainId = normalizeChainId(chainId) || chainId;
     clearWalletMessages();
     updateWalletUI();
-}
-
-async function sendCheckinTransaction() {
-    const provider = getEthereumProvider();
-    if (!provider || !walletAddress) {
-        throw new Error("Wallet not connected");
-    }
-    if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
-        throw new Error("Checkin contract not set");
-    }
-    const tx = {
-        from: walletAddress,
-        to: CHECKIN_CONTRACT_ADDRESS,
-        value: "0x0"
-    };
-    return await provider.request({
-        method: "eth_sendTransaction",
-        params: [tx]
-    });
 }
 
 //player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
@@ -595,17 +654,22 @@ window.onload = function() {
     welcomeOverlay = document.getElementById("welcome-overlay");
     startButton = document.getElementById("start-button");
     pauseButton = document.getElementById("pause-button");
-    checkinButton = document.getElementById("checkin-button");
-    checkinStatus = document.getElementById("checkin-status");
     connectButton = document.getElementById("connect-button");
     walletStatus = document.getElementById("wallet-status");
-    postConnectSection = document.getElementById("post-connect");
+    connectSection = document.getElementById("connect-section");
+    menuSection = document.getElementById("menu-section");
+    menuTitle = document.getElementById("menu-title");
+    collectionButton = document.getElementById("collection-button");
+    leaderboardButton = document.getElementById("leaderboard-button");
+    checkinButton = document.getElementById("checkin-button");
+    checkinStatus = document.getElementById("checkin-status");
 
     showWelcome = true;
     gameActive = !showWelcome;
     isPaused = false;
     updateWelcomeVisibility();
     updateWalletUI();
+    updateMenuState();
     updatePauseButtonVisibility();
     if (startButton) {
         startButton.addEventListener("click", startGameFromWelcome);
@@ -706,83 +770,167 @@ function addCoins(amount) {
     saveCoins();
 }
 
-function getLocalDateKey() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+function updatePauseButtonVisibility() {
+    if (!pauseButton) return;
+    const shouldShow = isMobileLayout && !showWelcome;
+    pauseButton.classList.toggle("hidden", !shouldShow);
+}
+
+function updateMenuState() {
+    if (menuTitle) {
+        menuTitle.textContent = isPaused ? "Paused" : "Menu";
+    }
+    if (startButton) {
+        startButton.textContent = isPaused ? "Resume" : "Start game";
+        startButton.disabled = !walletReady;
+    }
+    if (collectionButton) {
+        collectionButton.disabled = true;
+    }
+    if (leaderboardButton) {
+        leaderboardButton.disabled = true;
+    }
+    updateCheckinUI();
+    if (walletReady) {
+        refreshUserProfile();
+    }
+}
+
+async function refreshUserProfile() {
+    if (!walletReady || !walletAddress || !BACKEND_URL) {
+        return;
+    }
+    if (lastProfileAddress === walletAddress && !checkinState.loading) {
+        return;
+    }
+    lastProfileAddress = walletAddress;
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/user/${walletAddress}`);
+        if (!response.ok) {
+            throw new Error(`Profile fetch failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data && data.ok) {
+            if (Number.isFinite(data.coinBalance)) {
+                coinCount = data.coinBalance;
+                saveCoins();
+            }
+            if (Number.isFinite(data.bestScore)) {
+                bestScore = data.bestScore;
+                localStorage.setItem("baseapp_runner_best_score", String(bestScore));
+            }
+            checkinState.lastCheckin = data.lastCheckin || null;
+            checkinState.streak = Number.isFinite(data.streak) ? data.streak : 0;
+            checkinState.message = "";
+            updateCheckinUI();
+        }
+    } catch (err) {
+        console.warn("Profile fetch failed", err);
+    }
 }
 
 function updateCheckinUI() {
     if (!checkinButton || !checkinStatus) return;
     if (!walletReady) {
         checkinButton.disabled = true;
-        checkinButton.textContent = "Подключите кошелёк";
-        checkinStatus.textContent = walletAddress
-            ? "Нужна сеть Base Sepolia."
-            : "Сначала подключите кошелёк.";
+        checkinButton.textContent = "Check-in";
+        checkinStatus.textContent = "Подключите кошелёк.";
         return;
     }
     if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
         checkinButton.disabled = true;
-        checkinButton.textContent = "Контракт не задан";
-        checkinStatus.textContent = "Укажите адрес контракта check-in.";
+        checkinButton.textContent = "Check-in";
+        checkinStatus.textContent = "Контракт check-in не задан.";
         return;
     }
-    if (isCheckinPending) {
+    if (checkinState.loading) {
         checkinButton.disabled = true;
-        checkinButton.textContent = "Отправка...";
-        checkinStatus.textContent = "Ждём подтверждения транзакции.";
+        checkinButton.textContent = "Проверка...";
+        checkinStatus.textContent = "Обновляем статус.";
         return;
     }
-    const todayKey = getLocalDateKey();
-    const lastCheckin = localStorage.getItem(CHECKIN_STORAGE_KEY);
-    const isClaimed = lastCheckin === todayKey;
-    checkinButton.disabled = isClaimed;
-    checkinButton.textContent = isClaimed ? "Чек-ин получен" : "Получить";
-    checkinStatus.textContent = isClaimed
-        ? "Уже получено сегодня."
-        : "Доступно сегодня.";
+    const checkedIn = isToday(checkinState.lastCheckin);
+    checkinButton.disabled = checkedIn;
+    checkinButton.textContent = checkedIn ? "Check-in получен" : "Check-in";
+    if (checkinState.message) {
+        checkinStatus.textContent = checkinState.message;
+        return;
+    }
+    checkinStatus.textContent = checkedIn
+        ? `Стрик: ${checkinState.streak}. Уже получено сегодня.`
+        : `Стрик: ${checkinState.streak}. Доступно сегодня.`;
 }
 
 async function handleCheckin() {
-    if (!walletReady || isCheckinPending) {
+    if (!walletReady || !walletAddress || checkinState.loading) {
         updateCheckinUI();
         return;
     }
-    const todayKey = getLocalDateKey();
-    const lastCheckin = localStorage.getItem(CHECKIN_STORAGE_KEY);
-    if (lastCheckin === todayKey) {
-        updateCheckinUI();
-        return;
-    }
-    isCheckinPending = true;
+    checkinState.message = "";
+    checkinState.loading = true;
     updateCheckinUI();
     try {
-        const txHash = await sendCheckinTransaction();
-        localStorage.setItem(CHECKIN_STORAGE_KEY, todayKey);
-        addCoins(1);
+        const startResponse = await fetch(`${BACKEND_URL}/api/checkin/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address: walletAddress })
+        });
+        if (!startResponse.ok) {
+            throw new Error(`Check-in start failed: ${startResponse.status}`);
+        }
+        const startData = await startResponse.json();
+        if (startData.alreadyCheckedIn) {
+            checkinState.lastCheckin = startData.lastCheckin || checkinState.lastCheckin;
+            checkinState.streak = Number.isFinite(startData.streak) ? startData.streak : checkinState.streak;
+            if (Number.isFinite(startData.coinBalance)) {
+                coinCount = startData.coinBalance;
+                saveCoins();
+            }
+            return;
+        }
+        const message = startData.message;
+        if (!message) {
+            throw new Error("Check-in message missing");
+        }
         if (checkinStatus) {
+            checkinStatus.textContent = "Подтвердите транзакцию check-in.";
+        }
+        const txHash = await sendCheckinTransaction();
+        const signature = await signWalletMessage(message);
+        const submitResponse = await fetch(`${BACKEND_URL}/api/checkin/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                address: walletAddress,
+                signature
+            })
+        });
+        if (!submitResponse.ok) {
+            throw new Error(`Check-in submit failed: ${submitResponse.status}`);
+        }
+        const submitData = await submitResponse.json();
+        if (submitData && submitData.ok) {
+            checkinState.lastCheckin = submitData.lastCheckin || checkinState.lastCheckin;
+            checkinState.streak = Number.isFinite(submitData.streak) ? submitData.streak : checkinState.streak;
+            if (Number.isFinite(submitData.coinBalance)) {
+                coinCount = submitData.coinBalance;
+                saveCoins();
+            }
             const shortHash = txHash ? `${txHash.slice(0, 8)}...${txHash.slice(-6)}` : "";
-            checkinStatus.textContent = txHash
-                ? `Транзакция отправлена: ${shortHash}`
-                : "Транзакция отправлена.";
+            const rewardText = submitData.bonusAwarded
+                ? `+${submitData.coinsAwarded} coins (bonus за стрик!)`
+                : `+${submitData.coinsAwarded} coin`;
+            checkinState.message = shortHash
+                ? `${rewardText}. Tx: ${shortHash}`
+                : rewardText;
         }
     } catch (err) {
-        if (checkinStatus) {
-            checkinStatus.textContent = "Не удалось отправить транзакцию. Попробуйте ещё раз.";
-        }
+        console.warn("Check-in failed", err);
+        checkinState.message = "Check-in не удался. Попробуйте ещё раз.";
     } finally {
-        isCheckinPending = false;
+        checkinState.loading = false;
         updateCheckinUI();
     }
-}
-
-function updatePauseButtonVisibility() {
-    if (!pauseButton) return;
-    const shouldShow = isMobileLayout && !showWelcome;
-    pauseButton.classList.toggle("hidden", !shouldShow);
 }
 
 async function startGameFromWelcome() {
@@ -790,18 +938,45 @@ async function startGameFromWelcome() {
         updateWalletUI();
         return;
     }
+    if (isPaused) {
+        resumeGame();
+        return;
+    }
     showWelcome = false;
     gameActive = false;
     isPaused = false;
     updateWelcomeVisibility();
     updateWalletUI();
+    updateMenuState();
     updatePauseButtonVisibility();
     await restartGame();
 }
 
+function openPauseMenu() {
+    if (!gameActive || gameOver) return;
+    isPaused = true;
+    showWelcome = true;
+    updateWelcomeVisibility();
+    updateMenuState();
+    updatePauseButtonVisibility();
+}
+
+function resumeGame() {
+    if (!isPaused) return;
+    isPaused = false;
+    showWelcome = false;
+    updateWelcomeVisibility();
+    updateMenuState();
+    updatePauseButtonVisibility();
+}
+
 function togglePause() {
-    if (!gameActive || showWelcome || gameOver) return;
-    isPaused = !isPaused;
+    if (!gameActive || gameOver) return;
+    if (isPaused) {
+        resumeGame();
+        return;
+    }
+    openPauseMenu();
 }
 
 function applyResponsiveLayout() {

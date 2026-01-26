@@ -1,40 +1,33 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const crypto = require("crypto");
-const { verifyMessage } = require("ethers");
 const { simulateRun, DEFAULT_CONFIG } = require("./sim");
 const {
   createSession,
   getSession,
   markSessionUsed,
-  cleanupSessions,
-  getUser,
-  applyGameResult
-} = require("./storage");
+  cleanupSessions
+} = require("./modules/session/sessionStore");
+const { getOrCreateUser } = require("./modules/user/userRepo");
+const { applyScore } = require("./modules/user/userService");
+const { startCheckin, submitCheckin } = require("./modules/checkin/checkinService");
+const { buildSessionMessage } = require("./shared/messages");
+const { normalizeAddress, verifySignature } = require("./shared/auth");
+const { createNonce } = require("./shared/nonce");
 
 const app = express();
 
 const PORT = Number(process.env.PORT || 8787);
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 10 * 60 * 1000);
 const MAX_DURATION_MS = Number(process.env.MAX_DURATION_MS || 5 * 60 * 1000);
-const REQUIRE_SIGNATURE = String(process.env.REQUIRE_SIGNATURE || "false").toLowerCase() === "true";
+const REQUIRE_SIGNATURE = String(process.env.REQUIRE_SIGNATURE ?? "true").toLowerCase() === "true";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
-function buildSignMessage(sessionId) {
-  return `BaseApp Runner session ${sessionId}`;
-}
-
 function randomSeed() {
-  return crypto.randomBytes(16).toString("hex");
-}
-
-function normalizeAddress(address) {
-  if (!address || typeof address !== "string") return null;
-  return address.toLowerCase();
+  return createNonce();
 }
 
 app.get("/health", (req, res) => {
@@ -54,7 +47,7 @@ app.post("/api/session/start", (req, res) => {
     seed: session.seed,
     issuedAt: session.issuedAt,
     expiresAt: session.expiresAt,
-    signMessage: buildSignMessage(session.sessionId),
+    signMessage: buildSessionMessage(session.sessionId),
     config: {
       frameMs: DEFAULT_CONFIG.frameMs,
       speedStart: DEFAULT_CONFIG.speedStart,
@@ -70,7 +63,6 @@ app.post("/api/session/submit", async (req, res) => {
   const {
     sessionId,
     address,
-    durationMs,
     inputLog,
     reportedScore,
     signature
@@ -105,13 +97,7 @@ app.post("/api/session/submit", async (req, res) => {
       res.status(400).json({ ok: false, error: "Missing signature" });
       return;
     }
-    try {
-      const recovered = verifyMessage(buildSignMessage(sessionId), signature);
-      if (normalizeAddress(recovered) !== addressNorm) {
-        res.status(400).json({ ok: false, error: "Signature mismatch" });
-        return;
-      }
-    } catch (err) {
+    if (!verifySignature(addressNorm, buildSessionMessage(sessionId), signature)) {
       res.status(400).json({ ok: false, error: "Invalid signature" });
       return;
     }
@@ -152,7 +138,7 @@ app.post("/api/session/submit", async (req, res) => {
 
   const finalScore = Math.min(reported, maxScore);
   const coinsAwarded = Math.floor(finalScore / 10000);
-  const user = applyGameResult(addressNorm, finalScore, coinsAwarded);
+  const user = applyScore(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
 
   res.json({
@@ -161,8 +147,8 @@ app.post("/api/session/submit", async (req, res) => {
     finalScore,
     maxScore,
     coinsAwarded,
-    coinBalance: user ? user.coinBalance : 0,
-    bestScore: user ? user.bestScore : finalScore,
+    coinBalance: user ? user.coins : 0,
+    bestScore: user ? user.best_score : finalScore,
     collidedAtMs: simResult.collidedAtMs
   });
 });
@@ -173,12 +159,60 @@ app.get("/api/user/:address", (req, res) => {
     res.status(400).json({ ok: false, error: "Invalid address" });
     return;
   }
-  const user = getUser(addressNorm);
+  const user = getOrCreateUser(addressNorm);
   res.json({
     ok: true,
     address: user.address,
-    coinBalance: user.coinBalance,
-    bestScore: user.bestScore
+    coinBalance: user.coins,
+    bestScore: user.best_score,
+    streak: user.streak,
+    lastCheckin: user.last_checkin
+  });
+});
+
+app.post("/api/checkin/start", (req, res) => {
+  const { address } = req.body || {};
+  const addressNorm = normalizeAddress(address);
+  if (!addressNorm) {
+    res.status(400).json({ ok: false, error: "Invalid address" });
+    return;
+  }
+  const result = startCheckin(addressNorm);
+  res.json({
+    ok: true,
+    alreadyCheckedIn: result.alreadyCheckedIn,
+    message: result.message,
+    nonce: result.nonce,
+    coinBalance: result.user.coins,
+    streak: result.user.streak,
+    lastCheckin: result.user.last_checkin
+  });
+});
+
+app.post("/api/checkin/submit", (req, res) => {
+  const { address, signature } = req.body || {};
+  const addressNorm = normalizeAddress(address);
+  if (!addressNorm) {
+    res.status(400).json({ ok: false, error: "Invalid address" });
+    return;
+  }
+  if (!signature) {
+    res.status(400).json({ ok: false, error: "Missing signature" });
+    return;
+  }
+  const result = submitCheckin(addressNorm, signature);
+  if (!result.ok) {
+    res.status(400).json({ ok: false, error: result.error });
+    return;
+  }
+  res.json({
+    ok: true,
+    alreadyCheckedIn: result.alreadyCheckedIn,
+    coinsAwarded: result.coinsAwarded,
+    bonusAwarded: result.bonusAwarded,
+    coinBalance: result.user.coins,
+    streak: result.user.streak,
+    lastCheckin: result.user.last_checkin
   });
 });
 

@@ -16,7 +16,7 @@
         </button>
         <div id="welcome-overlay" class="overlay hidden">
             <div class="overlay-card">
-                <h2>Добро пожаловать!</h2>
+                <h2 id="menu-title">Menu</h2>
                 <p>Правила:</p>
                 <ul>
                     <li>Прыжок: Space / ↑ (на телефоне — тап слева).</li>
@@ -24,18 +24,19 @@
                     <li>Избегайте монет и птиц как препятствий.</li>
                     <li>Каждые 10&nbsp;000 очков вы получаете 1 coin.</li>
                 </ul>
-                <div class="wallet">
+                <div id="connect-section" class="wallet">
                     <p>Подключите кошелёк Base Sepolia:</p>
                     <button id="connect-button" class="connect-button">Connect wallet</button>
                     <div id="wallet-status" class="wallet-status"></div>
                 </div>
-                <div id="post-connect" class="post-connect hidden">
+                <div id="menu-section" class="menu hidden">
                     <div class="checkin">
-                        <p>Ежедневный check-in (бесплатная транзакция):</p>
-                        <button id="checkin-button" class="checkin-button">Получить</button>
+                        <button id="checkin-button" class="checkin-button">Check-in</button>
                         <div id="checkin-status" class="checkin-status"></div>
                     </div>
-                    <button id="start-button">Начать игру</button>
+                    <button id="start-button" class="menu-button">Start game</button>
+                    <button id="collection-button" class="menu-button" disabled>Collection</button>
+                    <button id="leaderboard-button" class="menu-button" disabled>Leaderboard</button>
                 </div>
             </div>
         </div>
