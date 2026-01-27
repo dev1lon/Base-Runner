@@ -64,7 +64,7 @@ const BASE_SPAWN_OFFSET = 150;
 // PHYSICS
 //=============================================================================
 const SPEED_START = 4;
-const SPEED_MAX = 6;
+const SPEED_MAX = 4;
 const SPEED_MAX_SCORE = 10000;
 const BASE_GRAVITY = 0.8;
 const BASE_JUMP_VELOCITY = -16;
@@ -1634,12 +1634,14 @@ function update(timestamp) {
     playerDrawRectScratch.height = drawHeight;
     
     if (canDuck) {
-        // Visual ducking: scale sprite to match current duck height
+        // Visual ducking: shrink sprite from top, feet stay on ground
         const crouchScale = playerDuckHeight / playerHeight;
-        const crouchHeight = drawHeight;
         const crouchWidth = Math.round(drawWidth * crouchScale);
+        const crouchHeight = drawHeight;
         const crouchX = drawX + (drawWidth - crouchWidth) / 2;
-        const crouchY = drawY + visualFootOffset; // Apply visual offset
+        // Scale the foot offset proportionally so feet don't move
+        const duckFootOffset = Math.round(visualFootOffset * crouchScale);
+        const crouchY = drawY + duckFootOffset;
         
         // Update scratch for ducking dimensions (hitbox uses this)
         playerDrawRectScratch.x = Math.round(crouchX);
