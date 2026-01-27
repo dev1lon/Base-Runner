@@ -1165,10 +1165,36 @@ function saveCoins() {
     localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
 }
 
+// Sync coins and best score to backend
+async function syncProgressToBackend() {
+    if (!BACKEND_URL || !authToken || !walletAuthenticated) return;
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/user/progress`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                coinBalance: coinCount,
+                bestScore: bestScore
+            })
+        });
+        if (!response.ok) {
+            console.warn("Progress sync failed:", response.status);
+        }
+    } catch (err) {
+        console.warn("Progress sync error:", err);
+    }
+}
+
 function addCoins(amount) {
     if (!amount) return;
     coinCount += amount;
     saveCoins();
+    // Sync to backend when coins change
+    syncProgressToBackend();
 }
 
 function updatePauseButtonVisibility() {
@@ -1702,6 +1728,7 @@ function update(timestamp) {
             if (score > bestScore) {
                 bestScore = score;
                 localStorage.setItem('baseapp_runner_best_score', String(bestScore));
+                syncProgressToBackend();
             }
         }
     }
@@ -1745,6 +1772,7 @@ function update(timestamp) {
             if (score > bestScore) {
                 bestScore = score;
                 localStorage.setItem('baseapp_runner_best_score', String(bestScore));
+                syncProgressToBackend();
             }
         }
     }
