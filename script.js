@@ -77,7 +77,6 @@ let resumeButton;
 let checkinButton;
 let checkinStatus;
 let ethImg;
-let backgroundImg;
 // Game UI elements
 let gameCoinsEl;
 let gameScoreEl;
@@ -1010,10 +1009,6 @@ window.onload = function() {
     setupCrispCanvas();
     window.addEventListener("resize", setupCrispCanvas);
 
-    //load background image
-    backgroundImg = new Image();
-    backgroundImg.src = "./assets/background_test.png";
-
     //load player image (human character)
     playerImg = new Image();
     playerImg.src = "./assets/hum_vit_1.png";
@@ -1565,9 +1560,6 @@ function update(timestamp) {
         return;
     }
 
-    drawBackground();
-    drawPlatform();
-
     // плавное ускорение до максимума к счёту SPEED_MAX_SCORE
     const displayScore = Math.floor(scoreFloat);
     const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
@@ -1815,7 +1807,7 @@ function update(timestamp) {
         const centerY = Math.round(boardHeight / 2);
         
         // Game over text with outline for visibility
-        context.font = `bold ${gameOverFont}px Arial, sans-serif`;
+        context.font = `bold ${gameOverFont}px "Arial Black", Arial, sans-serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";
         
@@ -1823,65 +1815,21 @@ function update(timestamp) {
         context.lineWidth = 6;
         context.strokeText(gameOverText, boardWidth / 2, centerY);
         
-        context.fillStyle = "#ffffff";
+        context.fillStyle = "#d11c1c";
         context.fillText(gameOverText, boardWidth / 2, centerY);
         
         // Restart hint
-        context.font = `${restartFont}px Arial, sans-serif`;
+        context.font = `${restartFont}px "Arial Black", Arial, sans-serif`;
         context.strokeStyle = "#111";
         context.lineWidth = 3;
         context.strokeText(restartText, boardWidth / 2, centerY + gameOverFont);
-        context.fillStyle = "#ffffff";
+        context.fillStyle = "#f3f3f3";
         context.fillText(restartText, boardWidth / 2, centerY + gameOverFont);
         
         // Reset text align
         context.textAlign = "left";
         context.textBaseline = "alphabetic";
     }
-}
-
-function drawBackground() {
-    if (backgroundImg && backgroundImg.complete) {
-        context.drawImage(backgroundImg, 0, 0, boardWidth, boardHeight);
-        return;
-    }
-    context.fillStyle = "#eaf1f8";
-    context.fillRect(0, 0, boardWidth, boardHeight);
-}
-
-// Draw the platform bar on canvas
-function drawPlatform() {
-    const platformLeft = Math.round(boardWidth * PLATFORM_MARGIN_PERCENT);
-    const platformRight = Math.round(boardWidth * (1 - PLATFORM_MARGIN_PERCENT));
-    const platformWidth = platformRight - platformLeft;
-    const platformTop = groundY;
-    const platformBottom = groundY + PLATFORM_HEIGHT;
-    const radius = 8;
-    
-    // Platform body - gradient for glass effect
-    const gradient = context.createLinearGradient(0, platformTop, 0, platformBottom);
-    gradient.addColorStop(0, "rgba(190, 205, 225, 0.95)");
-    gradient.addColorStop(0.3, "rgba(170, 190, 210, 0.95)");
-    gradient.addColorStop(0.7, "rgba(150, 175, 200, 1)");
-    gradient.addColorStop(1, "rgba(130, 160, 190, 1)");
-    
-    context.fillStyle = gradient;
-    context.beginPath();
-    context.roundRect(platformLeft, platformTop, platformWidth, PLATFORM_HEIGHT, radius);
-    context.fill();
-    
-    // Top highlight
-    context.fillStyle = "rgba(255, 255, 255, 0.25)";
-    context.beginPath();
-    context.roundRect(platformLeft + 2, platformTop + 2, platformWidth - 4, PLATFORM_HEIGHT * 0.4, [radius - 2, radius - 2, 0, 0]);
-    context.fill();
-    
-    // Border
-    context.strokeStyle = "rgba(255, 255, 255, 0.5)";
-    context.lineWidth = 1;
-    context.beginPath();
-    context.roundRect(platformLeft, platformTop, platformWidth, PLATFORM_HEIGHT, radius);
-    context.stroke();
 }
 
 function drawTokenObstacle(token) {

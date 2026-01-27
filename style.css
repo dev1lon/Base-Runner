@@ -131,7 +131,17 @@ body {
     width: 100%;
     height: 100%;
     max-width: 600px;
-    background: rgba(235, 242, 250, 0.9);
+    background:
+        linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0) 82%,
+            rgba(235, 242, 250, 0.95) 82%,
+            rgba(235, 242, 250, 0.95) 100%
+        ),
+        url("./assets/background_test.png");
+    background-size: 100% 100%, cover;
+    background-position: center, center top;
     border: 1px solid rgba(255, 255, 255, 0.7);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-card);
@@ -279,11 +289,30 @@ body {
     image-rendering: pixelated;
     image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
+    position: relative;
+    z-index: 1;
 }
 
-/* Game Platform - now drawn on canvas, HTML element hidden */
+/* Game Platform */
 .game-platform {
-    display: none;
+    position: absolute;
+    left: 12%;
+    right: 12%;
+    height: 10%;
+    bottom: 4.5%;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(190, 205, 225, 0.95) 0%, rgba(150, 175, 200, 1) 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 6px 12px rgba(30, 58, 95, 0.15);
+    z-index: 0;
+    pointer-events: none;
+}
+
+.platform-glow {
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 60%);
+    box-shadow: 0 0 16px rgba(120, 170, 220, 0.4);
 }
 
 /* Mobile responsive */
