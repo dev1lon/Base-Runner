@@ -340,21 +340,14 @@ async function signWalletMessage(message) {
     if (!provider || !walletAddress) {
         throw new Error("Wallet not connected");
     }
-    try {
-        return await provider.request({
-            method: "personal_sign",
-            params: [message, walletAddress]
-        });
-    } catch (err) {
-        try {
-            return await provider.request({
-                method: "eth_sign",
-                params: [walletAddress, message]
-            });
-        } catch (fallbackErr) {
-            throw err;
-        }
-    }
+    // Convert message to hex for better wallet compatibility
+    const hexMessage = "0x" + Array.from(new TextEncoder().encode(message))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
+    return await provider.request({
+        method: "personal_sign",
+        params: [hexMessage, walletAddress]
+    });
 }
 
 async function authenticateWallet() {
