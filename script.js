@@ -2,10 +2,15 @@
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
-const PLATFORM_HEIGHT = 70; // Height of the game platform in pixels
-const MOBILE_PLATFORM_HEIGHT = 55; // Platform height on mobile
+// Platform visual offset from bottom (matches CSS: bottom: 25px + height: 50px = platform top at 75px from bottom)
+const PLATFORM_BOTTOM_OFFSET = 25; // CSS: bottom: 25px
+const PLATFORM_HEIGHT = 50; // CSS: height: 50px
+const MOBILE_PLATFORM_BOTTOM_OFFSET = 20; // CSS mobile: bottom: 20px
+const MOBILE_PLATFORM_HEIGHT = 40; // CSS mobile: height: 40px
 let platformHeight = PLATFORM_HEIGHT;
-let groundLevel = BASE_BOARD_HEIGHT - PLATFORM_HEIGHT; // Y-coordinate of the ground
+let platformBottomOffset = PLATFORM_BOTTOM_OFFSET;
+// Ground level = where the top of the platform is (character stands here)
+let groundLevel = BASE_BOARD_HEIGHT - PLATFORM_BOTTOM_OFFSET - PLATFORM_HEIGHT;
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -1341,7 +1346,8 @@ function applyResponsiveLayout() {
     boardWidth = nextBoardWidth;
     boardHeight = nextBoardHeight;
     platformHeight = isMobile ? MOBILE_PLATFORM_HEIGHT : PLATFORM_HEIGHT;
-    groundLevel = boardHeight - platformHeight;
+    platformBottomOffset = isMobile ? MOBILE_PLATFORM_BOTTOM_OFFSET : PLATFORM_BOTTOM_OFFSET;
+    groundLevel = boardHeight - platformBottomOffset - platformHeight;
     updatePauseButtonVisibility();
 
     applyObjectScale(objectScale);
@@ -1741,7 +1747,8 @@ function update(timestamp) {
 
 function drawTokenObstacle(token) {
     // Draw coins based on token type (1, 2, or 3 coins)
-    const stickY = Math.round(boardHeight - STICK_HEIGHT);
+    // Sticks grow up from the ground level (platform top)
+    const stickY = Math.round(groundLevel - STICK_HEIGHT);
     
     if (token.type === 1) {
         // Single coin - one stick
@@ -1929,7 +1936,7 @@ function placeObstacle() {
         // Set bird at head level (can be ducked under)
         // Bird should fly at the player's head level when standing, but be avoidable by ducking
         let standingHeadTop = playerY; // Top of player's head when standing
-        let duckedHeadTop = boardHeight - playerDuckHeight; // Top of player's head when ducking
+        let duckedHeadTop = groundLevel - playerDuckHeight; // Top of player's head when ducking
         // Bird flies at standing head level, so ducking makes player shorter than bird
         let headLevelY = standingHeadTop - birdHeight + 15; // Bird bottom aligns with player head top
         // Lower bird by 10% of its height so it collides properly
@@ -1979,7 +1986,7 @@ function getPlayerBirdHitbox(out) {
 
 // Get token hitbox - union of coin(s) and stick(s), aligned to visible pixels
 function getTokenHitbox(token, out) {
-    const stickY = Math.round(boardHeight - STICK_HEIGHT);
+    const stickY = Math.round(groundLevel - STICK_HEIGHT);
 
     let minX = Infinity;
     let minY = Infinity;
