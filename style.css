@@ -287,16 +287,9 @@ body {
     z-index: 1;
 }
 
-/* Game Platform */
+/* Game Platform - now drawn in canvas, hide DOM element */
 .game-platform {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 2.7%;
-    bottom: 33%;
-    background: url('./assets/platforma.png') center/100% 100% no-repeat;
-    z-index: 2;
-    pointer-events: none;
+    display: none;
 }
 
 .platform-glow {

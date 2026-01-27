@@ -2,8 +2,19 @@
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
-// Platform element reference for DOM-based ground calculation
-let platformElement = null;
+
+// Platform (PNG sprite) - single source of truth for ground baseline
+let platformImg = null;
+const PLATFORM_Y_RATIO = 0.75; // Platform top at 75% of canvas height
+const PLATFORM_HEIGHT = 12; // Platform sprite height in canvas pixels
+const PLATFORM_TOP_PADDING = 2; // Fine-tune: offset from top edge to actual surface
+let platform = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: PLATFORM_HEIGHT
+};
+const DEBUG_SHOW_GROUND_LINE = false; // Set true to visualize groundY
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -21,8 +32,8 @@ const MOBILE_RESTART_GAP = 24;
 const BASE_SPAWN_OFFSET = 200;
 let boardWidth = BASE_BOARD_WIDTH;
 let boardHeight = BASE_BOARD_HEIGHT;
-// groundY will be computed from DOM platform position
-let groundY = Math.round(BASE_BOARD_HEIGHT * 0.65); // Fallback until DOM is ready
+// groundY derived from platform.y (top edge of platform sprite + padding)
+let groundY = Math.round(BASE_BOARD_HEIGHT * PLATFORM_Y_RATIO) + PLATFORM_TOP_PADDING;
 let context;
 let renderScale = 1;
 let isMobileLayout = false;
@@ -977,7 +988,6 @@ window.onload = function() {
     gameBestEl = document.getElementById("game-best");
     gameUIContainer = document.querySelector(".game-ui");
     gameOverOverlay = document.getElementById("game-over-overlay");
-    platformElement = document.querySelector(".game-platform");
 
     // Initial state
     showWelcome = true;
@@ -1038,15 +1048,16 @@ window.onload = function() {
     setupCrispCanvas();
     window.addEventListener("resize", setupCrispCanvas);
     
-    // Recompute groundY after a frame to ensure DOM layout is stable
-    requestAnimationFrame(() => {
-        computeGroundYFromDOM();
-        // Update player position to match computed groundY
-        playerY = groundY - playerHeight;
-        if (player) {
-            player.y = playerY;
-        }
-    });
+    // Initialize platform position and groundY
+    updatePlatformPosition();
+    
+    // Load platform PNG sprite
+    platformImg = new Image();
+    platformImg.src = "./assets/platforma.png";
+    platformImg.onload = function() {
+        // Update platform position after image loads
+        updatePlatformPosition();
+    };
 
     //load player image (human character)
     playerImg = new Image();
@@ -1486,36 +1497,28 @@ function applyObjectScale(scale) {
 }
 
 // Compute groundY from actual DOM platform position (converts DOM -> canvas coordinates)
-function computeGroundYFromDOM() {
-    if (!board || !platformElement) return;
+// Update platform position and derive groundY from it (single source of truth)
+function updatePlatformPosition() {
+    // Platform spans full width of canvas
+    platform.x = 0;
+    platform.width = boardWidth;
+    platform.height = PLATFORM_HEIGHT;
     
-    const canvasRect = board.getBoundingClientRect();
-    const platformRect = platformElement.getBoundingClientRect();
+    // Platform top at PLATFORM_Y_RATIO of canvas height
+    platform.y = Math.round(boardHeight * PLATFORM_Y_RATIO);
     
-    if (canvasRect.height <= 0) return;
+    // groundY = top edge of platform + small padding for visual alignment
+    const oldGroundY = groundY;
+    groundY = platform.y + PLATFORM_TOP_PADDING;
     
-    // Platform top edge relative to canvas top, in CSS pixels
-    const platformTopCSS = platformRect.top - canvasRect.top;
+    // Update player, token, and bird positions to align with new groundY
+    playerY = groundY - playerHeight;
+    tokenY = groundY - tokenHeight;
+    birdY = getBirdFlyY();
     
-    // Convert to canvas logical coordinates (accounting for canvas scaling)
-    // Canvas logical height is boardHeight, but displayed at canvasRect.height
-    const scaleY = boardHeight / canvasRect.height;
-    const newGroundY = Math.round(platformTopCSS * scaleY);
-    
-    // Only update if valid
-    if (newGroundY > 0 && newGroundY < boardHeight) {
-        const oldGroundY = groundY;
-        groundY = newGroundY;
-        
-        // Update player, token, and bird positions to align with new groundY
-        playerY = groundY - playerHeight;
-        tokenY = groundY - tokenHeight;
-        birdY = getBirdFlyY();
-        
-        // If player is on ground, snap to new position
-        if (player && player.y >= oldGroundY - playerHeight - 5) {
-            player.y = isDucking ? groundY - playerDuckHeight : playerY;
-        }
+    // If player is on ground, snap to new position
+    if (player && player.y >= oldGroundY - playerHeight - 5) {
+        player.y = isDucking ? groundY - playerDuckHeight : playerY;
     }
 }
 
@@ -1543,8 +1546,8 @@ function setupCrispCanvas() {
     context.mozImageSmoothingEnabled = false;
     context.msImageSmoothingEnabled = false;
     
-    // Compute groundY from actual platform DOM position
-    computeGroundYFromDOM();
+    // Update platform position and derive groundY
+    updatePlatformPosition();
 }
 
 function getRenderScale(dpr) {
@@ -1635,6 +1638,23 @@ function update(timestamp) {
     const stepScale = shouldUpdate ? dtScale : 0;
     
     context.clearRect(0, 0, boardWidth, boardHeight);
+    
+    // Draw platform PNG sprite (ground baseline)
+    if (platformImg && platformImg.complete) {
+        context.drawImage(platformImg, platform.x, platform.y, platform.width, platform.height);
+    }
+    
+    // Debug: visualize groundY line
+    if (DEBUG_SHOW_GROUND_LINE) {
+        context.save();
+        context.strokeStyle = 'red';
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(0, groundY);
+        context.lineTo(boardWidth, groundY);
+        context.stroke();
+        context.restore();
+    }
 
     // Don't draw game elements when overlay is visible (except during game over)
     if (showWelcome && !gameActive && !isGameOver) {
@@ -2198,8 +2218,8 @@ async function restartGame() {
         gameOverOverlay.classList.add('hidden');
     }
     
-    // Recompute groundY from DOM to ensure correct positioning
-    computeGroundYFromDOM();
+    // Recompute platform position and groundY for correct positioning
+    updatePlatformPosition();
     
     // Reset all game state variables
     gameState = GAME_STATE.RUNNING;
