@@ -825,8 +825,8 @@ function getBirdFlyY() {
 
 // Player sprite = exactly 2x coin size for consistent scaling
 const BASE_COIN_SIZE_REF = 32; // Reference coin size for scaling calculations
-const BASE_PLAYER_WIDTH = 52; // ~1.6x coin width (maintains aspect ratio)
-const BASE_PLAYER_HEIGHT = 64; // Exactly 2x coin size (32 * 2 = 64)
+const BASE_PLAYER_WIDTH = 100; // ~1.6x coin width (maintains aspect ratio)
+const BASE_PLAYER_HEIGHT = 128; // Exactly 2x coin size (32 * 2 = 64)
 const BASE_PLAYER_DUCK_HEIGHT = 32; // Half player height when ducking
 const BASE_PLAYER_X = 60;
 let playerWidth = BASE_PLAYER_WIDTH;
