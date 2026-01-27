@@ -46,7 +46,7 @@ const BASE_BIRD_HEIGHT = 38;
 const BASE_BIRD_WIDTH = 43;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
-const BASE_COIN_SPACING = 30; // Tighter spacing (~15% less than 36)
+const BASE_COIN_SPACING = 36;
 const BASE_PLAYER_X = 60;
 
 // Foot offset: visually shift player sprite down so feet touch platform
