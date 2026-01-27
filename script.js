@@ -1,5 +1,3 @@
-console.log("=== script.js loading ===");
-
 //board - scaled up by 1.5x
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
@@ -673,13 +671,8 @@ async function initWalletState() {
 }
 
 async function connectWallet() {
-    console.log("[connectWallet] called");
     const provider = getEthereumProvider();
-    console.log("[connectWallet] provider:", provider);
-    console.log("[connectWallet] isConnectingWallet:", isConnectingWallet);
-    
     if (!provider || isConnectingWallet) {
-        console.log("[connectWallet] early return - no provider or already connecting");
         setWalletError("Wallet не найден.");
         updateWalletUI();
         return;
@@ -691,9 +684,7 @@ async function connectWallet() {
     updateWalletUI();
     try {
         if (!walletAddress) {
-            console.log("[connectWallet] requesting accounts...");
             const accounts = await provider.request({ method: "eth_requestAccounts" });
-            console.log("[connectWallet] accounts:", accounts);
             handleAccountsChanged(accounts);
         }
         let chainId = null;
@@ -732,7 +723,6 @@ async function connectWallet() {
             }
         }
     } catch (err) {
-        console.error("[connectWallet] error:", err);
         if (err && err.code === 4001) {
             setWalletError("Отменено в кошельке.");
         } else if (err && err.code === -32002) {
@@ -743,7 +733,6 @@ async function connectWallet() {
             setWalletError("Не удалось подключить кошелёк. Проверьте разрешения.");
         }
     } finally {
-        console.log("[connectWallet] finally block");
         isConnectingWallet = false;
         setWalletInfo("");
         updateWalletUI();
@@ -816,7 +805,7 @@ let playerHeight = BASE_PLAYER_HEIGHT;
 let playerDuckHeight = BASE_PLAYER_DUCK_HEIGHT;
 let playerX = BASE_PLAYER_X;
 let playerSpriteInsetX = 0;
-let playerY = groundY - playerHeight;
+let playerY = BASE_BOARD_HEIGHT - BASE_PLAYER_HEIGHT;
 let playerImg;
 let isDucking = false;
 
@@ -932,7 +921,6 @@ let score = 0;
 let bestScore = 0;
 
 window.onload = function() {
-    console.log("=== window.onload START ===");
     board = document.getElementById("board");
     
     // Overlay elements
@@ -981,15 +969,12 @@ window.onload = function() {
         }, { passive: false });
     }
     if (connectButton) {
-        console.log("[init] connectButton found, adding listeners");
-        connectButton.onclick = function() {
-            alert("Button clicked!");
-            console.log("[click] connect button clicked");
+        connectButton.addEventListener("click", connectWallet);
+        connectButton.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
             connectWallet();
-        };
-    } else {
-        console.error("[init] connectButton NOT found!");
-        alert("Connect button not found in HTML!");
+        }, { passive: false });
     }
     if (checkinButton) {
         checkinButton.addEventListener("click", handleCheckin);
