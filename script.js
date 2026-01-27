@@ -831,9 +831,9 @@ function handleChainChanged(chainId) {
     }
 }
 
-//player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
-const BASE_PLAYER_WIDTH = 220; // 152 * 1.1 (increased by 10% more)
-const BASE_PLAYER_HEIGHT = 151; // 94 * 1.5
+//player (human character) - adjusted for new sprite
+const BASE_PLAYER_WIDTH = 198; // reduced by 10%
+const BASE_PLAYER_HEIGHT = 166; // increased by 10%
 const BASE_PLAYER_DUCK_HEIGHT = 60; // For ducking (crouched pose, head visible)
 const BASE_PLAYER_X = 75; // 50 * 1.5
 let playerWidth = BASE_PLAYER_WIDTH;
@@ -892,9 +892,14 @@ function isSpawnXClear(spawnX, minGap) {
 function adjustSpawnX(spawnX, minGap) {
     let adjusted = spawnX;
     let attempts = 0;
-    while (!isSpawnXClear(adjusted, minGap) && attempts < 3) {
-        adjusted += minGap;
+    const maxAttempts = 10;
+    while (!isSpawnXClear(adjusted, minGap) && attempts < maxAttempts) {
+        adjusted += minGap * 0.5;
         attempts++;
+    }
+    // If still not clear after max attempts, skip spawning by returning null
+    if (!isSpawnXClear(adjusted, minGap)) {
+        return null;
     }
     return adjusted;
 }
@@ -2023,14 +2028,17 @@ function placeObstacle() {
             tokenWidth = token1Width;
         }
         
-        let token = {
-            x : adjustSpawnX(tokenX, SPAWN_X_GAP),
-            y : tokenY,
-            width : tokenWidth,
-            height: tokenHeight,
-            type: tokenType
+        const spawnX = adjustSpawnX(tokenX, SPAWN_X_GAP);
+        if (spawnX !== null) {
+            let token = {
+                x : spawnX,
+                y : tokenY,
+                width : tokenWidth,
+                height: tokenHeight,
+                type: tokenType
+            }
+            tokenArray.push(token);
         }
-        tokenArray.push(token);
     }
     else if (placeObstacleChance > .35) { //20% chance for bird (flying obstacle)
         // Set bird at head level (can be ducked under)
@@ -2041,13 +2049,17 @@ function placeObstacle() {
         let headLevelY = standingHeadTop - birdHeight + 15; // Bird bottom aligns with player head top
         // Lower bird by 10% of its height so it collides properly
         headLevelY += birdHeight * 0.1;
-        let bird = {
-            x : adjustSpawnX(birdX, SPAWN_X_GAP),
-            y : headLevelY,
-            width : birdWidth,
-            height: birdHeight
+        
+        const spawnX = adjustSpawnX(birdX, SPAWN_X_GAP);
+        if (spawnX !== null) {
+            let bird = {
+                x : spawnX,
+                y : headLevelY,
+                width : birdWidth,
+                height: birdHeight
+            }
+            birdArray.push(bird);
         }
-        birdArray.push(bird);
     }
 
 }
