@@ -632,6 +632,7 @@ function setGameOverState() {
     if (gameState === GAME_STATE.GAME_OVER) {
         return;
     }
+    console.log("GAME OVER! Final score:", score, "Current best:", bestScore);
     gameState = GAME_STATE.GAME_OVER;
     gameOverTimestamp = performance.now();
     gameOver = true;
@@ -1094,10 +1095,13 @@ window.onload = function() {
     };
 
     // Load best score from localStorage
-    bestScore = parseInt(localStorage.getItem('baseapp_runner_best_score')) || 0;
-    coinCount = parseInt(localStorage.getItem(COIN_STORAGE_KEY)) || 0;
+    const rawBest = localStorage.getItem('baseapp_runner_best_score');
+    const rawCoins = localStorage.getItem(COIN_STORAGE_KEY);
+    console.log("Raw localStorage values - best:", rawBest, "coins:", rawCoins);
+    bestScore = parseInt(rawBest) || 0;
+    coinCount = parseInt(rawCoins) || 0;
     nextCoinScore = 10000;
-    console.log("Loaded from localStorage - bestScore:", bestScore, "coinCount:", coinCount); // Debug log
+    console.log("Parsed values - bestScore:", bestScore, "coinCount:", coinCount);
 
     requestAnimationFrame(update);
     setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
@@ -1698,7 +1702,7 @@ function update(timestamp) {
             if (score > bestScore) {
                 bestScore = score;
                 localStorage.setItem('baseapp_runner_best_score', String(bestScore));
-                console.log("Best score saved:", bestScore); // Debug log
+                console.log("Best score saved:", bestScore, "Verify:", localStorage.getItem('baseapp_runner_best_score'));
             }
         }
     }
@@ -1742,7 +1746,7 @@ function update(timestamp) {
             if (score > bestScore) {
                 bestScore = score;
                 localStorage.setItem('baseapp_runner_best_score', String(bestScore));
-                console.log("Best score saved:", bestScore); // Debug log
+                console.log("Best score saved:", bestScore, "Verify:", localStorage.getItem('baseapp_runner_best_score'));
             }
         }
     }
@@ -1768,15 +1772,21 @@ function update(timestamp) {
         score = nextScore;
     }
 
+    // Debug: log when approaching coin threshold
+    if (score >= 9990 && score <= 10010) {
+        console.log("Score check:", score, "nextCoinScore:", nextCoinScore, "backendActive:", backendSessionActive);
+    }
+    
     if (!backendSessionActive && score >= nextCoinScore) {
         const increments = Math.floor((score - nextCoinScore) / 10000) + 1;
+        console.log("COIN TRIGGER! increments:", increments, "before coinCount:", coinCount);
         addCoins(increments);
         nextCoinScore += increments * 10000;
         // Start coin popup animation
         coinPopupActive = true;
         coinPopupStartTime = timestamp;
         coinPopupAmount = increments;
-        console.log("Coin added!", increments, "Total:", coinCount); // Debug log
+        console.log("Coin added!", increments, "Total:", coinCount, "next at:", nextCoinScore);
     }
     if (gameUIContainer) {
         updateGameUI();
