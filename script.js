@@ -1063,7 +1063,8 @@ window.onload = function() {
     birdImg = new Image();
     birdImg.src = "./assets/gen_bird.png";
     birdImg.onload = function() {
-        spriteBounds.bird = getNormalizedSpriteBounds(birdImg);
+        // Use higher alpha threshold to avoid early collisions on soft edges
+        spriteBounds.bird = getNormalizedSpriteBounds(birdImg, 40);
     }
 
     // Load best score from localStorage
@@ -1527,8 +1528,8 @@ function getRenderScale(dpr) {
 }
 
 // Compute normalized opaque bounds for an image (0..1)
-function getNormalizedSpriteBounds(img) {
-    const bounds = computeOpaqueBounds(img);
+function getNormalizedSpriteBounds(img, alphaThreshold = 10) {
+    const bounds = computeOpaqueBounds(img, alphaThreshold);
     return {
         x: bounds.x / img.width,
         y: bounds.y / img.height,
@@ -1538,7 +1539,7 @@ function getNormalizedSpriteBounds(img) {
 }
 
 // Find the bounding box of non-transparent pixels
-function computeOpaqueBounds(img) {
+function computeOpaqueBounds(img, alphaThreshold = 10) {
     const canvas = document.createElement("canvas");
     canvas.width = img.width;
     canvas.height = img.height;
@@ -1554,7 +1555,6 @@ function computeOpaqueBounds(img) {
     let maxY = 0;
     let found = false;
 
-    const alphaThreshold = 10;
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const idx = (y * width + x) * 4 + 3;
