@@ -46,11 +46,11 @@ const BASE_BIRD_WIDTH = 35;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
 const BASE_COIN_SPACING = 24; // Reduced by ~10%
-const BASE_PLAYER_X = 60;
+const BASE_PLAYER_X = 30;
 
 // Foot offset: visually shift player sprite down so feet touch platform
 // (compensates for transparent padding at bottom of sprite)
-const BASE_FOOT_OFFSET = 6;
+const BASE_FOOT_OFFSET = 5;
 
 // Token sizes
 const BASE_TOKEN1_WIDTH = BASE_COIN_SIZE;
@@ -63,7 +63,7 @@ const BASE_SPAWN_OFFSET = 150;
 //=============================================================================
 // PHYSICS
 //=============================================================================
-const SPEED_START = 2;
+const SPEED_START = 3;
 const SPEED_MAX = 6;
 const SPEED_MAX_SCORE = 10000;
 const BASE_GRAVITY = 0.8;
