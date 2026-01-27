@@ -2,10 +2,9 @@
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
-// Platform drawn on canvas - defines the ground level
-const PLATFORM_HEIGHT = 45; // Height of platform bar on canvas
-const PLATFORM_MARGIN_PERCENT = 0.12; // 12% margin on each side
-const PLATFORM_BOTTOM_MARGIN = 20; // Pixels from canvas bottom to platform bottom
+// Platform defines the ground level (align with CSS platform)
+const PLATFORM_HEIGHT_RATIO = 0.10;
+const PLATFORM_BOTTOM_RATIO = 0.045;
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -23,7 +22,9 @@ const MOBILE_RESTART_GAP = 24;
 const BASE_SPAWN_OFFSET = 200;
 let boardWidth = BASE_BOARD_WIDTH;
 let boardHeight = BASE_BOARD_HEIGHT;
-let groundY = BASE_BOARD_HEIGHT - PLATFORM_BOTTOM_MARGIN - PLATFORM_HEIGHT;
+let platformHeight = Math.round(BASE_BOARD_HEIGHT * PLATFORM_HEIGHT_RATIO);
+let platformBottomMargin = Math.round(BASE_BOARD_HEIGHT * PLATFORM_BOTTOM_RATIO);
+let groundY = BASE_BOARD_HEIGHT - platformBottomMargin - platformHeight;
 let context;
 let renderScale = 1;
 let isMobileLayout = false;
@@ -546,6 +547,15 @@ function handleGameOver() {
     }
 }
 
+function setGameOverState() {
+    if (gameState === GAME_STATE.GAME_OVER) {
+        return;
+    }
+    gameState = GAME_STATE.GAME_OVER;
+    gameOverTimestamp = performance.now();
+    gameOver = true;
+}
+
 function setWalletStatus(message, isError) {
     if (!walletStatus) return;
     walletStatus.textContent = message;
@@ -803,11 +813,11 @@ function getBirdFlyY() {
     return Math.round(playerY - birdHeight);
 }
 
-//player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
-const BASE_PLAYER_WIDTH = 250; // 152 * 1.1 (increased by 10% more)
-const BASE_PLAYER_HEIGHT = 180; // 94 * 1.5
-const BASE_PLAYER_DUCK_HEIGHT = 60; // For ducking (crouched pose, head visible)
-const BASE_PLAYER_X = 75; // 50 * 1.5
+//player (human character) - keep ~8-10% of panel height
+const BASE_PLAYER_WIDTH = 35;
+const BASE_PLAYER_HEIGHT = 42;
+const BASE_PLAYER_DUCK_HEIGHT = 22; // For ducking (crouched pose, head visible)
+const BASE_PLAYER_X = 60;
 let playerWidth = BASE_PLAYER_WIDTH;
 let playerHeight = BASE_PLAYER_HEIGHT;
 let playerDuckHeight = BASE_PLAYER_DUCK_HEIGHT;
@@ -821,10 +831,10 @@ let isDucking = false;
 let debugHitboxes = false;
 
 // Render/physics constants - scaled to match smaller sprites
-const BASE_COIN_SIZE = 48;
+const BASE_COIN_SIZE = 18;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
-const BASE_COIN_SPACING = 56;
+const BASE_COIN_SPACING = 22;
 const SPAWN_X_GAP = 400; // minimum horizontal gap between obstacles
 let COIN_SIZE = BASE_COIN_SIZE;
 let STICK_HEIGHT = BASE_STICK_HEIGHT;
@@ -895,9 +905,9 @@ let tokenX = boardWidth + BASE_SPAWN_OFFSET;
 let tokenY = groundY - tokenHeight;
 let tokenImg;
 
-//bird obstacle (flying enemy) - scaled up by 1.5x, then +10%
-const BASE_BIRD_WIDTH = 100; // 69 * 1.1 (increased by 10%)
-const BASE_BIRD_HEIGHT = 100; // 60 * 1.1 (increased by 10%)
+//bird obstacle (flying enemy) - sized proportionally to player
+const BASE_BIRD_WIDTH = 32;
+const BASE_BIRD_HEIGHT = 28;
 const BASE_BIRD_Y_OFFSET = 150;
 let birdWidth = BASE_BIRD_WIDTH;
 let birdHeight = BASE_BIRD_HEIGHT;
@@ -924,6 +934,12 @@ let scoreFloat = 0;
 
 // (Ручные паддинги убраны — хитбоксы строятся по альфа‑границам спрайтов)
 
+const GAME_STATE = {
+    RUNNING: "RUNNING",
+    GAME_OVER: "GAME_OVER"
+};
+let gameState = GAME_STATE.RUNNING;
+let gameOverTimestamp = 0;
 let gameOver = false;
 let score = 0;
 let bestScore = 0;
@@ -1385,7 +1401,9 @@ function applyResponsiveLayout() {
     jumpVelocity = isMobile ? BASE_JUMP_VELOCITY * MOBILE_JUMP_VELOCITY_MULT : BASE_JUMP_VELOCITY;
     boardWidth = nextBoardWidth;
     boardHeight = nextBoardHeight;
-    groundY = boardHeight - PLATFORM_BOTTOM_MARGIN - PLATFORM_HEIGHT;
+    platformHeight = Math.round(boardHeight * PLATFORM_HEIGHT_RATIO);
+    platformBottomMargin = Math.round(boardHeight * PLATFORM_BOTTOM_RATIO);
+    groundY = boardHeight - platformBottomMargin - platformHeight;
     updatePauseButtonVisibility();
 
     applyObjectScale(objectScale);
@@ -1549,14 +1567,15 @@ function update(timestamp) {
     lastFrameTime = timestamp;
     const dtScale = deltaMs / FRAME_MS;
     
-    // Freeze gameplay when gameOver but continue rendering
-    const shouldUpdate = gameActive && !isPaused && !gameOver;
+    const isGameOver = gameState === GAME_STATE.GAME_OVER;
+    // Freeze gameplay when game over but continue rendering
+    const shouldUpdate = gameActive && !isPaused && !isGameOver;
     const stepScale = shouldUpdate ? dtScale : 0;
     
     context.clearRect(0, 0, boardWidth, boardHeight);
 
     // Don't draw game elements when overlay is visible (except during game over)
-    if (showWelcome && !gameActive && !gameOver) {
+    if (showWelcome && !gameActive && !isGameOver) {
         return;
     }
 
@@ -1668,7 +1687,7 @@ function update(timestamp) {
         }
         
         if (shouldUpdate && detectCollision(playerHitbox, tokenHitbox)) {
-            gameOver = true;
+            setGameOverState();
             // Update best score
             if (score > bestScore) {
                 bestScore = score;
@@ -1710,7 +1729,7 @@ function update(timestamp) {
         // Use a head-focused hitbox for birds (prevents passing through head)
         let playerBirdHitbox = getPlayerBirdHitbox(playerBirdHitboxScratch);
         if (shouldUpdate && detectCollision(playerBirdHitbox, birdHitboxScratch)) {
-            gameOver = true;
+            setGameOverState();
             // Update best score
             if (score > bestScore) {
                 bestScore = score;
@@ -1719,7 +1738,7 @@ function update(timestamp) {
         }
     }
 
-    if (gameOver) {
+    if (isGameOver) {
         handleGameOver();
     }
 
@@ -1777,7 +1796,7 @@ function update(timestamp) {
         context.fillText(bestText, bestX, bestY);
     }
 
-    if (isPaused && !gameOver) {
+    if (isPaused && !isGameOver) {
         const pauseText = "PAUSE";
         const pauseFont = Math.round(30 * uiScale);
         context.fillStyle = "black";
@@ -1793,7 +1812,7 @@ function update(timestamp) {
     }
 
     // GAME OVER overlay - always render when gameOver is true
-    if (gameOver) {
+    if (isGameOver) {
         // Semi-transparent overlay
         context.fillStyle = "rgba(90, 90, 90, 0.55)";
         context.fillRect(0, 0, boardWidth, boardHeight);
@@ -2147,6 +2166,8 @@ function detectCollision(a, b) {
 
 async function restartGame() {
     // Reset all game state variables
+    gameState = GAME_STATE.RUNNING;
+    gameOverTimestamp = 0;
     gameOver = false;
     score = 0;
     scoreFloat = 0;
