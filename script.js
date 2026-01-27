@@ -800,7 +800,7 @@ function getBirdFlyY() {
 
 //player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
 const BASE_PLAYER_WIDTH = 250; // 152 * 1.1 (increased by 10% more)
-const BASE_PLAYER_HEIGHT = 141; // 94 * 1.5
+const BASE_PLAYER_HEIGHT = 180; // 94 * 1.5
 const BASE_PLAYER_DUCK_HEIGHT = 60; // For ducking (crouched pose, head visible)
 const BASE_PLAYER_X = 75; // 50 * 1.5
 let playerWidth = BASE_PLAYER_WIDTH;
@@ -816,7 +816,7 @@ let isDucking = false;
 let debugHitboxes = false;
 
 // Render/physics constants - scaled to match smaller sprites
-const BASE_COIN_SIZE = 18;
+const BASE_COIN_SIZE = 40;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
 const BASE_COIN_SPACING = 22;
