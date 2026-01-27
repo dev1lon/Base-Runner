@@ -2,6 +2,10 @@
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
+const PLATFORM_HEIGHT = 70; // Height of the game platform in pixels
+const MOBILE_PLATFORM_HEIGHT = 55; // Platform height on mobile
+let platformHeight = PLATFORM_HEIGHT;
+let groundLevel = BASE_BOARD_HEIGHT - PLATFORM_HEIGHT; // Y-coordinate of the ground
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -764,7 +768,7 @@ let playerHeight = BASE_PLAYER_HEIGHT;
 let playerDuckHeight = BASE_PLAYER_DUCK_HEIGHT;
 let playerX = BASE_PLAYER_X;
 let playerSpriteInsetX = 0;
-let playerY = boardHeight - playerHeight;
+let playerY = groundLevel - playerHeight;
 let playerImg;
 let isDucking = false;
 
@@ -843,7 +847,7 @@ let token2Width = BASE_TOKEN2_WIDTH;
 let token3Width = BASE_TOKEN3_WIDTH;
 let tokenHeight = BASE_TOKEN_HEIGHT;
 let tokenX = boardWidth + BASE_SPAWN_OFFSET;
-let tokenY = boardHeight - tokenHeight;
+let tokenY = groundLevel - tokenHeight;
 let tokenImg;
 
 //bird obstacle (flying enemy) - scaled up by 1.5x, then +10%
@@ -853,7 +857,7 @@ const BASE_BIRD_Y_OFFSET = 150;
 let birdWidth = BASE_BIRD_WIDTH;
 let birdHeight = BASE_BIRD_HEIGHT;
 let birdX = boardWidth + BASE_SPAWN_OFFSET;
-let birdY = boardHeight - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
+let birdY = groundLevel - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
 let birdImg;
 
 //physics
@@ -1336,12 +1340,14 @@ function applyResponsiveLayout() {
     jumpVelocity = isMobile ? BASE_JUMP_VELOCITY * MOBILE_JUMP_VELOCITY_MULT : BASE_JUMP_VELOCITY;
     boardWidth = nextBoardWidth;
     boardHeight = nextBoardHeight;
+    platformHeight = isMobile ? MOBILE_PLATFORM_HEIGHT : PLATFORM_HEIGHT;
+    groundLevel = boardHeight - platformHeight;
     updatePauseButtonVisibility();
 
     applyObjectScale(objectScale);
-    playerY = boardHeight - playerHeight;
-    tokenY = boardHeight - tokenHeight;
-    birdY = boardHeight - birdHeight - Math.round(BASE_BIRD_Y_OFFSET * objectScale);
+    playerY = groundLevel - playerHeight;
+    tokenY = groundLevel - tokenHeight;
+    birdY = groundLevel - birdHeight - Math.round(BASE_BIRD_Y_OFFSET * objectScale);
     tokenX = boardWidth + BASE_SPAWN_OFFSET;
     birdX = boardWidth + BASE_SPAWN_OFFSET;
 
@@ -1363,7 +1369,7 @@ function applyResponsiveLayout() {
     }
 
     if (wasOnGround) {
-        player.y = isDucking ? boardHeight - playerDuckHeight : playerY;
+        player.y = isDucking ? groundLevel - playerDuckHeight : playerY;
         velocityY = 0;
     } else {
         player.y = Math.min(playerY, playerY + relativeY);
@@ -1520,14 +1526,14 @@ function update(timestamp) {
     //player physics
     const prevY = player.y;
     const prevHeight = player.height;
-    const prevGroundY = boardHeight - prevHeight;
+    const prevGroundY = groundLevel - prevHeight;
     const wasAirborne = prevY < prevGroundY - 1;
     const onGround = !wasAirborne;
     const canDuck = isDucking && onGround;
 
     // Only duck on ground (prevents shrink while jumping)
     player.height = canDuck ? playerDuckHeight : playerHeight;
-    const groundY = boardHeight - player.height;
+    const groundY = groundLevel - player.height;
 
     if (wasAirborne) {
         // In air: keep top position to avoid "extra jump" on duck toggle
@@ -1784,7 +1790,7 @@ function drawCoin(x, y, size) {
 }
 
 function triggerJump() {
-    const groundY = boardHeight - player.height;
+    const groundY = groundLevel - player.height;
     if (player.y >= groundY - 1) {
         //jump - tuned for reliable obstacle clearing with good airtime
         velocityY = jumpVelocity;
