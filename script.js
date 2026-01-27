@@ -2,6 +2,10 @@
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
+// Platform drawn on canvas - defines the ground level
+const PLATFORM_HEIGHT = 45; // Height of platform bar on canvas
+const PLATFORM_MARGIN_PERCENT = 0.12; // 12% margin on each side
+const PLATFORM_BOTTOM_MARGIN = 20; // Pixels from canvas bottom to platform bottom
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -19,6 +23,7 @@ const MOBILE_RESTART_GAP = 24;
 const BASE_SPAWN_OFFSET = 200;
 let boardWidth = BASE_BOARD_WIDTH;
 let boardHeight = BASE_BOARD_HEIGHT;
+let groundY = BASE_BOARD_HEIGHT - PLATFORM_BOTTOM_MARGIN - PLATFORM_HEIGHT;
 let context;
 let renderScale = 1;
 let isMobileLayout = false;
@@ -72,6 +77,7 @@ let resumeButton;
 let checkinButton;
 let checkinStatus;
 let ethImg;
+let backgroundImg;
 // Game UI elements
 let gameCoinsEl;
 let gameScoreEl;
@@ -808,7 +814,7 @@ let playerHeight = BASE_PLAYER_HEIGHT;
 let playerDuckHeight = BASE_PLAYER_DUCK_HEIGHT;
 let playerX = BASE_PLAYER_X;
 let playerSpriteInsetX = 0;
-let playerY = BASE_BOARD_HEIGHT - BASE_PLAYER_HEIGHT;
+let playerY = groundY - playerHeight;
 let playerImg;
 let isDucking = false;
 
@@ -816,10 +822,10 @@ let isDucking = false;
 let debugHitboxes = false;
 
 // Render/physics constants - scaled to match smaller sprites
-const BASE_COIN_SIZE = 40;
+const BASE_COIN_SIZE = 48;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
-const BASE_COIN_SPACING = 22;
+const BASE_COIN_SPACING = 56;
 const SPAWN_X_GAP = 400; // minimum horizontal gap between obstacles
 let COIN_SIZE = BASE_COIN_SIZE;
 let STICK_HEIGHT = BASE_STICK_HEIGHT;
@@ -878,16 +884,16 @@ let tokenArray = [];
 let birdArray = [];
 
 //token obstacle variants (ground obstacle - coin on stick)
-const BASE_TOKEN1_WIDTH = 51; // 34 * 1.5 - single coin
-const BASE_TOKEN2_WIDTH = 103; // 69 * 1.5 - double coin  
-const BASE_TOKEN3_WIDTH = 153; // 102 * 1.5 - triple coin
-const BASE_TOKEN_HEIGHT = 105; // 70 * 1.5
+const BASE_TOKEN1_WIDTH = BASE_COIN_SIZE;
+const BASE_TOKEN2_WIDTH = BASE_COIN_SPACING + BASE_COIN_SIZE;
+const BASE_TOKEN3_WIDTH = BASE_COIN_SPACING * 2 + BASE_COIN_SIZE;
+const BASE_TOKEN_HEIGHT = BASE_STICK_HEIGHT + BASE_COIN_SIZE;
 let token1Width = BASE_TOKEN1_WIDTH;
 let token2Width = BASE_TOKEN2_WIDTH;
 let token3Width = BASE_TOKEN3_WIDTH;
 let tokenHeight = BASE_TOKEN_HEIGHT;
 let tokenX = boardWidth + BASE_SPAWN_OFFSET;
-let tokenY = boardHeight - tokenHeight;
+let tokenY = groundY - tokenHeight;
 let tokenImg;
 
 //bird obstacle (flying enemy) - scaled up by 1.5x, then +10%
@@ -1003,6 +1009,10 @@ window.onload = function() {
     // Setup crisp rendering
     setupCrispCanvas();
     window.addEventListener("resize", setupCrispCanvas);
+
+    //load background image
+    backgroundImg = new Image();
+    backgroundImg.src = "./assets/background_test.png";
 
     //load player image (human character)
     playerImg = new Image();
@@ -1380,11 +1390,12 @@ function applyResponsiveLayout() {
     jumpVelocity = isMobile ? BASE_JUMP_VELOCITY * MOBILE_JUMP_VELOCITY_MULT : BASE_JUMP_VELOCITY;
     boardWidth = nextBoardWidth;
     boardHeight = nextBoardHeight;
+    groundY = boardHeight - PLATFORM_BOTTOM_MARGIN - PLATFORM_HEIGHT;
     updatePauseButtonVisibility();
 
     applyObjectScale(objectScale);
-    playerY = boardHeight - playerHeight;
-    tokenY = boardHeight - tokenHeight;
+    playerY = groundY - playerHeight;
+    tokenY = groundY - tokenHeight;
     birdY = getBirdFlyY();
     tokenX = boardWidth + BASE_SPAWN_OFFSET;
     birdX = boardWidth + BASE_SPAWN_OFFSET;
@@ -1407,7 +1418,7 @@ function applyResponsiveLayout() {
     }
 
     if (wasOnGround) {
-        player.y = isDucking ? boardHeight - playerDuckHeight : playerY;
+        player.y = isDucking ? groundY - playerDuckHeight : playerY;
         velocityY = 0;
     } else {
         player.y = Math.min(playerY, playerY + relativeY);
@@ -1554,6 +1565,9 @@ function update(timestamp) {
         return;
     }
 
+    drawBackground();
+    drawPlatform();
+
     // плавное ускорение до максимума к счёту SPEED_MAX_SCORE
     const displayScore = Math.floor(scoreFloat);
     const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
@@ -1565,29 +1579,29 @@ function update(timestamp) {
     //player physics
     const prevY = player.y;
     const prevHeight = player.height;
-    const prevGroundY = boardHeight - prevHeight;
+    const prevGroundY = groundY - prevHeight;
     const wasAirborne = prevY < prevGroundY - 1;
     const onGround = !wasAirborne;
     const canDuck = isDucking && onGround;
 
     // Only duck on ground (prevents shrink while jumping)
     player.height = canDuck ? playerDuckHeight : playerHeight;
-    const groundY = boardHeight - player.height;
+    const playerGroundY = groundY - player.height;
 
     if (wasAirborne) {
         // In air: keep top position to avoid "extra jump" on duck toggle
         player.y = prevY;
     } else {
         // On ground: keep feet planted
-        player.y = groundY;
+        player.y = playerGroundY;
         if (velocityY > 0) {
             velocityY = 0;
         }
     }
 
     velocityY += gravity * stepScale;
-    player.y = Math.min(player.y + velocityY * stepScale, groundY);
-    if (player.y >= groundY) {
+    player.y = Math.min(player.y + velocityY * stepScale, playerGroundY);
+    if (player.y >= playerGroundY) {
         velocityY = 0;
     }
     player.x = playerX + mobileEdgeGapWorld + mobileSafeLeftWorld;
@@ -1789,13 +1803,13 @@ function update(timestamp) {
     // GAME OVER overlay - always render when gameOver is true
     if (gameOver) {
         // Semi-transparent overlay
-        context.fillStyle = "rgba(0, 0, 0, 0.3)";
+        context.fillStyle = "rgba(90, 90, 90, 0.55)";
         context.fillRect(0, 0, boardWidth, boardHeight);
         
         const gameOverText = "GAME OVER";
         const restartText = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
-        const gameOverFont = Math.round(28 * uiScale);
-        const restartFont = Math.round(14 * uiScale);
+        const gameOverFont = Math.round(36 * uiScale);
+        const restartFont = Math.round(16 * uiScale);
         
         // Center vertically in the play area
         const centerY = Math.round(boardHeight / 2);
@@ -1805,19 +1819,19 @@ function update(timestamp) {
         context.textAlign = "center";
         context.textBaseline = "middle";
         
-        context.strokeStyle = "white";
-        context.lineWidth = 4;
+        context.strokeStyle = "#111";
+        context.lineWidth = 6;
         context.strokeText(gameOverText, boardWidth / 2, centerY);
         
-        context.fillStyle = "#DC3545";
+        context.fillStyle = "#ffffff";
         context.fillText(gameOverText, boardWidth / 2, centerY);
         
         // Restart hint
         context.font = `${restartFont}px Arial, sans-serif`;
-        context.strokeStyle = "white";
-        context.lineWidth = 2;
+        context.strokeStyle = "#111";
+        context.lineWidth = 3;
         context.strokeText(restartText, boardWidth / 2, centerY + gameOverFont);
-        context.fillStyle = "#333";
+        context.fillStyle = "#ffffff";
         context.fillText(restartText, boardWidth / 2, centerY + gameOverFont);
         
         // Reset text align
@@ -1826,9 +1840,53 @@ function update(timestamp) {
     }
 }
 
+function drawBackground() {
+    if (backgroundImg && backgroundImg.complete) {
+        context.drawImage(backgroundImg, 0, 0, boardWidth, boardHeight);
+        return;
+    }
+    context.fillStyle = "#eaf1f8";
+    context.fillRect(0, 0, boardWidth, boardHeight);
+}
+
+// Draw the platform bar on canvas
+function drawPlatform() {
+    const platformLeft = Math.round(boardWidth * PLATFORM_MARGIN_PERCENT);
+    const platformRight = Math.round(boardWidth * (1 - PLATFORM_MARGIN_PERCENT));
+    const platformWidth = platformRight - platformLeft;
+    const platformTop = groundY;
+    const platformBottom = groundY + PLATFORM_HEIGHT;
+    const radius = 8;
+    
+    // Platform body - gradient for glass effect
+    const gradient = context.createLinearGradient(0, platformTop, 0, platformBottom);
+    gradient.addColorStop(0, "rgba(190, 205, 225, 0.95)");
+    gradient.addColorStop(0.3, "rgba(170, 190, 210, 0.95)");
+    gradient.addColorStop(0.7, "rgba(150, 175, 200, 1)");
+    gradient.addColorStop(1, "rgba(130, 160, 190, 1)");
+    
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.roundRect(platformLeft, platformTop, platformWidth, PLATFORM_HEIGHT, radius);
+    context.fill();
+    
+    // Top highlight
+    context.fillStyle = "rgba(255, 255, 255, 0.25)";
+    context.beginPath();
+    context.roundRect(platformLeft + 2, platformTop + 2, platformWidth - 4, PLATFORM_HEIGHT * 0.4, [radius - 2, radius - 2, 0, 0]);
+    context.fill();
+    
+    // Border
+    context.strokeStyle = "rgba(255, 255, 255, 0.5)";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.roundRect(platformLeft, platformTop, platformWidth, PLATFORM_HEIGHT, radius);
+    context.stroke();
+}
+
 function drawTokenObstacle(token) {
     // Draw coins based on token type (1, 2, or 3 coins)
-    const stickY = Math.round(boardHeight - STICK_HEIGHT);
+    const stickY = Math.round(groundY - STICK_HEIGHT);
     
     if (token.type === 1) {
         // Single coin - one stick
@@ -1877,8 +1935,8 @@ function drawCoin(x, y, size) {
 }
 
 function triggerJump() {
-    const groundY = boardHeight - player.height;
-    if (player.y >= groundY - 1) {
+    const playerGroundY = groundY - player.height;
+    if (player.y >= playerGroundY - 1) {
         //jump - tuned for reliable obstacle clearing with good airtime
         velocityY = jumpVelocity;
         recordInput("jump");
@@ -2067,7 +2125,7 @@ function getPlayerBirdHitbox(out) {
 
 // Get token hitbox - union of coin(s) and stick(s), aligned to visible pixels
 function getTokenHitbox(token, out) {
-    const stickY = Math.round(boardHeight - STICK_HEIGHT);
+    const stickY = Math.round(groundY - STICK_HEIGHT);
 
     let minX = Infinity;
     let minY = Infinity;
