@@ -2147,8 +2147,8 @@ async function restartGame() {
     gameState = GAME_STATE.RUNNING;
     gameOverTimestamp = 0;
     gameOver = false;
-    score = 0;
-    scoreFloat = 0;
+    score = 9700;
+    scoreFloat = 9700;
     nextCoinScore = 10000;
     velocityY = 0;
     isDucking = false;
