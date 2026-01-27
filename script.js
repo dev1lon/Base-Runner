@@ -1073,7 +1073,7 @@ window.onload = function() {
     nextCoinScore = 10000;
 
     requestAnimationFrame(update);
-    setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
+    setInterval(placeObstacle, 500); //500 milliseconds = 2x faster spawning
     document.addEventListener("keydown", movePlayer);
     document.addEventListener("touchstart", handleTouchStart, { passive: false });
     document.addEventListener("touchend", handleTouchEnd, { passive: false });
