@@ -46,7 +46,7 @@ const BASE_BIRD_HEIGHT = 38;
 const BASE_BIRD_WIDTH = 43;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
-const BASE_COIN_SPACING = 36;
+const BASE_COIN_SPACING = 30;
 const BASE_PLAYER_X = 60;
 
 // Foot offset: visually shift player sprite down so feet touch platform
@@ -1618,35 +1618,40 @@ function update(timestamp) {
     }
     player.x = playerX;
     
-    // Draw player with footOffset for visual ground alignment
-    // footOffset shifts sprite down so visible feet touch platform
+    // Draw player with curl down animation for ducking
     let drawX = Math.round(player.x);
-    let drawY = Math.round(player.y) + footOffset; // Apply foot offset for visuals only
+    let drawY = Math.round(player.y);
     let drawWidth = player.width;
     let drawHeight = player.height;
     
     if (canDuck) {
-        // Visual ducking: scale sprite to match current duck height
+        // Visual ducking: scale sprite to match current duck height,
+        // anchored to current player Y (works on ground and in air).
         const crouchScale = playerDuckHeight / playerHeight;
         const crouchHeight = drawHeight;
         const crouchWidth = Math.round(drawWidth * crouchScale);
-        const crouchX = drawX + (drawWidth - crouchWidth) / 2;
+        const crouchX = drawX + (drawWidth - crouchWidth) / 2; // Center horizontally
         const crouchY = drawY;
 
-        // Store draw rect (for debug visualization)
+        // Store actual draw rect for hitbox alignment (NO footOffset)
         playerDrawRectScratch.x = Math.round(crouchX);
         playerDrawRectScratch.y = Math.round(crouchY);
         playerDrawRectScratch.width = Math.round(crouchWidth);
         playerDrawRectScratch.height = Math.round(crouchHeight);
         
-        context.drawImage(playerImg, crouchX, crouchY, crouchWidth, crouchHeight);
+        // Draw full sprite scaled down (shows head and body in crouch pose)
+        context.drawImage(
+            playerImg,
+            crouchX, crouchY, crouchWidth, crouchHeight
+        );
     } else {
-        // Store draw rect (for debug visualization)
+        // Store actual draw rect for hitbox alignment (NO footOffset)
         playerDrawRectScratch.x = Math.round(drawX);
         playerDrawRectScratch.y = Math.round(drawY);
         playerDrawRectScratch.width = Math.round(drawWidth);
         playerDrawRectScratch.height = Math.round(drawHeight);
 
+        // Normal standing: draw full sprite
         context.drawImage(playerImg, drawX, drawY, drawWidth, drawHeight);
     }
 
@@ -2045,34 +2050,20 @@ function applySpriteBounds(drawRect, bounds, inset, out) {
 
 // Get player hitbox (aligned to visible sprite bounds)
 function getPlayerHitbox(out) {
-    // Hitbox based on physics position (player.y), not draw position
-    // This keeps hitbox aligned with physics regardless of footOffset
-    out.x = Math.round(player.x) + hitboxPadding;
-    out.y = Math.round(player.y) + hitboxPadding;
-    out.width = Math.max(1, player.width - hitboxPadding * 2);
-    out.height = Math.max(1, player.height - hitboxPadding * 2);
-    return out;
+    const playerInset = { top: hitboxPadding, bottom: hitboxPadding * 2, left: hitboxPadding, right: hitboxPadding };
+    return applySpriteBounds(playerDrawRectScratch, spriteBounds.player, playerInset, out);
 }
 
-// Player hitbox for bird collisions - SMALLER when ducking
+// Player hitbox for bird collisions (focuses on head/upper body)
 function getPlayerBirdHitbox(out) {
-    const insetX = Math.round(player.width * 0.15);
-    
-    if (isDucking) {
-        // Ducking: hitbox is only lower 55% of duck height (below bird level)
-        const duckHitboxH = Math.round(playerDuckHeight * 0.55);
-        out.x = Math.round(player.x) + insetX;
-        out.y = Math.round(groundY - duckHitboxH); // Feet stay on ground
-        out.width = Math.max(1, player.width - insetX * 2);
-        out.height = Math.max(1, duckHitboxH - hitboxPadding);
-    } else {
-        // Standing: use upper body for bird collision
-        const headHeight = Math.round(playerHeight * 0.6);
-        out.x = Math.round(player.x) + insetX;
-        out.y = Math.round(player.y) + hitboxPadding;
-        out.width = Math.max(1, player.width - insetX * 2);
-        out.height = Math.max(1, headHeight);
-    }
+    getPlayerHitbox(out);
+    // Focus on upper body/head for bird collisions
+    // When ducking, this hitbox is naturally smaller due to playerDrawRectScratch
+    const headHeight = Math.max(1, Math.round(out.height * 0.55));
+    const insetX = Math.round(out.width * 0.1);
+    out.x = out.x + insetX;
+    out.width = Math.max(1, out.width - insetX * 2);
+    out.height = headHeight;
     return out;
 }
 
