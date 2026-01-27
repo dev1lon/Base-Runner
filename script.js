@@ -161,6 +161,11 @@ let gameUIContainer;
 let gameOverOverlay;
 let coinCount = 0;
 let nextCoinScore = 10000;
+// Coin popup animation state
+let coinPopupActive = false;
+let coinPopupStartTime = 0;
+let coinPopupAmount = 0;
+const COIN_POPUP_DURATION = 3000; // 3 seconds fade out
 let walletAddress = null;
 let walletChainId = null;
 let walletReady = false;
@@ -1092,6 +1097,7 @@ window.onload = function() {
     bestScore = parseInt(localStorage.getItem('baseapp_runner_best_score')) || 0;
     coinCount = parseInt(localStorage.getItem(COIN_STORAGE_KEY)) || 0;
     nextCoinScore = 10000;
+    console.log("Loaded from localStorage - bestScore:", bestScore, "coinCount:", coinCount); // Debug log
 
     requestAnimationFrame(update);
     setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
@@ -1691,7 +1697,8 @@ function update(timestamp) {
             // Update best score
             if (score > bestScore) {
                 bestScore = score;
-                localStorage.setItem('baseapp_runner_best_score', bestScore);
+                localStorage.setItem('baseapp_runner_best_score', String(bestScore));
+                console.log("Best score saved:", bestScore); // Debug log
             }
         }
     }
@@ -1734,7 +1741,8 @@ function update(timestamp) {
             // Update best score
             if (score > bestScore) {
                 bestScore = score;
-                localStorage.setItem('baseapp_runner_best_score', bestScore);
+                localStorage.setItem('baseapp_runner_best_score', String(bestScore));
+                console.log("Best score saved:", bestScore); // Debug log
             }
         }
     }
@@ -1764,6 +1772,11 @@ function update(timestamp) {
         const increments = Math.floor((score - nextCoinScore) / 10000) + 1;
         addCoins(increments);
         nextCoinScore += increments * 10000;
+        // Start coin popup animation
+        coinPopupActive = true;
+        coinPopupStartTime = timestamp;
+        coinPopupAmount = increments;
+        console.log("Coin added!", increments, "Total:", coinCount); // Debug log
     }
     if (gameUIContainer) {
         updateGameUI();
@@ -1796,6 +1809,37 @@ function update(timestamp) {
         }
         context.fillText(scoreText, scoreX, scoreY);
         context.fillText(bestText, bestX, bestY);
+    }
+
+    // Draw coin popup animation (+1 that fades out)
+    if (coinPopupActive && timestamp) {
+        const elapsed = timestamp - coinPopupStartTime;
+        if (elapsed < COIN_POPUP_DURATION) {
+            // Calculate opacity (1.0 to 0.0 over 3 seconds)
+            const progress = elapsed / COIN_POPUP_DURATION;
+            const opacity = 1 - progress;
+            // Float upward as it fades
+            const floatOffset = Math.round(progress * 30 * uiScale);
+            
+            const popupText = "+" + coinPopupAmount;
+            const popupFontSize = Math.round(24 * uiScale);
+            context.font = `bold ${popupFontSize}px courier`;
+            
+            // Position near the coin counter (top left area)
+            const popupX = Math.round(padding + 80 * uiScale);
+            const popupY = Math.round(scoreTop * uiScale - floatOffset);
+            
+            // Draw with fading green color
+            context.globalAlpha = opacity;
+            context.fillStyle = "#00cc00";
+            context.strokeStyle = "white";
+            context.lineWidth = 2;
+            context.strokeText(popupText, popupX, popupY);
+            context.fillText(popupText, popupX, popupY);
+            context.globalAlpha = 1.0;
+        } else {
+            coinPopupActive = false;
+        }
     }
 
     if (isPaused && !isGameOver) {
@@ -2154,6 +2198,10 @@ async function restartGame() {
     isDucking = false;
     isPaused = false;
     lastFrameTime = null;
+    // Reset coin popup animation
+    coinPopupActive = false;
+    coinPopupStartTime = 0;
+    coinPopupAmount = 0;
     
     // Reset player position and size (using scaled values)
     player.x = playerX;
