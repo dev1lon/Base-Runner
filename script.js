@@ -38,7 +38,7 @@ const DEBUG_SHOW_GROUND_LINE = false;
 //=============================================================================
 // BASE SPRITE SIZES (at scale 1.0)
 //=============================================================================
-const BASE_COIN_SIZE = 16;
+const BASE_COIN_SIZE = 4;
 const BASE_PLAYER_HEIGHT = 110; // 2x coin
 const BASE_PLAYER_WIDTH = 90;
 const BASE_PLAYER_DUCK_HEIGHT = 50;
