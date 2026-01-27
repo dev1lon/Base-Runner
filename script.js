@@ -940,9 +940,9 @@ let birdY = boardHeight - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
 let birdImg;
 
 //physics
-const SPEED_START = 10; // стартовая скорость (медленно)
+const SPEED_START = 5; // стартовая скорость (медленно)
 const SPEED_MAX = 17; // максимальная скорость (конечная)
-const MOBILE_SPEED_MAX = 12; // максимальная скорость на телефоне
+const MOBILE_SPEED_MAX = 9; // максимальная скорость на телефоне
 const SPEED_MAX_SCORE = 10000; // до этого счёта скорость плавно растёт
 const BASE_GRAVITY = 1.0;
 const BASE_JUMP_VELOCITY = -22.9;
