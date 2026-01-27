@@ -455,7 +455,7 @@ function resetBackendSession() {
 }
 
 function recordInput(type) {
-    if (!backendSessionActive || gameOver || showWelcome || isPaused) {
+    if (!backendSessionActive || gameState === GAME_STATE.GAME_OVER || showWelcome || isPaused) {
         return;
     }
     const elapsed = Math.round(performance.now() - backendSessionStartMs);
@@ -1323,7 +1323,7 @@ async function startGameFromWelcome() {
 }
 
 function openPauseMenu() {
-    if (currentUIState !== UI_STATE.RUNNING || gameOver) return;
+    if (currentUIState !== UI_STATE.RUNNING || gameState === GAME_STATE.GAME_OVER) return;
     currentUIState = UI_STATE.PAUSED;
     isPaused = true;
     showWelcome = true;
@@ -1351,7 +1351,7 @@ function resumeGame() {
 }
 
 function togglePause() {
-    if (gameOver) return;
+    if (gameState === GAME_STATE.GAME_OVER) return;
     if (currentUIState === UI_STATE.PAUSED) {
         resumeGame();
         return;
@@ -1811,7 +1811,7 @@ function update(timestamp) {
         context.fillText(pauseText, pauseX, pauseY);
     }
 
-    // GAME OVER overlay - always render when gameOver is true
+    // GAME OVER overlay - render only in GAME_OVER state
     if (isGameOver) {
         // Semi-transparent overlay
         context.fillStyle = "rgba(90, 90, 90, 0.55)";
@@ -1942,7 +1942,11 @@ async function movePlayer(e) {
     if (isPaused) {
         return;
     }
-    if (gameOver) {
+    if (gameState === GAME_STATE.GAME_OVER) {
+        const elapsed = performance.now() - gameOverTimestamp;
+        if (elapsed < 300) {
+            return;
+        }
         if (e.code == "Space") {
             //restart game
             await restartGame();
@@ -1981,7 +1985,11 @@ async function handleTouchStart(e) {
         return;
     }
 
-    if (gameOver) {
+    if (gameState === GAME_STATE.GAME_OVER) {
+        const elapsed = performance.now() - gameOverTimestamp;
+        if (elapsed < 300) {
+            return;
+        }
         await restartGame();
         return;
     }
@@ -2012,7 +2020,7 @@ function handleTouchEnd(e) {
 }
 
 function placeObstacle() {
-    if (gameOver || !gameActive || isPaused) {
+    if (gameState === GAME_STATE.GAME_OVER || !gameActive || isPaused) {
         return;
     }
 
