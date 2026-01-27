@@ -894,7 +894,7 @@ function getBirdFlyY() {
     // Bird flies at head level - hits standing player but misses ducking player
     // Bird bottom must be ABOVE ducking player's head for duck to work
     // duckHeight/playerHeight ≈ 0.69, so we need multiplier > 0.69
-    const birdBottom = groundY - playerHeight * 0.75; // 75% up from feet
+    const birdBottom = groundY - playerHeight * 0.70; // 75% up from feet
     return Math.round(birdBottom - birdHeight);
 }
 
