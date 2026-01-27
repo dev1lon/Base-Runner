@@ -55,6 +55,7 @@ const BASE_SEPOLIA_PARAMS = {
 const CHECKIN_CONTRACT_ADDRESS = "0xc24F4140df57BEadB3F19C9F7bEF0e49E8F47b44";
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
+const ALLOW_GUEST_PLAY = true;
 
 // UI State Machine
 const UI_STATE = {
@@ -588,6 +589,7 @@ function updateWalletUI() {
     const isOnBaseSepolia = normalizedChainId === BASE_SEPOLIA_CHAIN_ID;
     const walletConnected = isConnected && isOnBaseSepolia;
     walletReady = walletConnected && walletAuthenticated;
+    const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
 
     // Update connect button state and text
     if (connectButton) {
@@ -635,17 +637,13 @@ function updateWalletUI() {
 
     // Transition UI state based on wallet status
     if (currentUIState === UI_STATE.CONNECT || currentUIState === UI_STATE.MENU) {
-        if (walletReady) {
-            currentUIState = UI_STATE.MENU;
-        } else {
-            currentUIState = UI_STATE.CONNECT;
-        }
+        currentUIState = canPlayNow ? UI_STATE.MENU : UI_STATE.CONNECT;
         updateUIState();
     }
     
     // Update start button
     if (startButton) {
-        startButton.disabled = !walletReady;
+        startButton.disabled = !canPlayNow;
     }
     
     updateCheckinUI();
@@ -1071,6 +1069,10 @@ function updateWelcomeVisibility() {
     updateUIState();
 }
 
+function canPlayGame() {
+    return walletReady || ALLOW_GUEST_PLAY;
+}
+
 function updateUIState() {
     // Hide all overlays first
     if (overlayConnect) overlayConnect.classList.add("hidden");
@@ -1106,7 +1108,7 @@ function updateUIState() {
     
     // Update start button state
     if (startButton) {
-        startButton.disabled = !walletReady;
+        startButton.disabled = !canPlayGame();
     }
     
     // Sync legacy state variables
@@ -1157,7 +1159,7 @@ function updateGameUI() {
 function updateMenuState() {
     // Legacy function - most logic moved to updateUIState
     if (startButton) {
-        startButton.disabled = !walletReady;
+        startButton.disabled = !canPlayGame();
     }
     updateCheckinUI();
 }
@@ -1309,7 +1311,7 @@ async function handleCheckin() {
 }
 
 async function startGameFromWelcome() {
-    if (!walletReady) {
+    if (!canPlayGame()) {
         updateWalletUI();
         return;
     }
@@ -1333,7 +1335,7 @@ function openPauseMenu() {
 
 function openWalletMenu() {
     // Force back to connect/menu based on wallet state
-    currentUIState = walletReady ? UI_STATE.MENU : UI_STATE.CONNECT;
+    currentUIState = canPlayGame() ? UI_STATE.MENU : UI_STATE.CONNECT;
     showWelcome = true;
     isPaused = false;
     gameActive = false;
