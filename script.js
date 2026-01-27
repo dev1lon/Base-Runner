@@ -1,16 +1,13 @@
-//board - scaled up by 1.5x
+//board
 let board;
-const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
-const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
-// Platform visual offset from bottom (matches CSS: bottom: 25px + height: 50px = platform top at 75px from bottom)
-const PLATFORM_BOTTOM_OFFSET = 25; // CSS: bottom: 25px
-const PLATFORM_HEIGHT = 50; // CSS: height: 50px
-const MOBILE_PLATFORM_BOTTOM_OFFSET = 20; // CSS mobile: bottom: 20px
-const MOBILE_PLATFORM_HEIGHT = 40; // CSS mobile: height: 40px
-let platformHeight = PLATFORM_HEIGHT;
-let platformBottomOffset = PLATFORM_BOTTOM_OFFSET;
-// Ground level = where the top of the platform is (character stands here)
-let groundLevel = BASE_BOARD_HEIGHT - PLATFORM_BOTTOM_OFFSET - PLATFORM_HEIGHT;
+const BASE_BOARD_WIDTH = 750;
+const BASE_BOARD_HEIGHT = 400;
+// Platform drawn on canvas - defines the ground level
+const PLATFORM_HEIGHT = 45; // Height of platform bar on canvas
+const PLATFORM_MARGIN_PERCENT = 0.12; // 12% margin on each side
+const PLATFORM_BOTTOM_MARGIN = 20; // Pixels from canvas bottom to platform bottom
+// Ground level = top surface of platform where player/obstacles stand
+let groundY = BASE_BOARD_HEIGHT - PLATFORM_BOTTOM_MARGIN - PLATFORM_HEIGHT;
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -763,29 +760,29 @@ function handleChainChanged(chainId) {
     }
 }
 
-//player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
-const BASE_PLAYER_WIDTH = 250; // 152 * 1.1 (increased by 10% more)
-const BASE_PLAYER_HEIGHT = 141; // 94 * 1.5
-const BASE_PLAYER_DUCK_HEIGHT = 60; // For ducking (crouched pose, head visible)
-const BASE_PLAYER_X = 75; // 50 * 1.5
+//player - sized to ~10% of board height for proper proportions
+const BASE_PLAYER_WIDTH = 35;
+const BASE_PLAYER_HEIGHT = 42; // ~10% of 400px board height
+const BASE_PLAYER_DUCK_HEIGHT = 22;
+const BASE_PLAYER_X = 60;
 let playerWidth = BASE_PLAYER_WIDTH;
 let playerHeight = BASE_PLAYER_HEIGHT;
 let playerDuckHeight = BASE_PLAYER_DUCK_HEIGHT;
 let playerX = BASE_PLAYER_X;
 let playerSpriteInsetX = 0;
-let playerY = groundLevel - playerHeight;
+let playerY = groundY - playerHeight;
 let playerImg;
 let isDucking = false;
 
 // Debug mode flag (set to true to visualize hitboxes)
 let debugHitboxes = false;
 
-// Render/physics constants (avoid per-frame allocations)
-const BASE_COIN_SIZE = 45;
-const BASE_STICK_HEIGHT = 45;
-const BASE_STICK_WIDTH = 6;
-const BASE_COIN_SPACING = 50;
-const SPAWN_X_GAP = 2000; // минимальный горизонтальный зазор между препятствиями (монеты/птицы)
+// Render/physics constants - scaled to match smaller sprites
+const BASE_COIN_SIZE = 18;
+const BASE_STICK_HEIGHT = 20;
+const BASE_STICK_WIDTH = 3;
+const BASE_COIN_SPACING = 22;
+const SPAWN_X_GAP = 400; // minimum horizontal gap between obstacles
 let COIN_SIZE = BASE_COIN_SIZE;
 let STICK_HEIGHT = BASE_STICK_HEIGHT;
 let STICK_WIDTH = BASE_STICK_WIDTH;
@@ -843,41 +840,39 @@ let tokenArray = [];
 let birdArray = [];
 
 //token obstacle variants (ground obstacle - coin on stick)
-const BASE_TOKEN1_WIDTH = 51; // 34 * 1.5 - single coin
-const BASE_TOKEN2_WIDTH = 103; // 69 * 1.5 - double coin  
-const BASE_TOKEN3_WIDTH = 153; // 102 * 1.5 - triple coin
-const BASE_TOKEN_HEIGHT = 105; // 70 * 1.5
+const BASE_TOKEN1_WIDTH = 20; // single coin
+const BASE_TOKEN2_WIDTH = 44; // double coin  
+const BASE_TOKEN3_WIDTH = 66; // triple coin
+const BASE_TOKEN_HEIGHT = 40;
 let token1Width = BASE_TOKEN1_WIDTH;
 let token2Width = BASE_TOKEN2_WIDTH;
 let token3Width = BASE_TOKEN3_WIDTH;
 let tokenHeight = BASE_TOKEN_HEIGHT;
 let tokenX = boardWidth + BASE_SPAWN_OFFSET;
-let tokenY = groundLevel - tokenHeight;
+let tokenY = groundY - tokenHeight;
 let tokenImg;
 
-//bird obstacle (flying enemy) - scaled up by 1.5x, then +10%
-const BASE_BIRD_WIDTH = 100; // 69 * 1.1 (increased by 10%)
-const BASE_BIRD_HEIGHT = 100; // 60 * 1.1 (increased by 10%)
-const BASE_BIRD_Y_OFFSET = 150;
+//bird obstacle (flying enemy) - sized proportionally to player
+const BASE_BIRD_WIDTH = 32;
+const BASE_BIRD_HEIGHT = 28;
+const BASE_BIRD_Y_OFFSET = 35; // flies above ground at head level
 let birdWidth = BASE_BIRD_WIDTH;
 let birdHeight = BASE_BIRD_HEIGHT;
 let birdX = boardWidth + BASE_SPAWN_OFFSET;
-let birdY = groundLevel - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
+let birdY = groundY - birdHeight - BASE_BIRD_Y_OFFSET;
 let birdImg;
 
-//physics
-const SPEED_START = 3; // стартовая скорость (медленно) - уменьшено для дальности прыжков
-const SPEED_MAX = 14; // максимальная скорость (конечная)
-const MOBILE_SPEED_MAX = 6; // максимальная скорость на телефоне - уменьшено для дальности прыжков
-const SPEED_MAX_SCORE = 10000; // до этого счёта скорость плавно растёт
-// Reference speed for time scaling - at this speed, gameTimeScale = 1.0
-// Using max speed as reference means at lower speeds, everything (including jumps) is slower
+//physics - scaled for smaller sprites and board
+const SPEED_START = 2.5;
+const SPEED_MAX = 8;
+const MOBILE_SPEED_MAX = 5;
+const SPEED_MAX_SCORE = 10000;
 const SPEED_REFERENCE = SPEED_MAX;
 const MOBILE_SPEED_REFERENCE = MOBILE_SPEED_MAX;
-const BASE_GRAVITY = 1.0;
-const BASE_JUMP_VELOCITY = -22.9;
-const MOBILE_GRAVITY_MULT = 1.05; // +5% sharpness
-const MOBILE_JUMP_HEIGHT_MULT = 0.9; // -10% height
+const BASE_GRAVITY = 0.6;
+const BASE_JUMP_VELOCITY = -11;
+const MOBILE_GRAVITY_MULT = 1.05;
+const MOBILE_JUMP_HEIGHT_MULT = 0.9;
 const MOBILE_JUMP_VELOCITY_MULT = Math.sqrt(MOBILE_JUMP_HEIGHT_MULT * MOBILE_GRAVITY_MULT);
 let speed = SPEED_START;
 let velocityX = -speed;
@@ -885,7 +880,7 @@ let velocityY = 0;
 let gravity = BASE_GRAVITY;
 let jumpVelocity = BASE_JUMP_VELOCITY;
 let scoreFloat = 0;
-let gameTimeScale = 1.0; // Unified time scale for synchronizing physics with game speed
+let gameTimeScale = 1.0;
 
 // (Ручные паддинги убраны — хитбоксы строятся по альфа‑границам спрайтов)
 
@@ -1350,15 +1345,15 @@ function applyResponsiveLayout() {
     jumpVelocity = isMobile ? BASE_JUMP_VELOCITY * MOBILE_JUMP_VELOCITY_MULT : BASE_JUMP_VELOCITY;
     boardWidth = nextBoardWidth;
     boardHeight = nextBoardHeight;
-    platformHeight = isMobile ? MOBILE_PLATFORM_HEIGHT : PLATFORM_HEIGHT;
-    platformBottomOffset = isMobile ? MOBILE_PLATFORM_BOTTOM_OFFSET : PLATFORM_BOTTOM_OFFSET;
-    groundLevel = boardHeight - platformBottomOffset - platformHeight;
+    
+    // Recalculate groundY based on board size
+    groundY = boardHeight - PLATFORM_BOTTOM_MARGIN - PLATFORM_HEIGHT;
     updatePauseButtonVisibility();
 
     applyObjectScale(objectScale);
-    playerY = groundLevel - playerHeight;
-    tokenY = groundLevel - tokenHeight;
-    birdY = groundLevel - birdHeight - Math.round(BASE_BIRD_Y_OFFSET * objectScale);
+    playerY = groundY - playerHeight;
+    tokenY = groundY - tokenHeight;
+    birdY = groundY - birdHeight - Math.round(BASE_BIRD_Y_OFFSET * objectScale);
     tokenX = boardWidth + BASE_SPAWN_OFFSET;
     birdX = boardWidth + BASE_SPAWN_OFFSET;
 
@@ -1376,11 +1371,11 @@ function applyResponsiveLayout() {
         const bird = birdArray[i];
         bird.width = birdWidth;
         bird.height = birdHeight;
-        bird.y = birdY;
+        bird.y = groundY - playerHeight - birdHeight + 5;
     }
 
     if (wasOnGround) {
-        player.y = isDucking ? groundLevel - playerDuckHeight : playerY;
+        player.y = isDucking ? groundY - playerDuckHeight : playerY;
         velocityY = 0;
     } else {
         player.y = Math.min(playerY, playerY + relativeY);
@@ -1509,71 +1504,70 @@ function computeOpaqueBounds(img) {
 
 function update(timestamp) {
     requestAnimationFrame(update);
-    if (gameOver) {
-        return;
-    }
+    
     if (lastFrameTime === null) {
         lastFrameTime = timestamp;
     }
     const deltaMs = Math.min(timestamp - lastFrameTime, 100);
     lastFrameTime = timestamp;
     const dtScale = deltaMs / FRAME_MS;
-    const stepScale = gameActive && !isPaused ? dtScale : 0;
+    
+    // Freeze gameplay when gameOver but continue rendering
+    const shouldUpdate = gameActive && !isPaused && !gameOver;
+    const stepScale = shouldUpdate ? dtScale : 0;
+    
     context.clearRect(0, 0, boardWidth, boardHeight);
 
-    // Don't draw game elements when overlay is visible
-    if (showWelcome && !gameActive) {
+    // Don't draw game elements when overlay is visible (except during game over)
+    if (showWelcome && !gameActive && !gameOver) {
         return;
     }
 
-    // плавное ускорение до максимума к счёту SPEED_MAX_SCORE
-    const displayScore = Math.floor(scoreFloat);
-    const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
-    const maxSpeed = isMobileLayout ? MOBILE_SPEED_MAX : SPEED_MAX;
-    speed = SPEED_START + (maxSpeed - SPEED_START) * speedProgress;
-    velocityX = -speed;
+    // Draw platform first (behind everything)
+    drawPlatform();
+
+    // Speed calculation (only when updating)
+    if (shouldUpdate) {
+        const displayScore = Math.floor(scoreFloat);
+        const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
+        const maxSpeed = isMobileLayout ? MOBILE_SPEED_MAX : SPEED_MAX;
+        speed = SPEED_START + (maxSpeed - SPEED_START) * speedProgress;
+        velocityX = -speed;
+    }
     
-    // Unified time scale: synchronizes all physics with game speed
-    // At max speed, gameTimeScale = 1.0; at slower speeds, everything slows down proportionally
-    // This keeps jump HEIGHT the same but makes jump DURATION longer at lower speeds
+    // Time scale for physics sync
     const speedRef = isMobileLayout ? MOBILE_SPEED_REFERENCE : SPEED_REFERENCE;
     gameTimeScale = speed / speedRef;
-    
-    // Scaled delta time for physics - applies both frame timing and game speed
     const scaledDt = stepScale * gameTimeScale;
-    
-    // Obstacle horizontal movement uses scaledDt for consistent sync
     const frameVelocityX = velocityX * stepScale;
 
-    //player physics
+    // Player physics
     const prevY = player.y;
     const prevHeight = player.height;
-    const prevGroundY = groundLevel - prevHeight;
-    const wasAirborne = prevY < prevGroundY - 1;
+    const playerGroundY = groundY - prevHeight;
+    const wasAirborne = prevY < playerGroundY - 1;
     const onGround = !wasAirborne;
     const canDuck = isDucking && onGround;
 
-    // Only duck on ground (prevents shrink while jumping)
     player.height = canDuck ? playerDuckHeight : playerHeight;
-    const groundY = groundLevel - player.height;
+    const currentGroundY = groundY - player.height;
 
     if (wasAirborne) {
-        // In air: keep top position to avoid "extra jump" on duck toggle
         player.y = prevY;
     } else {
-        // On ground: keep feet planted
-        player.y = groundY;
+        player.y = currentGroundY;
         if (velocityY > 0) {
             velocityY = 0;
         }
     }
 
-    // Apply gravity and velocity with scaledDt - jump duration scales with game speed
-    // Jump height stays the same because both gravity and velocity use the same time scale
-    velocityY += gravity * scaledDt;
-    player.y = Math.min(player.y + velocityY * scaledDt, groundY);
-    if (player.y >= groundY) {
-        velocityY = 0;
+    // Apply physics only when not game over
+    if (shouldUpdate) {
+        velocityY += gravity * scaledDt;
+        player.y = Math.min(player.y + velocityY * scaledDt, currentGroundY);
+        if (player.y >= currentGroundY) {
+            velocityY = 0;
+        }
     }
     player.x = playerX + mobileEdgeGapWorld + mobileSafeLeftWorld;
     
@@ -1620,7 +1614,9 @@ function update(timestamp) {
     //token obstacles (ground) - iterate backwards for in-place removal
     for (let i = tokenArray.length - 1; i >= 0; i--) {
         let token = tokenArray[i];
-        token.x += frameVelocityX;
+        if (shouldUpdate) {
+            token.x += frameVelocityX;
+        }
 
         // Remove off-screen tokens
         if (token.x + token.width < 0) {
@@ -1628,145 +1624,180 @@ function update(timestamp) {
             continue;
         }
         
-        // Draw token on stick (coin on blue stick)
+        // Draw token on stick
         drawTokenObstacle(token);
 
-        // Get hitboxes (reuse object)
+        // Get hitboxes
         let tokenHitbox = getTokenHitbox(token, tokenHitboxScratch);
         
-        // Debug: draw hitboxes if enabled
         if (debugHitboxes) {
-            // Draw player hitbox in red
             context.strokeStyle = 'red';
-            context.lineWidth = 2;
+            context.lineWidth = 1;
             context.strokeRect(playerHitbox.x, playerHitbox.y, playerHitbox.width, playerHitbox.height);
-            
-            // Draw token hitbox in blue
             context.strokeStyle = 'blue';
             context.strokeRect(tokenHitbox.x, tokenHitbox.y, tokenHitbox.width, tokenHitbox.height);
         }
         
-        if (detectCollision(playerHitbox, tokenHitbox)) {
+        // Only check collisions when game is active
+        if (shouldUpdate && detectCollision(playerHitbox, tokenHitbox)) {
             gameOver = true;
-            // Update best score
             if (score > bestScore) {
                 bestScore = score;
                 localStorage.setItem('baseapp_runner_best_score', bestScore);
             }
+            handleGameOver();
         }
     }
 
-    //bird obstacles (flying) - iterate backwards for in-place removal
+    //bird obstacles (flying)
     for (let i = birdArray.length - 1; i >= 0; i--) {
         let bird = birdArray[i];
-        bird.x += frameVelocityX;
+        if (shouldUpdate) {
+            bird.x += frameVelocityX;
+        }
 
-        // Remove off-screen birds
         if (bird.x + bird.width < 0) {
             birdArray.splice(i, 1);
             continue;
         }
         
-        // Draw bird with integer coordinates for crisp rendering
-        let drawX = Math.round(bird.x);
-        let drawY = Math.round(bird.y);
-        context.drawImage(birdImg, drawX, drawY, bird.width, bird.height);
+        let birdDrawX = Math.round(bird.x);
+        let birdDrawY = Math.round(bird.y);
+        context.drawImage(birdImg, birdDrawX, birdDrawY, bird.width, bird.height);
 
-        // Bird hitbox aligned to visible sprite bounds
         birdHitboxScratch.x = Math.round(bird.x);
         birdHitboxScratch.y = Math.round(bird.y);
         birdHitboxScratch.width = bird.width;
         birdHitboxScratch.height = bird.height;
         applySpriteBounds(birdHitboxScratch, spriteBounds.bird, OBSTACLE_HITBOX_INSET, birdHitboxScratch);
         
-        // Debug: draw bird hitbox if enabled
         if (debugHitboxes) {
             context.strokeStyle = 'green';
-            context.lineWidth = 2;
+            context.lineWidth = 1;
             context.strokeRect(birdHitboxScratch.x, birdHitboxScratch.y, birdHitboxScratch.width, birdHitboxScratch.height);
         }
         
-        // Use a head-focused hitbox for birds (prevents passing through head)
         let playerBirdHitbox = getPlayerBirdHitbox(playerBirdHitboxScratch);
-        if (detectCollision(playerBirdHitbox, birdHitboxScratch)) {
+        if (shouldUpdate && detectCollision(playerBirdHitbox, birdHitboxScratch)) {
             gameOver = true;
-            // Update best score
             if (score > bestScore) {
                 bestScore = score;
                 localStorage.setItem('baseapp_runner_best_score', bestScore);
             }
+            handleGameOver();
         }
     }
 
-    if (gameOver) {
-        handleGameOver();
-    }
+    // Update score only when game is running
+    if (shouldUpdate) {
+        scoreFloat += scaledDt;
+        const nextScore = Math.floor(scoreFloat);
+        if (nextScore !== score) {
+            score = nextScore;
+        }
 
-    // Arrays are already cleaned in the loops above
-
-    // Update score - uses scaledDt so score rate matches game speed
-    scoreFloat += scaledDt;
-    const nextScore = Math.floor(scoreFloat);
-    if (nextScore !== score) {
-        score = nextScore;
-    }
-
-    // Award coins for score milestones
-    if (!backendSessionActive && score >= nextCoinScore) {
-        const increments = Math.floor((score - nextCoinScore) / 10000) + 1;
-        addCoins(increments);
-        nextCoinScore += increments * 10000;
+        if (!backendSessionActive && score >= nextCoinScore) {
+            const increments = Math.floor((score - nextCoinScore) / 10000) + 1;
+            addCoins(increments);
+            nextCoinScore += increments * 10000;
+        }
     }
     
-    // Update HTML UI elements
     updateGameUI();
 
-    if (isPaused) {
+    // Draw overlays
+    if (isPaused && !gameOver) {
         const pauseText = "PAUSE";
-        const pauseFont = Math.round(30 * uiScale);
-        context.fillStyle = "black";
-        context.font = `${pauseFont}px courier`;
+        const pauseFont = Math.round(24 * uiScale);
+        context.fillStyle = "rgba(0,0,0,0.8)";
+        context.font = `bold ${pauseFont}px Arial, sans-serif`;
         const pauseX = Math.round(boardWidth / 2 - context.measureText(pauseText).width / 2);
         const pauseY = Math.round(boardHeight * 0.4);
-        if (isMobileLayout) {
-            context.strokeStyle = "white";
-            context.lineWidth = 2;
-            context.strokeText(pauseText, pauseX, pauseY);
-        }
+        context.strokeStyle = "white";
+        context.lineWidth = 3;
+        context.strokeText(pauseText, pauseX, pauseY);
         context.fillText(pauseText, pauseX, pauseY);
     }
 
+    // GAME OVER overlay - always render when gameOver is true
     if (gameOver) {
+        // Semi-transparent overlay
+        context.fillStyle = "rgba(0, 0, 0, 0.3)";
+        context.fillRect(0, 0, boardWidth, boardHeight);
+        
         const gameOverText = "GAME OVER";
-        const restartText = "Press SPACE to restart";
-        const gameOverFont = Math.round(30 * (isMobileLayout ? 1.0 : 1));
-        const restartFont = Math.round(20 * (isMobileLayout ? 1.0 : 1));
-        context.fillStyle="red";
-        context.font=`${gameOverFont}px courier`;
-        const gameOverX = Math.round(boardWidth / 2 - context.measureText(gameOverText).width / 2);
-        const gameOverY = Math.round(boardHeight * gameOverYRatio);
-        if (isMobileLayout) {
-            context.strokeStyle = "white";
-            context.lineWidth = 2;
-            context.strokeText(gameOverText, gameOverX, gameOverY);
-        }
-        context.fillText(gameOverText, gameOverX, gameOverY);
-        context.font=`${restartFont}px courier`;
-        const restartX = Math.round(boardWidth / 2 - context.measureText(restartText).width / 2);
-        const restartY = Math.round(gameOverY + Math.round(restartGap * uiScale));
-        if (isMobileLayout) {
-            context.strokeStyle = "white";
-            context.lineWidth = 1.5;
-            context.strokeText(restartText, restartX, restartY);
-        }
-        context.fillText(restartText, restartX, restartY);
+        const restartText = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
+        const gameOverFont = Math.round(28 * uiScale);
+        const restartFont = Math.round(14 * uiScale);
+        
+        // Center vertically in the play area (above platform)
+        const centerY = (groundY - PLATFORM_HEIGHT) / 2;
+        
+        // Game over text with outline for visibility
+        context.font = `bold ${gameOverFont}px Arial, sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        
+        context.strokeStyle = "white";
+        context.lineWidth = 4;
+        context.strokeText(gameOverText, boardWidth / 2, centerY);
+        
+        context.fillStyle = "#DC3545";
+        context.fillText(gameOverText, boardWidth / 2, centerY);
+        
+        // Restart hint
+        context.font = `${restartFont}px Arial, sans-serif`;
+        context.strokeStyle = "white";
+        context.lineWidth = 2;
+        context.strokeText(restartText, boardWidth / 2, centerY + gameOverFont);
+        context.fillStyle = "#333";
+        context.fillText(restartText, boardWidth / 2, centerY + gameOverFont);
+        
+        // Reset text align
+        context.textAlign = "left";
+        context.textBaseline = "alphabetic";
     }
+}
+
+// Draw the platform bar on canvas
+function drawPlatform() {
+    const platformLeft = Math.round(boardWidth * PLATFORM_MARGIN_PERCENT);
+    const platformRight = Math.round(boardWidth * (1 - PLATFORM_MARGIN_PERCENT));
+    const platformWidth = platformRight - platformLeft;
+    const platformTop = groundY;
+    const platformBottom = groundY + PLATFORM_HEIGHT;
+    const radius = 8;
+    
+    // Platform body - gradient for glass effect
+    const gradient = context.createLinearGradient(0, platformTop, 0, platformBottom);
+    gradient.addColorStop(0, "rgba(190, 205, 225, 0.95)");
+    gradient.addColorStop(0.3, "rgba(170, 190, 210, 0.95)");
+    gradient.addColorStop(0.7, "rgba(150, 175, 200, 1)");
+    gradient.addColorStop(1, "rgba(130, 160, 190, 1)");
+    
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.roundRect(platformLeft, platformTop, platformWidth, PLATFORM_HEIGHT, radius);
+    context.fill();
+    
+    // Top highlight
+    context.fillStyle = "rgba(255, 255, 255, 0.25)";
+    context.beginPath();
+    context.roundRect(platformLeft + 2, platformTop + 2, platformWidth - 4, PLATFORM_HEIGHT * 0.4, [radius - 2, radius - 2, 0, 0]);
+    context.fill();
+    
+    // Border
+    context.strokeStyle = "rgba(255, 255, 255, 0.5)";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.roundRect(platformLeft, platformTop, platformWidth, PLATFORM_HEIGHT, radius);
+    context.stroke();
 }
 
 function drawTokenObstacle(token) {
     // Draw coins based on token type (1, 2, or 3 coins)
     // Sticks grow up from the ground level (platform top)
-    const stickY = Math.round(groundLevel - STICK_HEIGHT);
+    const stickY = Math.round(groundY - STICK_HEIGHT);
     
     if (token.type === 1) {
         // Single coin - one stick
@@ -1815,9 +1846,8 @@ function drawCoin(x, y, size) {
 }
 
 function triggerJump() {
-    const groundY = groundLevel - player.height;
-    if (player.y >= groundY - 1) {
-        //jump - tuned for reliable obstacle clearing with good airtime
+    const playerGroundY = groundY - player.height;
+    if (player.y >= playerGroundY - 1) {
         velocityY = jumpVelocity;
         recordInput("jump");
     }
@@ -1923,51 +1953,43 @@ function placeObstacle() {
         return;
     }
 
-    let placeObstacleChance = getRandom(); //0 - 0.9999...
+    let placeObstacleChance = getRandom();
 
-    if (placeObstacleChance > .55) { //45% chance for token (ground obstacle)
-        // Determine token type based on Chrome Dino probabilities
+    if (placeObstacleChance > .55) { // 45% chance for token (ground obstacle)
         let tokenTypeChance = getRandom();
         let tokenType, tokenWidth;
         
-        if (tokenTypeChance > .90) { // 10% chance for triple
+        if (tokenTypeChance > .90) {
             tokenType = 3;
             tokenWidth = token3Width;
-        } else if (tokenTypeChance > .70) { // 20% chance for double
+        } else if (tokenTypeChance > .70) {
             tokenType = 2;
             tokenWidth = token2Width;
-        } else { // 70% chance for single
+        } else {
             tokenType = 1;
             tokenWidth = token1Width;
         }
         
         let token = {
-            x : adjustSpawnX(tokenX, SPAWN_X_GAP),
-            y : tokenY,
-            width : tokenWidth,
+            x: adjustSpawnX(tokenX, SPAWN_X_GAP),
+            y: tokenY,
+            width: tokenWidth,
             height: tokenHeight,
             type: tokenType
         }
         tokenArray.push(token);
     }
-    else if (placeObstacleChance > .35) { //20% chance for bird (flying obstacle)
-        // Set bird at head level (can be ducked under)
-        // Bird should fly at the player's head level when standing, but be avoidable by ducking
-        let standingHeadTop = playerY; // Top of player's head when standing
-        let duckedHeadTop = groundLevel - playerDuckHeight; // Top of player's head when ducking
-        // Bird flies at standing head level, so ducking makes player shorter than bird
-        let headLevelY = standingHeadTop - birdHeight + 15; // Bird bottom aligns with player head top
-        // Lower bird by 10% of its height so it collides properly
-        headLevelY += birdHeight * 0.1;
+    else if (placeObstacleChance > .35) { // 20% chance for bird
+        // Bird flies at head level - player can duck under it
+        let birdPosY = groundY - playerHeight - birdHeight + 5;
         let bird = {
-            x : adjustSpawnX(birdX, SPAWN_X_GAP),
-            y : headLevelY,
-            width : birdWidth,
+            x: adjustSpawnX(birdX, SPAWN_X_GAP),
+            y: birdPosY,
+            width: birdWidth,
             height: birdHeight
         }
         birdArray.push(bird);
     }
-
 }
 
 // Apply normalized sprite bounds to a draw rect
@@ -2004,7 +2026,7 @@ function getPlayerBirdHitbox(out) {
 
 // Get token hitbox - union of coin(s) and stick(s), aligned to visible pixels
 function getTokenHitbox(token, out) {
-    const stickY = Math.round(groundLevel - STICK_HEIGHT);
+    const stickY = Math.round(groundY - STICK_HEIGHT);
 
     let minX = Infinity;
     let minY = Infinity;
