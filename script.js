@@ -2,9 +2,8 @@
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
-// Platform defines the ground level (align with CSS platform)
-const PLATFORM_HEIGHT_RATIO = 0.027; // 12px at 450px height
-const PLATFORM_BOTTOM_RATIO = 0.33;
+// Platform element reference for DOM-based ground calculation
+let platformElement = null;
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -22,9 +21,8 @@ const MOBILE_RESTART_GAP = 24;
 const BASE_SPAWN_OFFSET = 200;
 let boardWidth = BASE_BOARD_WIDTH;
 let boardHeight = BASE_BOARD_HEIGHT;
-let platformHeight = Math.round(BASE_BOARD_HEIGHT * PLATFORM_HEIGHT_RATIO);
-let platformBottomMargin = Math.round(BASE_BOARD_HEIGHT * PLATFORM_BOTTOM_RATIO);
-let groundY = BASE_BOARD_HEIGHT - platformBottomMargin - platformHeight;
+// groundY will be computed from DOM platform position
+let groundY = Math.round(BASE_BOARD_HEIGHT * 0.65); // Fallback until DOM is ready
 let context;
 let renderScale = 1;
 let isMobileLayout = false;
@@ -827,7 +825,7 @@ function getBirdFlyY() {
 const BASE_COIN_SIZE_REF = 32; // Reference coin size for scaling calculations
 const BASE_PLAYER_WIDTH = 100; // ~1.6x coin width (maintains aspect ratio)
 const BASE_PLAYER_HEIGHT = 128; // Exactly 2x coin size (32 * 2 = 64)
-const BASE_PLAYER_DUCK_HEIGHT = 32; // Half player height when ducking
+const BASE_PLAYER_DUCK_HEIGHT = 64; // Half player height when ducking
 const BASE_PLAYER_X = 60;
 let playerWidth = BASE_PLAYER_WIDTH;
 let playerHeight = BASE_PLAYER_HEIGHT;
@@ -919,8 +917,8 @@ let tokenImg;
 
 //bird obstacle (flying enemy) - sized proportionally to player
 // Bird = ~1.2x coin size
-const BASE_BIRD_WIDTH = 44; // ~1.4x coin width
-const BASE_BIRD_HEIGHT = 38; // ~1.2x coin height (32 * 1.2 ≈ 38)
+const BASE_BIRD_WIDTH = 90; // ~1.4x coin width
+const BASE_BIRD_HEIGHT = 80; // ~1.2x coin height (32 * 1.2 ≈ 38)
 const BASE_BIRD_Y_OFFSET = 150;
 let birdWidth = BASE_BIRD_WIDTH;
 let birdHeight = BASE_BIRD_HEIGHT;
@@ -979,6 +977,7 @@ window.onload = function() {
     gameBestEl = document.getElementById("game-best");
     gameUIContainer = document.querySelector(".game-ui");
     gameOverOverlay = document.getElementById("game-over-overlay");
+    platformElement = document.querySelector(".game-platform");
 
     // Initial state
     showWelcome = true;
@@ -1038,6 +1037,16 @@ window.onload = function() {
     // Setup crisp rendering
     setupCrispCanvas();
     window.addEventListener("resize", setupCrispCanvas);
+    
+    // Recompute groundY after a frame to ensure DOM layout is stable
+    requestAnimationFrame(() => {
+        computeGroundYFromDOM();
+        // Update player position to match computed groundY
+        playerY = groundY - playerHeight;
+        if (player) {
+            player.y = playerY;
+        }
+    });
 
     //load player image (human character)
     playerImg = new Image();
@@ -1419,9 +1428,7 @@ function applyResponsiveLayout() {
     jumpVelocity = isMobile ? BASE_JUMP_VELOCITY * MOBILE_JUMP_VELOCITY_MULT : BASE_JUMP_VELOCITY;
     boardWidth = nextBoardWidth;
     boardHeight = nextBoardHeight;
-    platformHeight = Math.round(boardHeight * PLATFORM_HEIGHT_RATIO);
-    platformBottomMargin = Math.round(boardHeight * PLATFORM_BOTTOM_RATIO);
-    groundY = boardHeight - platformBottomMargin - platformHeight;
+    // groundY will be computed from DOM after canvas setup
     updatePauseButtonVisibility();
 
     applyObjectScale(objectScale);
@@ -1478,6 +1485,40 @@ function applyObjectScale(scale) {
     birdHeight = Math.round(BASE_BIRD_HEIGHT * scale);
 }
 
+// Compute groundY from actual DOM platform position (converts DOM -> canvas coordinates)
+function computeGroundYFromDOM() {
+    if (!board || !platformElement) return;
+    
+    const canvasRect = board.getBoundingClientRect();
+    const platformRect = platformElement.getBoundingClientRect();
+    
+    if (canvasRect.height <= 0) return;
+    
+    // Platform top edge relative to canvas top, in CSS pixels
+    const platformTopCSS = platformRect.top - canvasRect.top;
+    
+    // Convert to canvas logical coordinates (accounting for canvas scaling)
+    // Canvas logical height is boardHeight, but displayed at canvasRect.height
+    const scaleY = boardHeight / canvasRect.height;
+    const newGroundY = Math.round(platformTopCSS * scaleY);
+    
+    // Only update if valid
+    if (newGroundY > 0 && newGroundY < boardHeight) {
+        const oldGroundY = groundY;
+        groundY = newGroundY;
+        
+        // Update player, token, and bird positions to align with new groundY
+        playerY = groundY - playerHeight;
+        tokenY = groundY - tokenHeight;
+        birdY = getBirdFlyY();
+        
+        // If player is on ground, snap to new position
+        if (player && player.y >= oldGroundY - playerHeight - 5) {
+            player.y = isDucking ? groundY - playerDuckHeight : playerY;
+        }
+    }
+}
+
 function setupCrispCanvas() {
     // Handle device pixel ratio for crisp rendering
     applyResponsiveLayout();
@@ -1501,6 +1542,9 @@ function setupCrispCanvas() {
     context.webkitImageSmoothingEnabled = false;
     context.mozImageSmoothingEnabled = false;
     context.msImageSmoothingEnabled = false;
+    
+    // Compute groundY from actual platform DOM position
+    computeGroundYFromDOM();
 }
 
 function getRenderScale(dpr) {
@@ -2153,6 +2197,9 @@ async function restartGame() {
     if (gameOverOverlay) {
         gameOverOverlay.classList.add('hidden');
     }
+    
+    // Recompute groundY from DOM to ensure correct positioning
+    computeGroundYFromDOM();
     
     // Reset all game state variables
     gameState = GAME_STATE.RUNNING;
