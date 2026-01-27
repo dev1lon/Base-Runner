@@ -954,6 +954,8 @@ let velocityX = -speed;
 let velocityY = 0;
 let gravity = BASE_GRAVITY;
 let jumpVelocity = BASE_JUMP_VELOCITY;
+let currentJumpVelocity = BASE_JUMP_VELOCITY; // Scaled jump velocity based on current speed
+let currentGravity = BASE_GRAVITY; // Scaled gravity based on current speed
 let scoreFloat = 0;
 
 // (Ручные паддинги убраны — хитбоксы строятся по альфа‑границам спрайтов)
@@ -1385,18 +1387,14 @@ function togglePause() {
 function applyResponsiveLayout() {
     const viewport = getViewportSize();
     const isMobile = viewport.width <= MOBILE_MAX_WIDTH;
+    // Use consistent object scale across all mobile devices
     const viewportScale = Math.max(
         MOBILE_SCALE_MIN,
         Math.min(MOBILE_SCALE_MAX, viewport.width / MOBILE_BASE_WIDTH)
     );
     const nextObjectScale = isMobile ? MOBILE_OBJECT_SCALE * viewportScale : 1;
+    // Use fixed board width for consistency across all devices
     let nextBoardWidth = BASE_BOARD_WIDTH;
-    if (isMobile) {
-        nextBoardWidth = Math.min(
-            BASE_BOARD_WIDTH,
-            Math.max(MOBILE_MIN_BOARD_WIDTH, Math.round(viewport.width * MOBILE_WIDTH_MULTIPLIER))
-        );
-    }
     const nextBoardHeight = BASE_BOARD_HEIGHT;
 
     const layoutChanged = boardWidth !== nextBoardWidth
@@ -1510,15 +1508,19 @@ function getRenderScale(dpr) {
     const bodyStyles = window.getComputedStyle(document.body);
     const paddingTop = parseFloat(bodyStyles.paddingTop) || 0;
     const paddingBottom = parseFloat(bodyStyles.paddingBottom) || 0;
-    const paddingLeft = parseFloat(bodyStyles.paddingLeft) || 0;
-    const paddingRight = parseFloat(bodyStyles.paddingRight) || 0;
+    // On mobile, use full width (no left/right padding)
+    const paddingLeft = isMobileLayout ? 0 : (parseFloat(bodyStyles.paddingLeft) || 0);
+    const paddingRight = isMobileLayout ? 0 : (parseFloat(bodyStyles.paddingRight) || 0);
     const availableWidth = viewport.width - paddingLeft - paddingRight;
     let availableHeight = viewport.height - paddingTop - paddingBottom - headerHeight - 12;
     if (availableHeight < boardHeight * 0.4) {
         headerHeight = 0;
         availableHeight = window.innerHeight - paddingTop - paddingBottom - 12;
     }
-    const rawScale = Math.min(availableWidth / boardWidth, availableHeight / boardHeight);
+    // For mobile: scale to fill width completely (edge-to-edge)
+    const rawScale = isMobileLayout 
+        ? availableWidth / boardWidth  // Fill width on mobile
+        : Math.min(availableWidth / boardWidth, availableHeight / boardHeight);
     const cappedScale = isMobileLayout ? rawScale : Math.min(rawScale, 1);
     const clampedScale = Math.max(cappedScale, 0.1);
     if (isMobileLayout && dpr >= 2) {
@@ -1601,6 +1603,13 @@ function update(timestamp) {
     speed = SPEED_START + (maxSpeed - SPEED_START) * speedProgress;
     velocityX = -speed;
     const frameVelocityX = velocityX * stepScale;
+    
+    // Scale jump and gravity with speed to maintain consistent obstacle clearance
+    // At low speed, jump is stronger; at high speed, jump is weaker
+    const speedRatio = maxSpeed / Math.max(speed, SPEED_START);
+    const jumpScale = Math.sqrt(speedRatio); // sqrt for balanced scaling
+    currentJumpVelocity = jumpVelocity * jumpScale;
+    currentGravity = gravity / jumpScale; // gravity scales inversely
 
     //player physics
     const prevY = player.y;
@@ -1625,7 +1634,7 @@ function update(timestamp) {
         }
     }
 
-    velocityY += gravity * stepScale;
+    velocityY += currentGravity * stepScale;
     player.y = Math.min(player.y + velocityY * stepScale, groundY);
     if (player.y >= groundY) {
         velocityY = 0;
@@ -1902,8 +1911,8 @@ function drawCoin(x, y, size) {
 function triggerJump() {
     const groundY = boardHeight - player.height;
     if (player.y >= groundY - 1) {
-        //jump - tuned for reliable obstacle clearing with good airtime
-        velocityY = jumpVelocity;
+        //jump - scaled with speed for consistent obstacle clearance
+        velocityY = currentJumpVelocity;
         recordInput("jump");
     }
 }
