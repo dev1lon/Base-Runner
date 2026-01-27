@@ -39,9 +39,9 @@ const DEBUG_SHOW_GROUND_LINE = false;
 // BASE SPRITE SIZES (at scale 1.0)
 //=============================================================================
 const BASE_COIN_SIZE = 32;
-const BASE_PLAYER_HEIGHT = 64; // 2x coin
-const BASE_PLAYER_WIDTH = 46;
-const BASE_PLAYER_DUCK_HEIGHT = 32;
+const BASE_PLAYER_HEIGHT = 90; // 2x coin
+const BASE_PLAYER_WIDTH = 70;
+const BASE_PLAYER_DUCK_HEIGHT = 64;
 const BASE_BIRD_HEIGHT = 38;
 const BASE_BIRD_WIDTH = 43;
 const BASE_STICK_HEIGHT = 20;
@@ -60,8 +60,8 @@ const BASE_SPAWN_OFFSET = 150;
 //=============================================================================
 // PHYSICS
 //=============================================================================
-const SPEED_START = 6;
-const SPEED_MAX = 12;
+const SPEED_START = 4;
+const SPEED_MAX = 8;
 const SPEED_MAX_SCORE = 10000;
 const BASE_GRAVITY = 0.8;
 const BASE_JUMP_VELOCITY = -16;
@@ -901,7 +901,7 @@ let playerSpriteInsetX = 0;
 let debugHitboxes = false;
 
 // Minimum horizontal gap between obstacles (in design units)
-const SPAWN_X_GAP = 350;
+  const SPAWN_X_GAP = 350;
 let spawnXGap = SPAWN_X_GAP;
 
 // Reusable hitbox scratch objects to reduce GC
