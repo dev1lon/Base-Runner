@@ -954,9 +954,8 @@ let velocityX = -speed;
 let velocityY = 0;
 let gravity = BASE_GRAVITY;
 let jumpVelocity = BASE_JUMP_VELOCITY;
-let currentJumpVelocity = BASE_JUMP_VELOCITY; // Scaled jump velocity based on current speed
-let currentGravity = BASE_GRAVITY; // Scaled gravity based on current speed
 let scoreFloat = 0;
+let isAirborne = false; // Track if player is in the air
 
 // (Ручные паддинги убраны — хитбоксы строятся по альфа‑границам спрайтов)
 
@@ -1601,16 +1600,7 @@ function update(timestamp) {
     const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
     const maxSpeed = isMobileLayout ? MOBILE_SPEED_MAX : SPEED_MAX;
     speed = SPEED_START + (maxSpeed - SPEED_START) * speedProgress;
-    velocityX = -speed;
-    const frameVelocityX = velocityX * stepScale;
     
-    // Scale jump and gravity with speed to maintain consistent obstacle clearance
-    // At low speed, jump is stronger; at high speed, jump is weaker
-    const speedRatio = maxSpeed / Math.max(speed, SPEED_START);
-    const jumpScale = Math.sqrt(speedRatio); // sqrt for balanced scaling
-    currentJumpVelocity = jumpVelocity * jumpScale;
-    currentGravity = gravity / jumpScale; // gravity scales inversely
-
     //player physics
     const prevY = player.y;
     const prevHeight = player.height;
@@ -1634,11 +1624,28 @@ function update(timestamp) {
         }
     }
 
-    velocityY += currentGravity * stepScale;
+    velocityY += gravity * stepScale;
     player.y = Math.min(player.y + velocityY * stepScale, groundY);
     if (player.y >= groundY) {
         velocityY = 0;
     }
+    
+    // Track airborne state and apply speed reduction during jump
+    isAirborne = player.y < groundY - 1;
+    
+    // During jump: slow down obstacles to increase jump distance
+    // Slowdown is stronger at low speed, weaker at high speed
+    let effectiveSpeed = speed;
+    if (isAirborne) {
+        // At low speed (5): reduce to 40% speed -> more jump distance
+        // At max speed: reduce to 80% speed -> less jump distance bonus
+        const speedRatio = speed / maxSpeed; // 0 at start, 1 at max
+        const slowdownFactor = 0.4 + 0.4 * speedRatio; // 0.4 to 0.8
+        effectiveSpeed = speed * slowdownFactor;
+    }
+    
+    velocityX = -effectiveSpeed;
+    const frameVelocityX = velocityX * stepScale;
     player.x = playerX + mobileEdgeGapWorld + mobileSafeLeftWorld;
     
     // Draw player with curl down animation for ducking
@@ -1911,8 +1918,8 @@ function drawCoin(x, y, size) {
 function triggerJump() {
     const groundY = boardHeight - player.height;
     if (player.y >= groundY - 1) {
-        //jump - scaled with speed for consistent obstacle clearance
-        velocityY = currentJumpVelocity;
+        //jump - original height, distance extended by speed slowdown
+        velocityY = jumpVelocity;
         recordInput("jump");
     }
 }
