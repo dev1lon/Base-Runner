@@ -3,8 +3,8 @@ let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
 // Platform defines the ground level (align with CSS platform)
-const PLATFORM_HEIGHT_RATIO = 0.018; // 8px at 450px height
-const PLATFORM_BOTTOM_RATIO = 0.145;
+const PLATFORM_HEIGHT_RATIO = 0.027; // 12px at 450px height
+const PLATFORM_BOTTOM_RATIO = 0.33;
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
