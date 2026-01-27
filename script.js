@@ -871,7 +871,7 @@ const playerDrawRectScratch = { x: 0, y: 0, width: 0, height: 0 };
 // Tight insets for pixel-accurate collisions
 const PLAYER_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
 const OBSTACLE_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
-const BIRD_HITBOX_INSET = { top: 2, bottom: 2, left: 3, right: 3 };
+const BIRD_HITBOX_INSET = { top: 5, bottom: 5, left: 8, right: 8 };
 
 // Normalized opaque bounds for sprite images (0..1)
 const spriteBounds = {
@@ -2048,8 +2048,8 @@ function placeObstacle() {
         let duckedHeadTop = boardHeight - playerDuckHeight; // Top of player's head when ducking
         // Bird flies at standing head level, so ducking makes player shorter than bird
         let headLevelY = standingHeadTop - birdHeight + 15; // Bird bottom aligns with player head top
-        // Lower bird by 20% of its height so it collides properly
-        headLevelY += birdHeight * 0.2;
+        // Lower bird by 10% of its height for proper visual collision
+        headLevelY += birdHeight * 0.1;
         
         const spawnX = adjustSpawnX(birdX, SPAWN_X_GAP);
         if (spawnX !== null) {
@@ -2092,12 +2092,9 @@ function getPlayerHitbox(out) {
     return applySpriteBounds(playerDrawRectScratch, spriteBounds.player, PLAYER_HITBOX_INSET, out);
 }
 
-// Player hitbox for bird collisions (head-only to match visuals)
+// Player hitbox for bird collisions (full body - bird should not pass through)
 function getPlayerBirdHitbox(out) {
-    const full = getPlayerHitbox(out);
-    const headHeight = Math.max(2, Math.round(full.height * 0.45));
-    out.height = headHeight;
-    return out;
+    return getPlayerHitbox(out);
 }
 
 // Get token hitbox - union of coin(s) and stick(s), aligned to visible pixels
