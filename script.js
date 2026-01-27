@@ -870,6 +870,10 @@ const SPEED_START = 3; // стартовая скорость (медленно)
 const SPEED_MAX = 14; // максимальная скорость (конечная)
 const MOBILE_SPEED_MAX = 6; // максимальная скорость на телефоне - уменьшено для дальности прыжков
 const SPEED_MAX_SCORE = 10000; // до этого счёта скорость плавно растёт
+// Reference speed for time scaling - at this speed, gameTimeScale = 1.0
+// Using max speed as reference means at lower speeds, everything (including jumps) is slower
+const SPEED_REFERENCE = SPEED_MAX;
+const MOBILE_SPEED_REFERENCE = MOBILE_SPEED_MAX;
 const BASE_GRAVITY = 1.0;
 const BASE_JUMP_VELOCITY = -22.9;
 const MOBILE_GRAVITY_MULT = 1.05; // +5% sharpness
@@ -881,6 +885,7 @@ let velocityY = 0;
 let gravity = BASE_GRAVITY;
 let jumpVelocity = BASE_JUMP_VELOCITY;
 let scoreFloat = 0;
+let gameTimeScale = 1.0; // Unified time scale for synchronizing physics with game speed
 
 // (Ручные паддинги убраны — хитбоксы строятся по альфа‑границам спрайтов)
 
@@ -1527,6 +1532,17 @@ function update(timestamp) {
     const maxSpeed = isMobileLayout ? MOBILE_SPEED_MAX : SPEED_MAX;
     speed = SPEED_START + (maxSpeed - SPEED_START) * speedProgress;
     velocityX = -speed;
+    
+    // Unified time scale: synchronizes all physics with game speed
+    // At max speed, gameTimeScale = 1.0; at slower speeds, everything slows down proportionally
+    // This keeps jump HEIGHT the same but makes jump DURATION longer at lower speeds
+    const speedRef = isMobileLayout ? MOBILE_SPEED_REFERENCE : SPEED_REFERENCE;
+    gameTimeScale = speed / speedRef;
+    
+    // Scaled delta time for physics - applies both frame timing and game speed
+    const scaledDt = stepScale * gameTimeScale;
+    
+    // Obstacle horizontal movement uses scaledDt for consistent sync
     const frameVelocityX = velocityX * stepScale;
 
     //player physics
@@ -1552,8 +1568,10 @@ function update(timestamp) {
         }
     }
 
-    velocityY += gravity * stepScale;
-    player.y = Math.min(player.y + velocityY * stepScale, groundY);
+    // Apply gravity and velocity with scaledDt - jump duration scales with game speed
+    // Jump height stays the same because both gravity and velocity use the same time scale
+    velocityY += gravity * scaledDt;
+    player.y = Math.min(player.y + velocityY * scaledDt, groundY);
     if (player.y >= groundY) {
         velocityY = 0;
     }
@@ -1686,8 +1704,8 @@ function update(timestamp) {
 
     // Arrays are already cleaned in the loops above
 
-    // Update score
-    scoreFloat += stepScale;
+    // Update score - uses scaledDt so score rate matches game speed
+    scoreFloat += scaledDt;
     const nextScore = Math.floor(scoreFloat);
     if (nextScore !== score) {
         score = nextScore;
