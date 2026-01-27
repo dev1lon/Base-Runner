@@ -72,6 +72,11 @@ let resumeButton;
 let checkinButton;
 let checkinStatus;
 let ethImg;
+// Game UI elements
+let gameCoinsEl;
+let gameScoreEl;
+let gameBestEl;
+let gameUIContainer;
 let coinCount = 0;
 let nextCoinScore = 10000;
 let walletAddress = null;
@@ -788,6 +793,11 @@ function handleChainChanged(chainId) {
     }
 }
 
+function getBirdFlyY() {
+    // Bird should fly at head level when standing
+    return Math.round(playerY - birdHeight);
+}
+
 //player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
 const BASE_PLAYER_WIDTH = 250; // 152 * 1.1 (increased by 10% more)
 const BASE_PLAYER_HEIGHT = 141; // 94 * 1.5
@@ -887,7 +897,7 @@ const BASE_BIRD_Y_OFFSET = 150;
 let birdWidth = BASE_BIRD_WIDTH;
 let birdHeight = BASE_BIRD_HEIGHT;
 let birdX = boardWidth + BASE_SPAWN_OFFSET;
-let birdY = boardHeight - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
+let birdY = playerY - birdHeight; // Head level flight
 let birdImg;
 
 //physics
@@ -928,6 +938,12 @@ window.onload = function() {
     resumeButton = document.getElementById("resume-button");
     checkinButton = document.getElementById("checkin-button");
     checkinStatus = document.getElementById("checkin-status");
+    
+    // Game UI elements
+    gameCoinsEl = document.getElementById("game-coins");
+    gameScoreEl = document.getElementById("game-score");
+    gameBestEl = document.getElementById("game-best");
+    gameUIContainer = document.querySelector(".game-ui");
 
     // Initial state
     showWelcome = true;
@@ -1059,6 +1075,9 @@ function updateUIState() {
     // Update pause button visibility
     updatePauseButtonVisibility();
     
+    // Update game UI visibility
+    updateGameUIVisibility();
+    
     // Update wallet address display in menu
     if (walletAddressDisplay && walletAddress) {
         walletAddressDisplay.textContent = formatAddress(walletAddress);
@@ -1089,6 +1108,29 @@ function updatePauseButtonVisibility() {
     if (!pauseButton) return;
     const shouldShow = isMobileLayout && currentUIState === UI_STATE.RUNNING;
     pauseButton.classList.toggle("hidden", !shouldShow);
+}
+
+function updateGameUIVisibility() {
+    if (!gameUIContainer) return;
+    // Show game UI only when game is running or paused
+    if (currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED) {
+        gameUIContainer.style.display = "flex";
+    } else {
+        gameUIContainer.style.display = "none";
+    }
+}
+
+function updateGameUI() {
+    // Update HTML UI elements with current game values
+    if (gameCoinsEl) {
+        gameCoinsEl.textContent = String(coinCount);
+    }
+    if (gameScoreEl) {
+        gameScoreEl.textContent = String(score);
+    }
+    if (gameBestEl) {
+        gameBestEl.textContent = String(bestScore);
+    }
 }
 
 function updateMenuState() {
@@ -1343,7 +1385,7 @@ function applyResponsiveLayout() {
     applyObjectScale(objectScale);
     playerY = boardHeight - playerHeight;
     tokenY = boardHeight - tokenHeight;
-    birdY = boardHeight - birdHeight - Math.round(BASE_BIRD_Y_OFFSET * objectScale);
+    birdY = getBirdFlyY();
     tokenX = boardWidth + BASE_SPAWN_OFFSET;
     birdX = boardWidth + BASE_SPAWN_OFFSET;
 
@@ -1696,34 +1738,38 @@ function update(timestamp) {
         addCoins(increments);
         nextCoinScore += increments * 10000;
     }
-    const coinLabel = "Coin:";
-    const coinText = String(coinCount);
-    const scoreText = "Score: " + score;
-    const bestText = "Best: " + bestScore;
-    const scoreX = Math.round(boardWidth - padding - context.measureText(scoreText).width);
-    const bestX = Math.round(boardWidth - padding - context.measureText(bestText).width);
-    if (isMobileLayout) {
-        context.strokeStyle = "white";
-        context.lineWidth = 1.5;
-        context.strokeText(scoreText, scoreX, scoreY);
-        context.strokeText(bestText, bestX, bestY);
+    if (gameUIContainer) {
+        updateGameUI();
+    } else {
+        const coinLabel = "Coin:";
+        const coinText = String(coinCount);
+        const scoreText = "Score: " + score;
+        const bestText = "Best: " + bestScore;
+        const scoreX = Math.round(boardWidth - padding - context.measureText(scoreText).width);
+        const bestX = Math.round(boardWidth - padding - context.measureText(bestText).width);
+        if (isMobileLayout) {
+            context.strokeStyle = "white";
+            context.lineWidth = 1.5;
+            context.strokeText(scoreText, scoreX, scoreY);
+            context.strokeText(bestText, bestX, bestY);
+        }
+        const iconSize = Math.round(18 * uiScale);
+        const iconGap = Math.round(6 * uiScale);
+        const textGap = Math.round(6 * uiScale);
+        const coinX = Math.round(padding + mobileSafeLeftWorld);
+        const coinY = scoreY;
+        context.fillText(coinLabel, coinX, coinY);
+        const labelWidth = context.measureText(coinLabel).width;
+        const countX = Math.round(coinX + labelWidth + textGap);
+        context.fillText(coinText, countX, coinY);
+        const iconX = Math.round(countX + context.measureText(coinText).width + iconGap);
+        const iconY = Math.round(coinY + Math.floor((scoreFontSize - iconSize) / 2));
+        if (ethImg && ethImg.complete) {
+            context.drawImage(ethImg, iconX, iconY, iconSize, iconSize);
+        }
+        context.fillText(scoreText, scoreX, scoreY);
+        context.fillText(bestText, bestX, bestY);
     }
-    const iconSize = Math.round(18 * uiScale);
-    const iconGap = Math.round(6 * uiScale);
-    const textGap = Math.round(6 * uiScale);
-    const coinX = Math.round(padding + mobileSafeLeftWorld);
-    const coinY = scoreY;
-    context.fillText(coinLabel, coinX, coinY);
-    const labelWidth = context.measureText(coinLabel).width;
-    const countX = Math.round(coinX + labelWidth + textGap);
-    context.fillText(coinText, countX, coinY);
-    const iconX = Math.round(countX + context.measureText(coinText).width + iconGap);
-    const iconY = Math.round(coinY + Math.floor((scoreFontSize - iconSize) / 2));
-    if (ethImg && ethImg.complete) {
-        context.drawImage(ethImg, iconX, iconY, iconSize, iconSize);
-    }
-    context.fillText(scoreText, scoreX, scoreY);
-    context.fillText(bestText, bestX, bestY);
 
     if (isPaused && !gameOver) {
         const pauseText = "PAUSE";
@@ -1752,7 +1798,7 @@ function update(timestamp) {
         const restartFont = Math.round(14 * uiScale);
         
         // Center vertically in the play area
-        const centerY = boardHeight / 2;
+        const centerY = Math.round(boardHeight / 2);
         
         // Game over text with outline for visibility
         context.font = `bold ${gameOverFont}px Arial, sans-serif`;
@@ -1968,13 +2014,7 @@ function placeObstacle() {
     }
     else if (placeObstacleChance > .35) { //20% chance for bird (flying obstacle)
         // Set bird at head level (can be ducked under)
-        // Bird should fly at the player's head level when standing, but be avoidable by ducking
-        let standingHeadTop = playerY; // Top of player's head when standing
-        let duckedHeadTop = boardHeight - playerDuckHeight; // Top of player's head when ducking
-        // Bird flies at standing head level, so ducking makes player shorter than bird
-        let headLevelY = standingHeadTop - birdHeight + 15; // Bird bottom aligns with player head top
-        // Lower bird by 10% of its height so it collides properly
-        headLevelY += birdHeight * 0.1;
+        const headLevelY = getBirdFlyY();
         let bird = {
             x : adjustSpawnX(birdX, SPAWN_X_GAP),
             y : headLevelY,
@@ -2015,7 +2055,14 @@ function getPlayerHitbox(out) {
 
 // Player hitbox for bird collisions (use the same, to match visuals)
 function getPlayerBirdHitbox(out) {
-    return getPlayerHitbox(out);
+    getPlayerHitbox(out);
+    // Focus on upper body/head for bird collisions to avoid early hits
+    const headHeight = Math.max(1, Math.round(out.height * 0.55));
+    const insetX = Math.round(out.width * 0.1);
+    out.x = out.x + insetX;
+    out.width = Math.max(1, out.width - insetX * 2);
+    out.height = headHeight;
+    return out;
 }
 
 // Get token hitbox - union of coin(s) and stick(s), aligned to visible pixels
