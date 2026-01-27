@@ -70,7 +70,9 @@ let walletAddressDisplay;
 let startButton;
 let resumeButton;
 let checkinButton;
-let checkinStatus;
+let checkinStreak;
+let checkinTimer;
+let checkinTimerInterval = null;
 let ethImg;
 let coinCount = 0;
 let nextCoinScore = 10000;
@@ -887,7 +889,8 @@ window.onload = function() {
     startButton = document.getElementById("start-button");
     resumeButton = document.getElementById("resume-button");
     checkinButton = document.getElementById("checkin-button");
-    checkinStatus = document.getElementById("checkin-status");
+    checkinStreak = document.getElementById("checkin-streak");
+    checkinTimer = document.getElementById("checkin-timer");
 
     // Initial state
     showWelcome = true;
@@ -1083,48 +1086,89 @@ function setCheckinButtonText(text) {
 function updateCheckinUI() {
     if (!checkinButton) return;
     
+    // Update streak display
+    if (checkinStreak) {
+        checkinStreak.textContent = `x${checkinState.streak}`;
+        const checkedIn = isToday(checkinState.lastCheckin);
+        checkinStreak.classList.toggle("active", checkedIn);
+    }
+    
     if (!walletReady) {
         checkinButton.disabled = true;
         setCheckinButtonText("Check-in");
-        if (checkinStatus) {
-            checkinStatus.textContent = "";
-            checkinStatus.classList.remove("success");
-        }
+        stopCheckinTimer();
         return;
     }
     if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
         checkinButton.disabled = true;
         setCheckinButtonText("Check-in");
-        if (checkinStatus) {
-            checkinStatus.textContent = "Not available";
-            checkinStatus.classList.remove("success");
-        }
+        stopCheckinTimer();
         return;
     }
     if (checkinState.loading) {
         checkinButton.disabled = true;
         setCheckinButtonText("Loading...");
-        if (checkinStatus) {
-            checkinStatus.textContent = "";
-            checkinStatus.classList.remove("success");
-        }
         return;
     }
     const checkedIn = isToday(checkinState.lastCheckin);
     checkinButton.disabled = checkedIn;
     setCheckinButtonText(checkedIn ? "Done" : "Check-in");
     
-    if (checkinStatus) {
-        if (checkinState.message) {
-            checkinStatus.textContent = checkinState.message;
-            checkinStatus.classList.toggle("success", checkedIn);
-        } else if (checkedIn) {
-            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
-            checkinStatus.classList.add("success");
-        } else {
-            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
-            checkinStatus.classList.remove("success");
-        }
+    // Start/update timer
+    if (checkedIn) {
+        startCheckinTimer();
+    } else {
+        stopCheckinTimer();
+    }
+}
+
+function getNextCheckinTime() {
+    // Next check-in is available at midnight UTC
+    const now = new Date();
+    const tomorrow = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1,
+        0, 0, 0, 0
+    ));
+    return tomorrow.getTime() - now.getTime();
+}
+
+function formatCountdown(ms) {
+    if (ms <= 0) return "00:00:00";
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function updateCheckinTimerDisplay() {
+    if (!checkinTimer) return;
+    const remaining = getNextCheckinTime();
+    if (remaining <= 0) {
+        checkinTimer.textContent = "Available now!";
+        stopCheckinTimer();
+        // Refresh UI since check-in is now available
+        updateCheckinUI();
+    } else {
+        checkinTimer.textContent = `Next: ${formatCountdown(remaining)}`;
+    }
+}
+
+function startCheckinTimer() {
+    if (checkinTimerInterval) return; // Already running
+    updateCheckinTimerDisplay();
+    checkinTimerInterval = setInterval(updateCheckinTimerDisplay, 1000);
+}
+
+function stopCheckinTimer() {
+    if (checkinTimerInterval) {
+        clearInterval(checkinTimerInterval);
+        checkinTimerInterval = null;
+    }
+    if (checkinTimer) {
+        checkinTimer.textContent = "";
     }
 }
 
@@ -1162,9 +1206,6 @@ async function handleCheckin() {
         if (!message) {
             throw new Error("Check-in message missing");
         }
-        if (checkinStatus) {
-            checkinStatus.textContent = "Подтвердите транзакцию check-in.";
-        }
         const txHash = await sendCheckinTransaction();
         const signature = await signWalletMessage(message);
         const submitResponse = await fetch(`${BACKEND_URL}/api/checkin/submit`, {
@@ -1188,13 +1229,8 @@ async function handleCheckin() {
                 coinCount = submitData.coinBalance;
                 saveCoins();
             }
-            const shortHash = txHash ? `${txHash.slice(0, 8)}...${txHash.slice(-6)}` : "";
-            const rewardText = submitData.bonusAwarded
-                ? `+${submitData.coinsAwarded} coins (bonus за стрик!)`
-                : `+${submitData.coinsAwarded} coin`;
-            checkinState.message = shortHash
-                ? `${rewardText}. Tx: ${shortHash}`
-                : rewardText;
+            // Message cleared - streak and timer will show status
+            checkinState.message = "";
         }
     } catch (err) {
         console.warn("Check-in failed", err);

@@ -79,10 +79,16 @@
             </div>
             <div class="card-body menu-body">
                 <div class="checkin-section">
-                    <button id="checkin-button" class="btn btn-secondary btn-small">
-                        Check-in
-                    </button>
-                    <span id="checkin-status" class="checkin-badge"></span>
+                    <div class="checkin-row">
+                        <button id="checkin-button" class="btn btn-secondary btn-small">
+                            Check-in
+                        </button>
+                        <span id="checkin-streak" class="checkin-streak">x0</span>
+                    </div>
+                    <div class="checkin-info">
+                        <span id="checkin-timer" class="checkin-timer"></span>
+                        <span class="checkin-hint">Every 5th streak +1 coin</span>
+                    </div>
                 </div>
                 <button id="start-button" class="btn btn-primary btn-large">Start Game</button>
                 <button id="collection-button" class="btn btn-ghost btn-large" disabled>
