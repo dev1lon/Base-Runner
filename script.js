@@ -49,16 +49,26 @@ const BASE_SEPOLIA_PARAMS = {
 const CHECKIN_CONTRACT_ADDRESS = "0xc24F4140df57BEadB3F19C9F7bEF0e49E8F47b44";
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
-let welcomeOverlay;
-let startButton;
+
+// UI State Machine
+const UI_STATE = {
+    CONNECT: 'connect',
+    MENU: 'menu',
+    RUNNING: 'running',
+    PAUSED: 'paused'
+};
+let currentUIState = UI_STATE.CONNECT;
+
+// Overlay elements
+let overlayConnect;
+let overlayMenu;
+let overlayPause;
 let pauseButton;
 let connectButton;
 let walletStatus;
-let connectSection;
-let menuSection;
-let menuTitle;
-let collectionButton;
-let leaderboardButton;
+let walletAddressDisplay;
+let startButton;
+let resumeButton;
 let checkinButton;
 let checkinStatus;
 let ethImg;
@@ -513,6 +523,17 @@ function clearWalletMessages() {
     walletInfoMessage = "";
 }
 
+function setConnectButtonText(text) {
+    if (!connectButton) return;
+    // Preserve icon if present, only update text
+    const icon = connectButton.querySelector('svg');
+    if (icon) {
+        connectButton.innerHTML = icon.outerHTML + ' ' + text;
+    } else {
+        connectButton.textContent = text;
+    }
+}
+
 function updateWalletUI() {
     const provider = getEthereumProvider();
     const hasProvider = !!provider;
@@ -522,51 +543,64 @@ function updateWalletUI() {
     const walletConnected = isConnected && isOnBaseSepolia;
     walletReady = walletConnected && walletAuthenticated;
 
+    // Update connect button state and text
     if (connectButton) {
         connectButton.disabled = !hasProvider || isConnectingWallet || authInProgress;
         if (!hasProvider) {
-            connectButton.textContent = "Wallet not found";
+            setConnectButtonText("Wallet not found");
         } else if (isConnectingWallet) {
-            connectButton.textContent = "Connecting...";
+            setConnectButtonText("Connecting...");
         } else if (authInProgress) {
-            connectButton.textContent = "Signing...";
+            setConnectButtonText("Signing...");
         } else if (isConnected && !isOnBaseSepolia) {
-            connectButton.textContent = "Switch to Base Sepolia";
-        } else if (isConnected && walletAuthenticated) {
-            connectButton.textContent = `Connected: ${formatAddress(walletAddress)}`;
+            setConnectButtonText("Switch Network");
         } else {
-            connectButton.textContent = "Connect wallet";
+            setConnectButtonText("Connect Wallet");
         }
     }
 
-    if (connectSection) {
-        connectSection.classList.toggle("hidden", walletReady);
-    }
-    if (menuSection) {
-        menuSection.classList.toggle("hidden", !walletReady);
+    // Update status message
+    if (walletStatus) {
+        if (walletErrorMessage && !walletReady) {
+            walletStatus.textContent = walletErrorMessage;
+            walletStatus.classList.add("error");
+        } else if (isConnectingWallet && walletInfoMessage) {
+            walletStatus.textContent = walletInfoMessage;
+            walletStatus.classList.remove("error");
+        } else if (!hasProvider) {
+            walletStatus.textContent = "Wallet not found. Open in Base App.";
+            walletStatus.classList.add("error");
+        } else if (!isConnected) {
+            walletStatus.textContent = "";
+            walletStatus.classList.remove("error");
+        } else if (!isOnBaseSepolia) {
+            walletStatus.textContent = "Please switch to Base Sepolia network.";
+            walletStatus.classList.remove("error");
+        } else if (!walletAuthenticated) {
+            walletStatus.textContent = "";
+            walletStatus.classList.remove("error");
+        } else {
+            walletStatus.textContent = "";
+            walletStatus.classList.remove("error");
+        }
     }
 
-    if (walletErrorMessage && !walletReady) {
-        setWalletStatus(walletErrorMessage, true);
-    } else if (isConnectingWallet && walletInfoMessage) {
-        setWalletStatus(walletInfoMessage);
-    } else if (!hasProvider) {
-        setWalletStatus("Wallet не найден. Откройте игру в Base App или кошельке с поддержкой Base Sepolia.", true);
-    } else if (!isConnected) {
-        setWalletStatus("Подключите кошелёк, чтобы продолжить.");
-    } else if (!isOnBaseSepolia) {
-        setWalletStatus("Переключите сеть на Base Sepolia.");
-    } else if (!walletAuthenticated) {
-        setWalletStatus("Нажмите Connect wallet.");
-    } else {
-        setWalletStatus("Кошелёк подключён.");
+    // Transition UI state based on wallet status
+    if (currentUIState === UI_STATE.CONNECT || currentUIState === UI_STATE.MENU) {
+        if (walletReady) {
+            currentUIState = UI_STATE.MENU;
+        } else {
+            currentUIState = UI_STATE.CONNECT;
+        }
+        updateUIState();
     }
-
+    
+    // Update start button
     if (startButton) {
         startButton.disabled = !walletReady;
     }
-    updateMenuState();
-    // Auth is triggered only from explicit connect action.
+    
+    updateCheckinUI();
 }
 
 async function initWalletState() {
@@ -847,32 +881,42 @@ let bestScore = 0;
 
 window.onload = function() {
     board = document.getElementById("board");
-    welcomeOverlay = document.getElementById("welcome-overlay");
-    startButton = document.getElementById("start-button");
+    
+    // Overlay elements
+    overlayConnect = document.getElementById("overlay-connect");
+    overlayMenu = document.getElementById("overlay-menu");
+    overlayPause = document.getElementById("overlay-pause");
     pauseButton = document.getElementById("pause-button");
     connectButton = document.getElementById("connect-button");
     walletStatus = document.getElementById("wallet-status");
-    connectSection = document.getElementById("connect-section");
-    menuSection = document.getElementById("menu-section");
-    menuTitle = document.getElementById("menu-title");
-    collectionButton = document.getElementById("collection-button");
-    leaderboardButton = document.getElementById("leaderboard-button");
+    walletAddressDisplay = document.getElementById("wallet-address");
+    startButton = document.getElementById("start-button");
+    resumeButton = document.getElementById("resume-button");
     checkinButton = document.getElementById("checkin-button");
     checkinStatus = document.getElementById("checkin-status");
 
+    // Initial state
     showWelcome = true;
-    gameActive = !showWelcome;
+    gameActive = false;
     isPaused = false;
-    updateWelcomeVisibility();
-    updateWalletUI();
-    updateMenuState();
-    updatePauseButtonVisibility();
+    currentUIState = UI_STATE.CONNECT;
+    updateUIState();
+    
+    // Event listeners
     if (startButton) {
         startButton.addEventListener("click", startGameFromWelcome);
         startButton.addEventListener("touchstart", function(e) {
             e.stopPropagation();
             e.preventDefault();
             startGameFromWelcome();
+        }, { passive: false });
+    }
+    if (resumeButton) {
+        resumeButton.addEventListener("click", resumeGame);
+        resumeButton.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            resumeGame();
         }, { passive: false });
     }
     if (pauseButton) {
@@ -952,8 +996,49 @@ window.onload = function() {
 }
 
 function updateWelcomeVisibility() {
-    if (!welcomeOverlay) return;
-    welcomeOverlay.classList.toggle("hidden", !showWelcome);
+    // Legacy function - now handled by updateUIState
+    updateUIState();
+}
+
+function updateUIState() {
+    // Hide all overlays first
+    if (overlayConnect) overlayConnect.classList.add("hidden");
+    if (overlayMenu) overlayMenu.classList.add("hidden");
+    if (overlayPause) overlayPause.classList.add("hidden");
+    
+    // Show the appropriate overlay based on state
+    switch (currentUIState) {
+        case UI_STATE.CONNECT:
+            if (overlayConnect) overlayConnect.classList.remove("hidden");
+            break;
+        case UI_STATE.MENU:
+            if (overlayMenu) overlayMenu.classList.remove("hidden");
+            break;
+        case UI_STATE.PAUSED:
+            if (overlayPause) overlayPause.classList.remove("hidden");
+            break;
+        case UI_STATE.RUNNING:
+            // No overlay visible during gameplay
+            break;
+    }
+    
+    // Update pause button visibility
+    updatePauseButtonVisibility();
+    
+    // Update wallet address display in menu
+    if (walletAddressDisplay && walletAddress) {
+        walletAddressDisplay.textContent = formatAddress(walletAddress);
+    }
+    
+    // Update start button state
+    if (startButton) {
+        startButton.disabled = !walletReady;
+    }
+    
+    // Sync legacy state variables
+    showWelcome = currentUIState !== UI_STATE.RUNNING;
+    isPaused = currentUIState === UI_STATE.PAUSED;
+    gameActive = currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED;
 }
 
 function saveCoins() {
@@ -968,25 +1053,15 @@ function addCoins(amount) {
 
 function updatePauseButtonVisibility() {
     if (!pauseButton) return;
-    const shouldShow = isMobileLayout && !showWelcome;
+    const shouldShow = isMobileLayout && currentUIState === UI_STATE.RUNNING;
     pauseButton.classList.toggle("hidden", !shouldShow);
 }
 
 function updateMenuState() {
-    if (menuTitle) {
-        menuTitle.textContent = isPaused ? "Paused" : "Menu";
-    }
+    // Legacy function - most logic moved to updateUIState
     if (startButton) {
-        startButton.textContent = isPaused ? "Resume" : "Start game";
         startButton.disabled = !walletReady;
     }
-    if (collectionButton) {
-        collectionButton.disabled = true;
-    }
-    if (leaderboardButton) {
-        leaderboardButton.disabled = true;
-    }
-    updateCheckinUI();
     updateCheckinUI();
 }
 
@@ -1006,36 +1081,63 @@ function applyProfileData(data) {
     updateCheckinUI();
 }
 
+function setCheckinButtonText(text) {
+    if (!checkinButton) return;
+    // Preserve icon if present, only update text
+    const icon = checkinButton.querySelector('svg');
+    if (icon) {
+        checkinButton.innerHTML = icon.outerHTML + ' ' + text;
+    } else {
+        checkinButton.textContent = text;
+    }
+}
+
 function updateCheckinUI() {
-    if (!checkinButton || !checkinStatus) return;
+    if (!checkinButton) return;
+    
     if (!walletReady) {
         checkinButton.disabled = true;
-        checkinButton.textContent = "Check-in";
-        checkinStatus.textContent = "Подключите кошелёк.";
+        setCheckinButtonText("Check-in");
+        if (checkinStatus) {
+            checkinStatus.textContent = "";
+            checkinStatus.classList.remove("success");
+        }
         return;
     }
     if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
         checkinButton.disabled = true;
-        checkinButton.textContent = "Check-in";
-        checkinStatus.textContent = "Контракт check-in не задан.";
+        setCheckinButtonText("Check-in");
+        if (checkinStatus) {
+            checkinStatus.textContent = "Not available";
+            checkinStatus.classList.remove("success");
+        }
         return;
     }
     if (checkinState.loading) {
         checkinButton.disabled = true;
-        checkinButton.textContent = "Проверка...";
-        checkinStatus.textContent = "Обновляем статус.";
+        setCheckinButtonText("Loading...");
+        if (checkinStatus) {
+            checkinStatus.textContent = "";
+            checkinStatus.classList.remove("success");
+        }
         return;
     }
     const checkedIn = isToday(checkinState.lastCheckin);
     checkinButton.disabled = checkedIn;
-    checkinButton.textContent = checkedIn ? "Check-in получен" : "Check-in";
-    if (checkinState.message) {
-        checkinStatus.textContent = checkinState.message;
-        return;
+    setCheckinButtonText(checkedIn ? "Done" : "Check-in");
+    
+    if (checkinStatus) {
+        if (checkinState.message) {
+            checkinStatus.textContent = checkinState.message;
+            checkinStatus.classList.toggle("success", checkedIn);
+        } else if (checkedIn) {
+            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
+            checkinStatus.classList.add("success");
+        } else {
+            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
+            checkinStatus.classList.remove("success");
+        }
     }
-    checkinStatus.textContent = checkedIn
-        ? `Стрик: ${checkinState.streak}. Уже получено сегодня.`
-        : `Стрик: ${checkinState.streak}. Доступно сегодня.`;
 }
 
 async function handleCheckin() {
@@ -1120,55 +1222,52 @@ async function startGameFromWelcome() {
         updateWalletUI();
         return;
     }
-    if (isPaused) {
-        resumeGame();
-        return;
-    }
+    // Transition to running state
+    currentUIState = UI_STATE.RUNNING;
     showWelcome = false;
     gameActive = false;
     isPaused = false;
-    updateWelcomeVisibility();
-    updateWalletUI();
-    updateMenuState();
-    updatePauseButtonVisibility();
+    updateUIState();
     await restartGame();
 }
 
 function openPauseMenu() {
-    if (!gameActive || gameOver) return;
+    if (currentUIState !== UI_STATE.RUNNING || gameOver) return;
+    currentUIState = UI_STATE.PAUSED;
     isPaused = true;
     showWelcome = true;
-    updateWelcomeVisibility();
-    updateMenuState();
-    updatePauseButtonVisibility();
+    gameActive = true;
+    updateUIState();
 }
 
 function openWalletMenu() {
+    // Force back to connect/menu based on wallet state
+    currentUIState = walletReady ? UI_STATE.MENU : UI_STATE.CONNECT;
     showWelcome = true;
     isPaused = false;
     gameActive = false;
     resetBackendSession();
-    updateWelcomeVisibility();
-    updateMenuState();
-    updatePauseButtonVisibility();
+    updateUIState();
 }
 
 function resumeGame() {
-    if (!isPaused) return;
+    if (currentUIState !== UI_STATE.PAUSED) return;
+    currentUIState = UI_STATE.RUNNING;
     isPaused = false;
     showWelcome = false;
-    updateWelcomeVisibility();
-    updateMenuState();
-    updatePauseButtonVisibility();
+    gameActive = true;
+    updateUIState();
 }
 
 function togglePause() {
-    if (!gameActive || gameOver) return;
-    if (isPaused) {
+    if (gameOver) return;
+    if (currentUIState === UI_STATE.PAUSED) {
         resumeGame();
         return;
     }
-    openPauseMenu();
+    if (currentUIState === UI_STATE.RUNNING) {
+        openPauseMenu();
+    }
 }
 
 function applyResponsiveLayout() {

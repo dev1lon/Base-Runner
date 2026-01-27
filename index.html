@@ -1,44 +1,108 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-        <title>BaseApp Runner</title>
-        <link rel="stylesheet" href="style.css">
-        <script src="script.js"></script>
-    </head>
-    <body>
-        <h1>BaseApp Runner</h1>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Base Runner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js"></script>
+</head>
+<body>
+    <div class="game-container">
         <canvas id="board"></canvas>
         <button id="pause-button" class="pause-button hidden" aria-label="Pause">
-            <span class="pause-bar"></span>
-            <span class="pause-bar"></span>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+                <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+            </svg>
         </button>
-        <div id="welcome-overlay" class="overlay hidden">
-            <div class="overlay-card">
-                <h2 id="menu-title">Menu</h2>
-                <p>Правила:</p>
-                <ul>
-                    <li>Прыжок: Space / ↑ (на телефоне — тап слева).</li>
-                    <li>Уклон: ↓ / S (на телефоне — удержание справа).</li>
-                    <li>Избегайте монет и птиц как препятствий.</li>
-                    <li>Каждые 10&nbsp;000 очков вы получаете 1 coin.</li>
-                </ul>
-                <div id="connect-section" class="wallet">
-                    <p>Подключите кошелёк Base Sepolia:</p>
-                    <button id="connect-button" class="connect-button">Connect wallet</button>
-                    <div id="wallet-status" class="wallet-status"></div>
-                </div>
-                <div id="menu-section" class="menu hidden">
-                    <div class="checkin">
-                        <button id="checkin-button" class="checkin-button">Check-in</button>
-                        <div id="checkin-status" class="checkin-status"></div>
-                    </div>
-                    <button id="start-button" class="menu-button">Start game</button>
-                    <button id="collection-button" class="menu-button" disabled>Collection</button>
-                    <button id="leaderboard-button" class="menu-button" disabled>Leaderboard</button>
-                </div>
+    </div>
+
+    <!-- CONNECT SCREEN -->
+    <div id="overlay-connect" class="overlay" data-state="connect">
+        <div class="overlay-bg">
+            <div class="bg-grid"></div>
+            <div class="bg-orb bg-orb-1"></div>
+            <div class="bg-orb bg-orb-2"></div>
+            <div class="bg-particles"></div>
+        </div>
+        <div class="glass-card">
+            <div class="card-header">
+                <h1 class="card-title">BASE RUNNER</h1>
+                <p class="card-subtitle">Run. Earn. Unlock.</p>
+            </div>
+            <div class="card-body">
+                <button id="connect-button" class="btn btn-primary btn-large">
+                    <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2Z" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M10 6V10L13 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    Connect Wallet
+                </button>
+                <p id="wallet-status" class="status-text"></p>
+            </div>
+            <div class="card-footer">
+                <p class="helper-text">Wallet is required to play in Base App.</p>
             </div>
         </div>
-    </body>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="overlay-menu" class="overlay hidden" data-state="menu">
+        <div class="overlay-bg">
+            <div class="bg-grid"></div>
+            <div class="bg-orb bg-orb-1"></div>
+            <div class="bg-orb bg-orb-2"></div>
+        </div>
+        <div class="glass-card">
+            <div class="card-header">
+                <h1 class="card-title">BASE RUNNER</h1>
+                <p id="wallet-address" class="wallet-badge">0x1234…abcd</p>
+            </div>
+            <div class="card-body menu-body">
+                <div class="checkin-section">
+                    <button id="checkin-button" class="btn btn-secondary btn-small">
+                        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <path d="M13.5 4.5L6 12L2.5 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Check-in
+                    </button>
+                    <span id="checkin-status" class="checkin-badge"></span>
+                </div>
+                <button id="start-button" class="btn btn-primary btn-large">Start Game</button>
+                <button id="collection-button" class="btn btn-ghost btn-large" disabled>
+                    Collection
+                    <span class="coming-soon">Coming soon</span>
+                </button>
+                <button id="leaderboard-button" class="btn btn-ghost btn-large" disabled>
+                    Leaderboard
+                    <span class="coming-soon">Coming soon</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAUSE MENU -->
+    <div id="overlay-pause" class="overlay overlay-dimmed hidden" data-state="paused">
+        <div class="glass-card">
+            <div class="card-header">
+                <h1 class="card-title card-title-pause">PAUSED</h1>
+            </div>
+            <div class="card-body menu-body">
+                <button id="resume-button" class="btn btn-primary btn-large">Resume</button>
+                <button class="btn btn-ghost btn-large" disabled>
+                    Collection
+                    <span class="coming-soon">Coming soon</span>
+                </button>
+                <button class="btn btn-ghost btn-large" disabled>
+                    Leaderboard
+                    <span class="coming-soon">Coming soon</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
 </html>
