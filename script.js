@@ -1454,20 +1454,21 @@ function computeOpaqueBounds(img) {
 
 function update(timestamp) {
     requestAnimationFrame(update);
-    if (gameOver) {
-        return;
-    }
     if (lastFrameTime === null) {
         lastFrameTime = timestamp;
     }
     const deltaMs = Math.min(timestamp - lastFrameTime, 100);
     lastFrameTime = timestamp;
     const dtScale = deltaMs / FRAME_MS;
-    const stepScale = gameActive && !isPaused ? dtScale : 0;
+    
+    // Freeze gameplay when gameOver but continue rendering
+    const shouldUpdate = gameActive && !isPaused && !gameOver;
+    const stepScale = shouldUpdate ? dtScale : 0;
+    
     context.clearRect(0, 0, boardWidth, boardHeight);
 
-    // Don't draw game elements when overlay is visible
-    if (showWelcome && !gameActive) {
+    // Don't draw game elements when overlay is visible (except during game over)
+    if (showWelcome && !gameActive && !gameOver) {
         return;
     }
 
@@ -1578,7 +1579,7 @@ function update(timestamp) {
             context.strokeRect(tokenHitbox.x, tokenHitbox.y, tokenHitbox.width, tokenHitbox.height);
         }
         
-        if (detectCollision(playerHitbox, tokenHitbox)) {
+        if (shouldUpdate && detectCollision(playerHitbox, tokenHitbox)) {
             gameOver = true;
             // Update best score
             if (score > bestScore) {
@@ -1620,7 +1621,7 @@ function update(timestamp) {
         
         // Use a head-focused hitbox for birds (prevents passing through head)
         let playerBirdHitbox = getPlayerBirdHitbox(playerBirdHitboxScratch);
-        if (detectCollision(playerBirdHitbox, birdHitboxScratch)) {
+        if (shouldUpdate && detectCollision(playerBirdHitbox, birdHitboxScratch)) {
             gameOver = true;
             // Update best score
             if (score > bestScore) {
@@ -1684,7 +1685,7 @@ function update(timestamp) {
     context.fillText(scoreText, scoreX, scoreY);
     context.fillText(bestText, bestX, bestY);
 
-    if (isPaused) {
+    if (isPaused && !gameOver) {
         const pauseText = "PAUSE";
         const pauseFont = Math.round(30 * uiScale);
         context.fillStyle = "black";
