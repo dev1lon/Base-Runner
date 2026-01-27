@@ -74,6 +74,12 @@ let checkinStreak;
 let checkinTimer;
 let checkinTimerInterval = null;
 let ethImg;
+
+// Game UI HTML elements
+let gameCoinsEl;
+let gameScoreEl;
+let gameBestEl;
+let gameUIContainer;
 let coinCount = 0;
 let nextCoinScore = 10000;
 let walletAddress = null;
@@ -941,9 +947,9 @@ let birdY = boardHeight - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
 let birdImg;
 
 //physics
-const SPEED_START = 3; // стартовая скорость (медленно) - уменьшено для дальности прыжков
+const SPEED_START = 5; // стартовая скорость (медленно) - уменьшено для дальности прыжков
 const SPEED_MAX = 14; // максимальная скорость (конечная)
-const MOBILE_SPEED_MAX = 6; // максимальная скорость на телефоне - уменьшено для дальности прыжков
+const MOBILE_SPEED_MAX = 10; // максимальная скорость на телефоне - уменьшено для дальности прыжков
 const SPEED_MAX_SCORE = 10000; // до этого счёта скорость плавно растёт
 const BASE_GRAVITY = 1.0;
 const BASE_JUMP_VELOCITY = -22.9;
@@ -979,6 +985,12 @@ window.onload = function() {
     checkinButton = document.getElementById("checkin-button");
     checkinStreak = document.getElementById("checkin-streak");
     checkinTimer = document.getElementById("checkin-timer");
+    
+    // Game UI elements (HTML overlay)
+    gameCoinsEl = document.getElementById("game-coins");
+    gameScoreEl = document.getElementById("game-score");
+    gameBestEl = document.getElementById("game-best");
+    gameUIContainer = document.querySelector(".game-ui");
 
     // Initial state
     showWelcome = true;
@@ -1111,6 +1123,9 @@ function updateUIState() {
     // Update pause button visibility
     updatePauseButtonVisibility();
     
+    // Update game UI visibility
+    updateGameUIVisibility();
+    
     // Update wallet address display in menu
     if (walletAddressDisplay && walletAddress) {
         walletAddressDisplay.textContent = formatAddress(walletAddress);
@@ -1125,6 +1140,29 @@ function updateUIState() {
     showWelcome = currentUIState !== UI_STATE.RUNNING;
     isPaused = currentUIState === UI_STATE.PAUSED;
     gameActive = currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED;
+}
+
+function updateGameUIVisibility() {
+    if (!gameUIContainer) return;
+    // Show game UI only when game is running or paused
+    if (currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED) {
+        gameUIContainer.style.display = 'flex';
+    } else {
+        gameUIContainer.style.display = 'none';
+    }
+}
+
+function updateGameUI() {
+    // Update HTML UI elements with current game values
+    if (gameCoinsEl) {
+        gameCoinsEl.textContent = String(coinCount);
+    }
+    if (gameScoreEl) {
+        gameScoreEl.textContent = String(score);
+    }
+    if (gameBestEl) {
+        gameBestEl.textContent = String(bestScore);
+    }
 }
 
 function saveCoins() {
@@ -1761,53 +1799,22 @@ function update(timestamp) {
 
     // Arrays are already cleaned in the loops above
 
-    //score (правый верхний угол)
-    const scoreFontSize = Math.round(20 * uiScale);
-    const padding = Math.round(scorePadding * uiScale);
-    const scoreY = Math.round(scoreTop * uiScale);
-    const bestY = scoreY + Math.round(24 * uiScale);
-    context.fillStyle="black";
-    context.font=`${scoreFontSize}px courier`;
-    context.textBaseline = "top";
+    // Update score
     scoreFloat += stepScale;
     const nextScore = Math.floor(scoreFloat);
     if (nextScore !== score) {
         score = nextScore;
     }
 
+    // Award coins for score milestones
     if (!backendSessionActive && score >= nextCoinScore) {
         const increments = Math.floor((score - nextCoinScore) / 10000) + 1;
         addCoins(increments);
         nextCoinScore += increments * 10000;
     }
-    const coinLabel = "Coins:";
-    const coinText = String(coinCount);
-    const scoreText = "Score: " + score;
-    const bestText = "Best: " + bestScore;
-    const scoreX = Math.round(boardWidth - padding - context.measureText(scoreText).width);
-    const bestX = Math.round(boardWidth - padding - context.measureText(bestText).width);
-    if (isMobileLayout) {
-        context.strokeStyle = "white";
-        context.lineWidth = 1.5;
-        context.strokeText(scoreText, scoreX, scoreY);
-        context.strokeText(bestText, bestX, bestY);
-    }
-    const iconSize = Math.round(18 * uiScale);
-    const iconGap = Math.round(6 * uiScale);
-    const textGap = Math.round(6 * uiScale);
-    const coinX = Math.round(padding + mobileSafeLeftWorld);
-    const coinY = scoreY;
-    context.fillText(coinLabel, coinX, coinY);
-    const labelWidth = context.measureText(coinLabel).width;
-    const countX = Math.round(coinX + labelWidth + textGap);
-    context.fillText(coinText, countX, coinY);
-    const iconX = Math.round(countX + context.measureText(coinText).width + iconGap);
-    const iconY = Math.round(coinY + Math.floor((scoreFontSize - iconSize) / 2));
-    if (ethImg && ethImg.complete) {
-        context.drawImage(ethImg, iconX, iconY, iconSize, iconSize);
-    }
-    context.fillText(scoreText, scoreX, scoreY);
-    context.fillText(bestText, bestX, bestY);
+    
+    // Update HTML UI elements (coins, score, best)
+    updateGameUI();
 
     if (isPaused) {
         const pauseText = "PAUSE";
