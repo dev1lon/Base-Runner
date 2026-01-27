@@ -1,3 +1,5 @@
+console.log("=== script.js loading ===");
+
 //board - scaled up by 1.5x
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
@@ -930,6 +932,7 @@ let score = 0;
 let bestScore = 0;
 
 window.onload = function() {
+    console.log("=== window.onload START ===");
     board = document.getElementById("board");
     
     // Overlay elements
@@ -979,18 +982,14 @@ window.onload = function() {
     }
     if (connectButton) {
         console.log("[init] connectButton found, adding listeners");
-        connectButton.addEventListener("click", function() {
+        connectButton.onclick = function() {
+            alert("Button clicked!");
             console.log("[click] connect button clicked");
             connectWallet();
-        });
-        connectButton.addEventListener("touchstart", function(e) {
-            console.log("[touchstart] connect button touched");
-            e.stopPropagation();
-            e.preventDefault();
-            connectWallet();
-        }, { passive: false });
+        };
     } else {
         console.error("[init] connectButton NOT found!");
+        alert("Connect button not found in HTML!");
     }
     if (checkinButton) {
         checkinButton.addEventListener("click", handleCheckin);
