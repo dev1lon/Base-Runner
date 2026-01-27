@@ -968,7 +968,7 @@ const GAME_STATE = {
 let gameState = GAME_STATE.RUNNING;
 let gameOverTimestamp = 0;
 let gameOver = false;
-let score = 0;
+let score = 9700;
 let bestScore = 0;
 
 window.onload = function() {
