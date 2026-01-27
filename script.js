@@ -3,8 +3,8 @@ let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
 const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
 // Platform defines the ground level (align with CSS platform)
-const PLATFORM_HEIGHT_RATIO = 0.03;
-const PLATFORM_BOTTOM_RATIO = 0.14;
+const PLATFORM_HEIGHT_RATIO = 0.028;
+const PLATFORM_BOTTOM_RATIO = 0.145;
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -812,9 +812,9 @@ function getBirdFlyY() {
 }
 
 //player (human character) - keep ~10-12% of panel height
-const BASE_PLAYER_WIDTH = 45;
-const BASE_PLAYER_HEIGHT = 55;
-const BASE_PLAYER_DUCK_HEIGHT = 28; // For ducking (crouched pose, head visible)
+const BASE_PLAYER_WIDTH = 48;
+const BASE_PLAYER_HEIGHT = 60;
+const BASE_PLAYER_DUCK_HEIGHT = 30; // For ducking (crouched pose, head visible)
 const BASE_PLAYER_X = 60;
 let playerWidth = BASE_PLAYER_WIDTH;
 let playerHeight = BASE_PLAYER_HEIGHT;
@@ -829,10 +829,10 @@ let isDucking = false;
 let debugHitboxes = false;
 
 // Render/physics constants - scaled to match smaller sprites
-const BASE_COIN_SIZE = 28;
-const BASE_STICK_HEIGHT = 28;
+const BASE_COIN_SIZE = 32;
+const BASE_STICK_HEIGHT = 30;
 const BASE_STICK_WIDTH = 4;
-const BASE_COIN_SPACING = 34;
+const BASE_COIN_SPACING = 38;
 const SPAWN_X_GAP = 400; // minimum horizontal gap between obstacles
 let COIN_SIZE = BASE_COIN_SIZE;
 let STICK_HEIGHT = BASE_STICK_HEIGHT;
@@ -904,8 +904,8 @@ let tokenY = groundY - tokenHeight;
 let tokenImg;
 
 //bird obstacle (flying enemy) - sized proportionally to player
-const BASE_BIRD_WIDTH = 38;
-const BASE_BIRD_HEIGHT = 32;
+const BASE_BIRD_WIDTH = 42;
+const BASE_BIRD_HEIGHT = 36;
 const BASE_BIRD_Y_OFFSET = 150;
 let birdWidth = BASE_BIRD_WIDTH;
 let birdHeight = BASE_BIRD_HEIGHT;
