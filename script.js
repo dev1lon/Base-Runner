@@ -20,7 +20,6 @@ let platformImg = null;
 // Platform position (ratio-based)
 const PLATFORM_Y_RATIO = 0.75; // Platform at 75% of canvas height
 const PLATFORM_HEIGHT = 10;
-const PLATFORM_TOP_PADDING = 2;
 
 let platform = {
     x: 0,
@@ -1415,8 +1414,8 @@ function applyGameScale() {
     platform.height = Math.round(PLATFORM_HEIGHT * gameScale);
     platform.y = Math.round(boardHeight * PLATFORM_Y_RATIO);
     
-    // Ground baseline
-    groundY = platform.y + Math.round(PLATFORM_TOP_PADDING * gameScale);
+    // Ground baseline = top edge of platform PNG
+    groundY = platform.y;
     
     // Scale sprites
     coinSize = Math.round(BASE_COIN_SIZE * gameScale);
