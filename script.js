@@ -39,13 +39,13 @@ const DEBUG_SHOW_GROUND_LINE = false;
 //=============================================================================
 const BASE_COIN_SIZE = 20;
 const BASE_PLAYER_HEIGHT = 80; // 2x coin
-const BASE_PLAYER_WIDTH = 60;
+const BASE_PLAYER_WIDTH = 63;
 const BASE_PLAYER_DUCK_HEIGHT = 55;
-const BASE_BIRD_HEIGHT = 38;
-const BASE_BIRD_WIDTH = 43;
+const BASE_BIRD_HEIGHT = 33;
+const BASE_BIRD_WIDTH = 35;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
-const BASE_COIN_SPACING = 26; // Reduced by ~10%
+const BASE_COIN_SPACING = 24; // Reduced by ~10%
 const BASE_PLAYER_X = 60;
 
 // Foot offset: visually shift player sprite down so feet touch platform
@@ -63,8 +63,8 @@ const BASE_SPAWN_OFFSET = 150;
 //=============================================================================
 // PHYSICS
 //=============================================================================
-const SPEED_START = 4;
-const SPEED_MAX = 8;
+const SPEED_START = 2;
+const SPEED_MAX = 6;
 const SPEED_MAX_SCORE = 10000;
 const BASE_GRAVITY = 0.8;
 const BASE_JUMP_VELOCITY = -16;
@@ -894,7 +894,7 @@ function getBirdFlyY() {
     // Bird flies at head level - hits standing player but misses ducking player
     // Bird bottom must be ABOVE ducking player's head for duck to work
     // duckHeight/playerHeight ≈ 0.69, so we need multiplier > 0.69
-    const birdBottom = groundY - playerHeight * 0.70; // 75% up from feet
+    const birdBottom = groundY - playerHeight * 0.68; // 75% up from feet
     return Math.round(birdBottom - birdHeight);
 }
 
