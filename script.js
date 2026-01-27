@@ -1034,7 +1034,7 @@ window.onload = function() {
 
     //load player image (human character)
     playerImg = new Image();
-    playerImg.src = "./assets/hum_vit.png";
+    playerImg.src = "./assets/hum_vit_1.png";
     playerImg.onload = function() {
         spriteBounds.player = getNormalizedSpriteBounds(playerImg);
         applyObjectScale(objectScale);
