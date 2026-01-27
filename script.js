@@ -2092,9 +2092,12 @@ function getPlayerHitbox(out) {
     return applySpriteBounds(playerDrawRectScratch, spriteBounds.player, PLAYER_HITBOX_INSET, out);
 }
 
-// Player hitbox for bird collisions (use the same, to match visuals)
+// Player hitbox for bird collisions (head-only to match visuals)
 function getPlayerBirdHitbox(out) {
-    return getPlayerHitbox(out);
+    const full = getPlayerHitbox(out);
+    const headHeight = Math.max(2, Math.round(full.height * 0.45));
+    out.height = headHeight;
+    return out;
 }
 
 // Get token hitbox - union of coin(s) and stick(s), aligned to visible pixels
