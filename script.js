@@ -78,6 +78,7 @@ let walletAddress = null;
 let walletChainId = null;
 let walletReady = false;
 let isConnectingWallet = false;
+let isDetectingWallet = true; // Start true, set false after provider check
 let walletErrorMessage = "";
 let walletInfoMessage = "";
 let walletAuthenticated = false;
@@ -122,6 +123,44 @@ function getEthereumProvider() {
         return window.ethereum;
     }
     return null;
+}
+
+// Wait for ethereum provider to be injected (some wallets inject asynchronously)
+function waitForEthereumProvider(maxWaitMs = 3000) {
+    return new Promise((resolve) => {
+        if (window.ethereum) {
+            resolve(window.ethereum);
+            return;
+        }
+        
+        let resolved = false;
+        
+        // Listen for provider injection event
+        const handleEthereum = () => {
+            if (!resolved && window.ethereum) {
+                resolved = true;
+                window.removeEventListener("ethereum#initialized", handleEthereum);
+                resolve(window.ethereum);
+            }
+        };
+        
+        window.addEventListener("ethereum#initialized", handleEthereum);
+        
+        // Also poll in case the event doesn't fire
+        const startTime = Date.now();
+        const checkInterval = setInterval(() => {
+            if (window.ethereum) {
+                resolved = true;
+                clearInterval(checkInterval);
+                window.removeEventListener("ethereum#initialized", handleEthereum);
+                resolve(window.ethereum);
+            } else if (Date.now() - startTime > maxWaitMs) {
+                clearInterval(checkInterval);
+                window.removeEventListener("ethereum#initialized", handleEthereum);
+                resolve(null);
+            }
+        }, 100);
+    });
 }
 
 function formatAddress(address) {
@@ -539,8 +578,10 @@ function updateWalletUI() {
 
     // Update connect button state and text
     if (connectButton) {
-        connectButton.disabled = !hasProvider || isConnectingWallet || authInProgress;
-        if (!hasProvider) {
+        connectButton.disabled = isDetectingWallet || (!hasProvider) || isConnectingWallet || authInProgress;
+        if (isDetectingWallet) {
+            setConnectButtonText("Detecting wallet...");
+        } else if (!hasProvider) {
             setConnectButtonText("Wallet not found");
         } else if (isConnectingWallet) {
             setConnectButtonText("Connecting...");
@@ -598,7 +639,13 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
-    const provider = getEthereumProvider();
+    // Wait for provider to be injected (some wallets load asynchronously)
+    isDetectingWallet = true;
+    updateWalletUI();
+    
+    const provider = await waitForEthereumProvider(3000);
+    isDetectingWallet = false;
+    
     if (!provider) {
         updateWalletUI();
         return;
