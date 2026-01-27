@@ -2047,8 +2047,8 @@ function placeObstacle() {
         let duckedHeadTop = boardHeight - playerDuckHeight; // Top of player's head when ducking
         // Bird flies at standing head level, so ducking makes player shorter than bird
         let headLevelY = standingHeadTop - birdHeight + 15; // Bird bottom aligns with player head top
-        // Lower bird by 10% of its height so it collides properly
-        headLevelY += birdHeight * 0.1;
+        // Lower bird by 20% of its height so it collides properly
+        headLevelY += birdHeight * 0.2;
         
         const spawnX = adjustSpawnX(birdX, SPAWN_X_GAP);
         if (spawnX !== null) {
