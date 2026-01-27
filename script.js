@@ -871,7 +871,8 @@ const playerDrawRectScratch = { x: 0, y: 0, width: 0, height: 0 };
 // Tight insets for pixel-accurate collisions
 const PLAYER_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
 const OBSTACLE_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
-const BIRD_HITBOX_INSET = { top: 5, bottom: 5, left: 8, right: 8 };
+// Bird hitbox - negative values EXPAND the collision area (triggers before visual overlap)
+const BIRD_HITBOX_INSET = { top: -10, bottom: -5, left: -15, right: -10 };
 
 // Normalized opaque bounds for sprite images (0..1)
 const spriteBounds = {
@@ -940,9 +941,9 @@ let birdY = boardHeight - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
 let birdImg;
 
 //physics
-const SPEED_START = 5; // стартовая скорость (медленно)
-const SPEED_MAX = 17; // максимальная скорость (конечная)
-const MOBILE_SPEED_MAX = 9; // максимальная скорость на телефоне
+const SPEED_START = 3; // стартовая скорость (медленно) - уменьшено для дальности прыжков
+const SPEED_MAX = 14; // максимальная скорость (конечная)
+const MOBILE_SPEED_MAX = 6; // максимальная скорость на телефоне - уменьшено для дальности прыжков
 const SPEED_MAX_SCORE = 10000; // до этого счёта скорость плавно растёт
 const BASE_GRAVITY = 1.0;
 const BASE_JUMP_VELOCITY = -22.9;
@@ -955,7 +956,6 @@ let velocityY = 0;
 let gravity = BASE_GRAVITY;
 let jumpVelocity = BASE_JUMP_VELOCITY;
 let scoreFloat = 0;
-let isAirborne = false; // Track if player is in the air
 
 // (Ручные паддинги убраны — хитбоксы строятся по альфа‑границам спрайтов)
 
@@ -1630,21 +1630,7 @@ function update(timestamp) {
         velocityY = 0;
     }
     
-    // Track airborne state and apply speed reduction during jump
-    isAirborne = player.y < groundY - 1;
-    
-    // During jump: slow down obstacles to increase jump distance
-    // Slowdown is stronger at low speed, weaker at high speed
-    let effectiveSpeed = speed;
-    if (isAirborne) {
-        // At low speed (5): reduce to 40% speed -> more jump distance
-        // At max speed: reduce to 80% speed -> less jump distance bonus
-        const speedRatio = speed / maxSpeed; // 0 at start, 1 at max
-        const slowdownFactor = 0.4 + 0.4 * speedRatio; // 0.4 to 0.8
-        effectiveSpeed = speed * slowdownFactor;
-    }
-    
-    velocityX = -effectiveSpeed;
+    velocityX = -speed;
     const frameVelocityX = velocityX * stepScale;
     player.x = playerX + mobileEdgeGapWorld + mobileSafeLeftWorld;
     
