@@ -1112,7 +1112,7 @@ function updateCheckinUI() {
     }
     const checkedIn = isToday(checkinState.lastCheckin);
     checkinButton.disabled = checkedIn;
-    setCheckinButtonText(checkedIn ? "Done" : "Check-in");
+    setCheckinButtonText("Check-in");
     
     // Start/update timer
     if (checkedIn) {
