@@ -1,92 +1,103 @@
 //=============================================================================
-// DESIGN-RESOLUTION BASED SCALING SYSTEM
-// All sizes/positions are defined in DESIGN units, then multiplied by gameScale
+// SIMPLE SCALING SYSTEM - based on canvas height
 //=============================================================================
 let board;
 
-// Design resolution (iPhone-like reference)
-const DESIGN_W = 390;
-const DESIGN_H = 844;
+// Base canvas dimensions
+const BASE_BOARD_WIDTH = 750;
+const BASE_BOARD_HEIGHT = 400;
 
-// Current game scale (computed on resize)
+// Current dimensions
+let boardWidth = BASE_BOARD_WIDTH;
+let boardHeight = BASE_BOARD_HEIGHT;
+
+// Scale factor (based on height)
 let gameScale = 1;
 
-// Canvas dimensions (in actual pixels)
-let boardWidth = DESIGN_W;
-let boardHeight = DESIGN_H;
-
-// Platform (PNG sprite) - single source of truth for ground baseline
+// Platform (PNG sprite)
 let platformImg = null;
-let platformAspectRatio = 1; // Will be set when image loads
 
-// Platform layout in DESIGN units
-const PLATFORM_Y_DESIGN = 0.67 * DESIGN_H; // Platform top at 67% of design height (lowered)
-const PLATFORM_WIDTH_DESIGN = DESIGN_W; // Full width
-const PLATFORM_HEIGHT_DESIGN = 12; // Base height in design units
-const PLATFORM_TOP_PADDING_DESIGN = 4; // Fine-tune: offset from top edge to actual surface
+// Platform position (ratio-based)
+const PLATFORM_Y_RATIO = 0.75; // Platform at 75% of canvas height
+const PLATFORM_HEIGHT = 10;
+const PLATFORM_TOP_PADDING = 2;
 
 let platform = {
     x: 0,
     y: 0,
     width: 0,
-    height: 0
+    height: PLATFORM_HEIGHT
 };
 
-// Ground baseline (in pixels, derived from platform)
-let groundY = Math.round(PLATFORM_Y_DESIGN + PLATFORM_TOP_PADDING_DESIGN);
+// Ground baseline
+let groundY = Math.round(BASE_BOARD_HEIGHT * PLATFORM_Y_RATIO);
 
-// Debug flags
-const DEBUG_SHOW_GROUND_LINE = false; // Set true to visualize groundY
-
-//=============================================================================
-// SPRITE SIZES IN DESIGN UNITS (coin is the base unit)
-//=============================================================================
-const COIN_SIZE_DESIGN = 28; // Base coin size in design units
-const PLAYER_HEIGHT_DESIGN = COIN_SIZE_DESIGN * 2; // Player = exactly 2x coin
-const PLAYER_WIDTH_DESIGN = Math.round(PLAYER_HEIGHT_DESIGN * 0.72); // Aspect ratio
-const PLAYER_DUCK_HEIGHT_DESIGN = Math.round(PLAYER_HEIGHT_DESIGN * 0.5);
-const BIRD_HEIGHT_DESIGN = Math.round(COIN_SIZE_DESIGN * 1.2); // Bird = 1.2x coin
-const BIRD_WIDTH_DESIGN = Math.round(BIRD_HEIGHT_DESIGN * 1.125);
-const STICK_HEIGHT_DESIGN = 20;
-const STICK_WIDTH_DESIGN = 3;
-const COIN_SPACING_DESIGN = 32;
-const PLAYER_X_DESIGN = 50; // Player X position from left edge
-
-// Token composite sizes
-const TOKEN1_WIDTH_DESIGN = COIN_SIZE_DESIGN;
-const TOKEN2_WIDTH_DESIGN = COIN_SPACING_DESIGN + COIN_SIZE_DESIGN;
-const TOKEN3_WIDTH_DESIGN = COIN_SPACING_DESIGN * 2 + COIN_SIZE_DESIGN;
-const TOKEN_HEIGHT_DESIGN = STICK_HEIGHT_DESIGN + COIN_SIZE_DESIGN;
-
-// Spawn offset
-const SPAWN_OFFSET_DESIGN = 160;
+// Debug
+const DEBUG_SHOW_GROUND_LINE = false;
 
 //=============================================================================
-// PHYSICS IN DESIGN UNITS PER SECOND (deltaTime based)
+// BASE SPRITE SIZES (at scale 1.0)
 //=============================================================================
-const RUN_SPEED_START_DESIGN = 200; // pixels/sec in design units
-const RUN_SPEED_MAX_DESIGN = 320;
-const SPEED_MAX_SCORE = 10000; // Score at which max speed is reached
+const BASE_COIN_SIZE = 32;
+const BASE_PLAYER_HEIGHT = 64; // 2x coin
+const BASE_PLAYER_WIDTH = 46;
+const BASE_PLAYER_DUCK_HEIGHT = 32;
+const BASE_BIRD_HEIGHT = 38;
+const BASE_BIRD_WIDTH = 43;
+const BASE_STICK_HEIGHT = 20;
+const BASE_STICK_WIDTH = 3;
+const BASE_COIN_SPACING = 36;
+const BASE_PLAYER_X = 60;
 
-// Jump physics - constant height, variable duration
-const JUMP_HEIGHT_DESIGN = 140; // Max jump height in design units
-const JUMP_DURATION_BASE = 0.58; // Base jump duration in seconds
+// Token sizes
+const BASE_TOKEN1_WIDTH = BASE_COIN_SIZE;
+const BASE_TOKEN2_WIDTH = BASE_COIN_SPACING + BASE_COIN_SIZE;
+const BASE_TOKEN3_WIDTH = BASE_COIN_SPACING * 2 + BASE_COIN_SIZE;
+const BASE_TOKEN_HEIGHT = BASE_STICK_HEIGHT + BASE_COIN_SIZE;
+
+const BASE_SPAWN_OFFSET = 150;
 
 //=============================================================================
-// HITBOX INSETS (scaled with gameScale)
+// PHYSICS
 //=============================================================================
-const HITBOX_PADDING_DESIGN = 3; // Base hitbox inset in design units
+const SPEED_START = 6;
+const SPEED_MAX = 12;
+const SPEED_MAX_SCORE = 10000;
+const BASE_GRAVITY = 0.8;
+const BASE_JUMP_VELOCITY = -16;
 
 //=============================================================================
-// COMPUTED VALUES (updated on resize/scale change)
+// COMPUTED VALUES
 //=============================================================================
-let playerWidth, playerHeight, playerDuckHeight, playerX, playerY;
-let coinSize, stickHeight, stickWidth, coinSpacing;
-let token1Width, token2Width, token3Width, tokenHeight, tokenX, tokenY;
-let birdWidth, birdHeight, birdX, birdY;
-let hitboxPadding;
-let runSpeed, runSpeedMax;
-let jumpHeight, jumpVelocity, gravity;
+let playerWidth = BASE_PLAYER_WIDTH;
+let playerHeight = BASE_PLAYER_HEIGHT;
+let playerDuckHeight = BASE_PLAYER_DUCK_HEIGHT;
+let playerX = BASE_PLAYER_X;
+let playerY = groundY - playerHeight;
+
+let coinSize = BASE_COIN_SIZE;
+let stickHeight = BASE_STICK_HEIGHT;
+let stickWidth = BASE_STICK_WIDTH;
+let coinSpacing = BASE_COIN_SPACING;
+
+let token1Width = BASE_TOKEN1_WIDTH;
+let token2Width = BASE_TOKEN2_WIDTH;
+let token3Width = BASE_TOKEN3_WIDTH;
+let tokenHeight = BASE_TOKEN_HEIGHT;
+let tokenX = boardWidth + BASE_SPAWN_OFFSET;
+let tokenY = groundY - tokenHeight;
+
+let birdWidth = BASE_BIRD_WIDTH;
+let birdHeight = BASE_BIRD_HEIGHT;
+let birdX = boardWidth + BASE_SPAWN_OFFSET;
+let birdY = groundY - playerHeight - birdHeight;
+
+let hitboxPadding = 3;
+let speed = SPEED_START;
+let velocityX = -speed;
+let velocityY = 0;
+let gravity = BASE_GRAVITY;
+let jumpVelocity = BASE_JUMP_VELOCITY;
 
 let context;
 let isMobileLayout = false;
@@ -890,8 +901,8 @@ let playerSpriteInsetX = 0;
 let debugHitboxes = false;
 
 // Minimum horizontal gap between obstacles (in design units)
-const SPAWN_X_GAP_DESIGN = 320;
-let spawnXGap = SPAWN_X_GAP_DESIGN;
+const SPAWN_X_GAP = 350;
+let spawnXGap = SPAWN_X_GAP;
 
 // Reusable hitbox scratch objects to reduce GC
 const playerHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
@@ -942,9 +953,6 @@ let tokenArray = [];
 let birdArray = [];
 let tokenImg;
 let birdImg;
-
-// Physics state
-let velocityY = 0;
 let scoreFloat = 0;
 
 const GAME_STATE = {
@@ -1029,10 +1037,7 @@ window.onload = function() {
         }, { passive: false });
     }
     initWalletState();
-    applyResponsiveLayout();
-    board.height = boardHeight;
-    board.width = boardWidth;
-
+    
     context = board.getContext("2d");
 
     // Setup crisp rendering
@@ -1393,171 +1398,91 @@ function togglePause() {
 // DESIGN-RESOLUTION SCALING SYSTEM
 //=============================================================================
 
-// Compute game scale based on canvas size vs design resolution
-function computeGameScale() {
-    return Math.min(boardWidth / DESIGN_W, boardHeight / DESIGN_H);
-}
-
-// Apply all game scaling (called on resize and restart)
+// Apply scaling based on canvas dimensions
 function applyGameScale() {
-    const oldGroundY = groundY;
-    const wasOnGround = player.height > 0 && player.y >= groundY - player.height - 5;
-    const wasDucking = isDucking;
+    // Scale based on height ratio
+    gameScale = boardHeight / BASE_BOARD_HEIGHT;
     
-    // Compute new scale
-    gameScale = computeGameScale();
-    
-    // Scale hitbox padding
-    hitboxPadding = Math.round(HITBOX_PADDING_DESIGN * gameScale);
-    
-    // Scale sprite sizes
-    coinSize = Math.round(COIN_SIZE_DESIGN * gameScale);
-    playerWidth = Math.round(PLAYER_WIDTH_DESIGN * gameScale);
-    playerHeight = Math.round(PLAYER_HEIGHT_DESIGN * gameScale);
-    playerDuckHeight = Math.round(PLAYER_DUCK_HEIGHT_DESIGN * gameScale);
-    birdWidth = Math.round(BIRD_WIDTH_DESIGN * gameScale);
-    birdHeight = Math.round(BIRD_HEIGHT_DESIGN * gameScale);
-    stickHeight = Math.round(STICK_HEIGHT_DESIGN * gameScale);
-    stickWidth = Math.max(2, Math.round(STICK_WIDTH_DESIGN * gameScale));
-    coinSpacing = Math.round(COIN_SPACING_DESIGN * gameScale);
-    
-    // Token composite sizes
-    token1Width = Math.round(TOKEN1_WIDTH_DESIGN * gameScale);
-    token2Width = Math.round(TOKEN2_WIDTH_DESIGN * gameScale);
-    token3Width = Math.round(TOKEN3_WIDTH_DESIGN * gameScale);
-    tokenHeight = Math.round(TOKEN_HEIGHT_DESIGN * gameScale);
-    
-    // Player X position
-    playerSpriteInsetX = spriteBounds.player ? Math.round(spriteBounds.player.x * playerWidth) : 0;
-    playerX = Math.round(PLAYER_X_DESIGN * gameScale) - playerSpriteInsetX;
-    
-    // Spawn offset and gap
-    spawnXGap = Math.round(SPAWN_X_GAP_DESIGN * gameScale);
-    tokenX = boardWidth + Math.round(SPAWN_OFFSET_DESIGN * gameScale);
-    birdX = boardWidth + Math.round(SPAWN_OFFSET_DESIGN * gameScale);
-    
-    // Platform position (from design units)
+    // Platform position
     platform.x = 0;
     platform.width = boardWidth;
-    platform.height = Math.round(PLATFORM_HEIGHT_DESIGN * gameScale);
-    platform.y = Math.round(PLATFORM_Y_DESIGN * gameScale);
+    platform.height = Math.round(PLATFORM_HEIGHT * gameScale);
+    platform.y = Math.round(boardHeight * PLATFORM_Y_RATIO);
     
-    // Ground baseline = top edge of platform + padding
-    groundY = platform.y + Math.round(PLATFORM_TOP_PADDING_DESIGN * gameScale);
+    // Ground baseline
+    groundY = platform.y + Math.round(PLATFORM_TOP_PADDING * gameScale);
     
-    // Derived positions
+    // Scale sprites
+    coinSize = Math.round(BASE_COIN_SIZE * gameScale);
+    playerWidth = Math.round(BASE_PLAYER_WIDTH * gameScale);
+    playerHeight = Math.round(BASE_PLAYER_HEIGHT * gameScale);
+    playerDuckHeight = Math.round(BASE_PLAYER_DUCK_HEIGHT * gameScale);
+    birdWidth = Math.round(BASE_BIRD_WIDTH * gameScale);
+    birdHeight = Math.round(BASE_BIRD_HEIGHT * gameScale);
+    stickHeight = Math.round(BASE_STICK_HEIGHT * gameScale);
+    stickWidth = Math.max(2, Math.round(BASE_STICK_WIDTH * gameScale));
+    coinSpacing = Math.round(BASE_COIN_SPACING * gameScale);
+    
+    // Token sizes
+    token1Width = Math.round(BASE_TOKEN1_WIDTH * gameScale);
+    token2Width = Math.round(BASE_TOKEN2_WIDTH * gameScale);
+    token3Width = Math.round(BASE_TOKEN3_WIDTH * gameScale);
+    tokenHeight = Math.round(BASE_TOKEN_HEIGHT * gameScale);
+    
+    // Positions
+    playerSpriteInsetX = spriteBounds.player ? Math.round(spriteBounds.player.x * playerWidth) : 0;
+    playerX = Math.round(BASE_PLAYER_X * gameScale) - playerSpriteInsetX;
     playerY = groundY - playerHeight;
     tokenY = groundY - tokenHeight;
+    tokenX = boardWidth + Math.round(BASE_SPAWN_OFFSET * gameScale);
+    birdX = boardWidth + Math.round(BASE_SPAWN_OFFSET * gameScale);
     birdY = getBirdFlyY();
     
-    // Scale physics
-    runSpeed = Math.round(RUN_SPEED_START_DESIGN * gameScale);
-    runSpeedMax = Math.round(RUN_SPEED_MAX_DESIGN * gameScale);
-    jumpHeight = Math.round(JUMP_HEIGHT_DESIGN * gameScale);
+    hitboxPadding = Math.max(2, Math.round(3 * gameScale));
     
-    // Compute jump physics for constant height
-    computeJumpPhysics();
-    
-    // Update player position
-    player.width = playerWidth;
-    player.height = wasDucking ? playerDuckHeight : playerHeight;
+    // Update player
     player.x = playerX;
-    
-    if (wasOnGround) {
-        player.y = wasDucking ? groundY - playerDuckHeight : playerY;
-        velocityY = 0;
-    } else if (oldGroundY > 0) {
-        // Keep relative position during resize
-        const relativeY = player.y - (oldGroundY - playerHeight);
-        player.y = Math.min(playerY, playerY + relativeY);
-    } else {
-        player.y = playerY;
-    }
-    
-    // Update existing obstacles
-    for (let i = 0; i < tokenArray.length; i++) {
-        const token = tokenArray[i];
-        token.width = token.type === 1 ? token1Width : token.type === 2 ? token2Width : token3Width;
-        token.height = tokenHeight;
-        token.y = tokenY;
-    }
-    for (let i = 0; i < birdArray.length; i++) {
-        const bird = birdArray[i];
-        bird.width = birdWidth;
-        bird.height = birdHeight;
-        bird.y = birdY;
-    }
+    player.y = playerY;
+    player.width = playerWidth;
+    player.height = playerHeight;
     
     updatePauseButtonVisibility();
-}
-
-// Compute jump physics: constant height, duration scales with speed
-function computeJumpPhysics() {
-    // Jump duration inversely proportional to run speed
-    const currentSpeed = runSpeed || RUN_SPEED_START_DESIGN * gameScale;
-    const baseSpeed = RUN_SPEED_START_DESIGN * gameScale;
-    const speedFactor = currentSpeed / baseSpeed;
-    const jumpDuration = JUMP_DURATION_BASE / Math.max(speedFactor, 0.5);
-    
-    // Physics for constant peak height:
-    // h = v0 * t/2, where t = total duration, so v0 = 4h/t
-    // g = 2 * v0 / t = 8h / t^2
-    gravity = (8 * jumpHeight) / (jumpDuration * jumpDuration);
-    jumpVelocity = -(4 * jumpHeight) / jumpDuration;
 }
 
 function setupCrispCanvas() {
     const viewport = getViewportSize();
     const dpr = window.devicePixelRatio || 1;
     
-    // Detect mobile layout
     isMobileLayout = viewport.width <= 900;
     
-    // Compute available space
+    // Get available space from game card or viewport
     const gameCard = document.querySelector('.game-card');
-    let availableWidth = viewport.width;
-    let availableHeight = viewport.height;
-    
     if (gameCard) {
         const cardRect = gameCard.getBoundingClientRect();
-        availableWidth = cardRect.width;
-        availableHeight = cardRect.height;
-    }
-    
-    // Maintain design aspect ratio
-    const designAspect = DESIGN_W / DESIGN_H;
-    let canvasW, canvasH;
-    
-    if (availableWidth / availableHeight > designAspect) {
-        // Height constrained
-        canvasH = availableHeight;
-        canvasW = canvasH * designAspect;
+        boardWidth = Math.round(cardRect.width);
+        boardHeight = Math.round(cardRect.height);
     } else {
-        // Width constrained
-        canvasW = availableWidth;
-        canvasH = canvasW / designAspect;
+        boardWidth = Math.round(viewport.width * 0.9);
+        boardHeight = Math.round(viewport.height * 0.7);
     }
     
-    // Set board dimensions (in logical pixels)
-    boardWidth = Math.round(canvasW);
-    boardHeight = Math.round(canvasH);
+    // Ensure minimum size
+    boardWidth = Math.max(boardWidth, 300);
+    boardHeight = Math.max(boardHeight, 200);
     
-    // Set canvas size with DPR for crisp rendering
+    // Set canvas size with DPR
     board.width = Math.floor(boardWidth * dpr);
     board.height = Math.floor(boardHeight * dpr);
     board.style.width = boardWidth + "px";
     board.style.height = boardHeight + "px";
     
-    // Scale context by DPR
+    // Scale context
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     
-    // Disable smoothing for crisp pixel art
+    // Disable smoothing
     context.imageSmoothingEnabled = false;
-    context.webkitImageSmoothingEnabled = false;
-    context.mozImageSmoothingEnabled = false;
-    context.msImageSmoothingEnabled = false;
     
-    // Apply game scaling
+    // Apply scaling
     applyGameScale();
 }
 
@@ -1615,18 +1540,18 @@ function update(timestamp) {
     if (lastFrameTime === null) {
         lastFrameTime = timestamp;
     }
-    // Delta time in seconds, capped to prevent huge jumps
-    const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.1);
+    const deltaMs = Math.min(timestamp - lastFrameTime, 100);
     lastFrameTime = timestamp;
+    const FRAME_MS = 1000 / 60;
+    const dtScale = deltaMs / FRAME_MS;
     
     const isGameOver = gameState === GAME_STATE.GAME_OVER;
-    // Freeze gameplay when game over but continue rendering
     const shouldUpdate = gameActive && !isPaused && !isGameOver;
-    const effectiveDt = shouldUpdate ? dt : 0;
+    const stepScale = shouldUpdate ? dtScale : 0;
     
     context.clearRect(0, 0, boardWidth, boardHeight);
     
-    // Draw platform PNG sprite (ground baseline)
+    // Draw platform PNG sprite
     if (platformImg && platformImg.complete) {
         context.drawImage(platformImg, platform.x, platform.y, platform.width, platform.height);
     }
@@ -1648,13 +1573,12 @@ function update(timestamp) {
         return;
     }
 
-    // Smooth speed progression (design units per second, scaled)
+    // Speed progression
     const displayScore = Math.floor(scoreFloat);
     const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
-    const currentRunSpeed = runSpeed + (runSpeedMax - runSpeed) * speedProgress;
-    
-    // Movement per frame (pixels)
-    const frameVelocityX = -currentRunSpeed * effectiveDt;
+    speed = SPEED_START + (SPEED_MAX - SPEED_START) * speedProgress;
+    velocityX = -speed * gameScale;
+    const frameVelocityX = velocityX * stepScale;
 
     //player physics
     const prevY = player.y;
@@ -1679,9 +1603,9 @@ function update(timestamp) {
         }
     }
 
-    // Apply gravity and velocity (deltaTime based)
-    velocityY += gravity * effectiveDt;
-    player.y = Math.min(player.y + velocityY * effectiveDt, playerGroundY);
+    // Apply gravity and velocity
+    velocityY += gravity * stepScale;
+    player.y = Math.min(player.y + velocityY * stepScale, playerGroundY);
     if (player.y >= playerGroundY) {
         velocityY = 0;
     }
@@ -1823,8 +1747,8 @@ function update(timestamp) {
     context.fillStyle="black";
     context.font=`${scoreFontSize}px courier`;
     context.textBaseline = "top";
-    // Score increases at ~60 points/sec (scaled with game speed)
-    scoreFloat += effectiveDt * 60 * (currentRunSpeed / runSpeed);
+    // Score increases based on speed
+    scoreFloat += stepScale;
     const nextScore = Math.floor(scoreFloat);
     if (nextScore !== score) {
         score = nextScore;
