@@ -1,0 +1,26 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Base Runner",
+    "subtitle": "Run. Earn. Unlock.",
+    "description": "Chrome Dino-style endless runner game on Base. Jump, duck, collect coins and compete for the highest score!",
+    "iconUrl": "https://base-runner-iwss.onrender.com/assets/coin.png",
+    "splashImageUrl": "https://base-runner-iwss.onrender.com/assets/connect_wallet.png",
+    "splashBackgroundColor": "#C4D4E8",
+    "homeUrl": "https://base-runner-iwss.onrender.com",
+    "webhookUrl": "https://base-runner-backend-lxfx.onrender.com/api/webhook",
+    "screenshotUrls": [],
+    "primaryCategory": "games",
+    "tags": ["game", "runner", "base", "crypto", "coins"],
+    "heroImageUrl": "https://base-runner-iwss.onrender.com/assets/connect_wallet.png",
+    "tagline": "Endless runner on Base",
+    "ogTitle": "Base Runner - Run. Earn. Unlock.",
+    "ogDescription": "Chrome Dino-style endless runner game. Jump, duck, collect coins!",
+    "ogImageUrl": "https://base-runner-iwss.onrender.com/assets/connect_wallet.png"
+  }
+}

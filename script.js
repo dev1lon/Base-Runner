@@ -98,6 +98,16 @@ let backendInputLog = [];
 let backendSessionStartMs = 0;
 let backendSessionActive = false;
 let backendRunSubmitted = false;
+
+// Base App MiniApp SDK integration
+let isInMiniApp = false;
+let miniAppContext = null;
+let miniAppUserInfo = {
+    fid: null,
+    username: null,
+    displayName: null,
+    pfpUrl: null
+};
 let rng = null;
 
 function getViewportSize() {
@@ -128,6 +138,13 @@ function getEthereumProvider() {
 
 function formatAddress(address) {
     if (!address) return "";
+    // In MiniApp, prefer username/displayName over 0x address
+    if (isInMiniApp && miniAppUserInfo.username) {
+        return `@${miniAppUserInfo.username}`;
+    }
+    if (isInMiniApp && miniAppUserInfo.displayName) {
+        return miniAppUserInfo.displayName;
+    }
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
@@ -599,7 +616,48 @@ function updateWalletUI() {
     updateCheckinUI();
 }
 
+async function initMiniAppSDK() {
+    // Check if Farcaster MiniApp SDK is available
+    if (typeof window.FarcasterMiniAppSdk === 'undefined' && typeof window.sdk === 'undefined') {
+        console.log("MiniApp SDK not available");
+        return false;
+    }
+    
+    const sdk = window.FarcasterMiniAppSdk || window.sdk;
+    if (!sdk) return false;
+    
+    try {
+        // Check if we're running inside a MiniApp (Base App or Farcaster client)
+        isInMiniApp = await sdk.isInMiniApp();
+        console.log("Is in MiniApp:", isInMiniApp);
+        
+        if (isInMiniApp) {
+            // Get user context
+            miniAppContext = await sdk.context;
+            if (miniAppContext && miniAppContext.user) {
+                miniAppUserInfo = {
+                    fid: miniAppContext.user.fid,
+                    username: miniAppContext.user.username,
+                    displayName: miniAppContext.user.displayName,
+                    pfpUrl: miniAppContext.user.pfpUrl
+                };
+                console.log("MiniApp user:", miniAppUserInfo);
+            }
+            
+            // Signal that app is ready to be displayed
+            await sdk.actions.ready();
+            return true;
+        }
+    } catch (err) {
+        console.warn("MiniApp SDK init error:", err);
+    }
+    return false;
+}
+
 async function initWalletState() {
+    // First, try to initialize MiniApp SDK
+    const isMiniApp = await initMiniAppSDK();
+    
     const provider = getEthereumProvider();
     if (!provider) {
         updateWalletUI();
@@ -612,14 +670,37 @@ async function initWalletState() {
     }
 
     try {
-        const accounts = await provider.request({ method: "eth_accounts" });
-        walletAddress = accounts && accounts.length ? accounts[0] : null;
-        const chainId = await provider.request({ method: "eth_chainId" });
-        walletChainId = normalizeChainId(chainId) || chainId;
-        resetAuthState();
-        await restoreAuthSession();
+        // In MiniApp, wallet is auto-connected - request accounts
+        if (isMiniApp) {
+            const accounts = await provider.request({ method: "eth_requestAccounts" });
+            walletAddress = accounts && accounts.length ? accounts[0] : null;
+            
+            // Get chain ID
+            const chainId = await provider.request({ method: "eth_chainId" });
+            walletChainId = normalizeChainId(chainId) || chainId;
+            
+            // If connected, try to auto-authenticate
+            if (walletAddress) {
+                resetAuthState();
+                const restored = await restoreAuthSession();
+                if (!restored) {
+                    // Need to authenticate - trigger full connect flow
+                    updateWalletUI();
+                    await connectWallet();
+                    return;
+                }
+            }
+        } else {
+            const accounts = await provider.request({ method: "eth_accounts" });
+            walletAddress = accounts && accounts.length ? accounts[0] : null;
+            
+            const chainId = await provider.request({ method: "eth_chainId" });
+            walletChainId = normalizeChainId(chainId) || chainId;
+            resetAuthState();
+            await restoreAuthSession();
+        }
     } catch (err) {
-        // ignore
+        console.warn("Wallet init error:", err);
     } finally {
         updateWalletUI();
     }
