@@ -871,6 +871,7 @@ const playerDrawRectScratch = { x: 0, y: 0, width: 0, height: 0 };
 // Tight insets for pixel-accurate collisions
 const PLAYER_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
 const OBSTACLE_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
+const BIRD_HITBOX_INSET = { top: 2, bottom: 2, left: 3, right: 3 };
 
 // Normalized opaque bounds for sprite images (0..1)
 const spriteBounds = {
@@ -1731,7 +1732,7 @@ function update(timestamp) {
         birdHitboxScratch.y = Math.round(bird.y);
         birdHitboxScratch.width = bird.width;
         birdHitboxScratch.height = bird.height;
-        applySpriteBounds(birdHitboxScratch, spriteBounds.bird, OBSTACLE_HITBOX_INSET, birdHitboxScratch);
+        applySpriteBounds(birdHitboxScratch, spriteBounds.bird, BIRD_HITBOX_INSET, birdHitboxScratch);
         
         // Debug: draw bird hitbox if enabled
         if (debugHitboxes) {
