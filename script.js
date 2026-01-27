@@ -671,8 +671,13 @@ async function initWalletState() {
 }
 
 async function connectWallet() {
+    console.log("[connectWallet] called");
     const provider = getEthereumProvider();
+    console.log("[connectWallet] provider:", provider);
+    console.log("[connectWallet] isConnectingWallet:", isConnectingWallet);
+    
     if (!provider || isConnectingWallet) {
+        console.log("[connectWallet] early return - no provider or already connecting");
         setWalletError("Wallet не найден.");
         updateWalletUI();
         return;
@@ -684,7 +689,9 @@ async function connectWallet() {
     updateWalletUI();
     try {
         if (!walletAddress) {
+            console.log("[connectWallet] requesting accounts...");
             const accounts = await provider.request({ method: "eth_requestAccounts" });
+            console.log("[connectWallet] accounts:", accounts);
             handleAccountsChanged(accounts);
         }
         let chainId = null;
@@ -723,6 +730,7 @@ async function connectWallet() {
             }
         }
     } catch (err) {
+        console.error("[connectWallet] error:", err);
         if (err && err.code === 4001) {
             setWalletError("Отменено в кошельке.");
         } else if (err && err.code === -32002) {
@@ -733,6 +741,7 @@ async function connectWallet() {
             setWalletError("Не удалось подключить кошелёк. Проверьте разрешения.");
         }
     } finally {
+        console.log("[connectWallet] finally block");
         isConnectingWallet = false;
         setWalletInfo("");
         updateWalletUI();
@@ -969,12 +978,19 @@ window.onload = function() {
         }, { passive: false });
     }
     if (connectButton) {
-        connectButton.addEventListener("click", connectWallet);
+        console.log("[init] connectButton found, adding listeners");
+        connectButton.addEventListener("click", function() {
+            console.log("[click] connect button clicked");
+            connectWallet();
+        });
         connectButton.addEventListener("touchstart", function(e) {
+            console.log("[touchstart] connect button touched");
             e.stopPropagation();
             e.preventDefault();
             connectWallet();
         }, { passive: false });
+    } else {
+        console.error("[init] connectButton NOT found!");
     }
     if (checkinButton) {
         checkinButton.addEventListener("click", handleCheckin);
