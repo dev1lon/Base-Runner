@@ -1800,29 +1800,35 @@ function update(timestamp) {
         
         const gameOverText = "GAME OVER";
         const restartText = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
-        const gameOverFont = Math.round(36 * uiScale);
-        const restartFont = Math.round(16 * uiScale);
+        const maxTextWidth = Math.round(boardWidth * 0.8);
+        let gameOverFont = Math.round(34 * uiScale);
+        let restartFont = Math.round(14 * uiScale);
         
         // Center vertically in the play area
         const centerY = Math.round(boardHeight / 2);
         
-        // Game over text with outline for visibility
-        context.font = `bold ${gameOverFont}px "Arial Black", Arial, sans-serif`;
+        // Game over text with strict, clean typography
+        context.font = `700 ${gameOverFont}px "Inter", Arial, sans-serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";
-        
-        context.strokeStyle = "#111";
-        context.lineWidth = 6;
-        context.strokeText(gameOverText, boardWidth / 2, centerY);
-        
+
+        let gameOverWidth = context.measureText(gameOverText).width;
+        if (gameOverWidth > maxTextWidth) {
+            gameOverFont = Math.max(16, Math.floor(gameOverFont * (maxTextWidth / gameOverWidth)));
+            context.font = `700 ${gameOverFont}px "Inter", Arial, sans-serif`;
+            gameOverWidth = context.measureText(gameOverText).width;
+        }
+
         context.fillStyle = "#d11c1c";
         context.fillText(gameOverText, boardWidth / 2, centerY);
         
         // Restart hint
-        context.font = `${restartFont}px "Arial Black", Arial, sans-serif`;
-        context.strokeStyle = "#111";
-        context.lineWidth = 3;
-        context.strokeText(restartText, boardWidth / 2, centerY + gameOverFont);
+        context.font = `600 ${restartFont}px "Inter", Arial, sans-serif`;
+        let restartWidth = context.measureText(restartText).width;
+        if (restartWidth > maxTextWidth) {
+            restartFont = Math.max(12, Math.floor(restartFont * (maxTextWidth / restartWidth)));
+            context.font = `600 ${restartFont}px "Inter", Arial, sans-serif`;
+        }
         context.fillStyle = "#f3f3f3";
         context.fillText(restartText, boardWidth / 2, centerY + gameOverFont);
         
