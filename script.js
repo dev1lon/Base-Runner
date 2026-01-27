@@ -1,7 +1,7 @@
 //board - scaled up by 1.5x
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
-const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
+const BASE_BOARD_HEIGHT = 520; // increased to give more space for UI at top
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -868,9 +868,9 @@ const coinHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const stickHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const playerDrawRectScratch = { x: 0, y: 0, width: 0, height: 0 };
 
-// Small insets for fair but tight collisions
-const PLAYER_HITBOX_INSET = { top: 1, bottom: 2, left: 1, right: 1 };
-const OBSTACLE_HITBOX_INSET = { top: 1, bottom: 1, left: 1, right: 1 };
+// Tight insets for pixel-accurate collisions
+const PLAYER_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
+const OBSTACLE_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
 
 // Normalized opaque bounds for sprite images (0..1)
 const spriteBounds = {
@@ -1772,7 +1772,7 @@ function update(timestamp) {
         addCoins(increments);
         nextCoinScore += increments * 10000;
     }
-    const coinLabel = "Coin:";
+    const coinLabel = "Coins:";
     const coinText = String(coinCount);
     const scoreText = "Score: " + score;
     const bestText = "Best: " + bestScore;
