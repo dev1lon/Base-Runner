@@ -4,65 +4,56 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
     <title>Base Runner</title>
-    <!-- Base App Mini App metadata -->
-    <meta name="fc:miniapp" content='{"version":"next","imageUrl":"https://base-runner-iwss.onrender.com/assets/connect_wallet.png","button":{"title":"Play Now","action":{"type":"launch_miniapp","name":"Base Runner","url":"https://base-runner-iwss.onrender.com","splashImageUrl":"https://base-runner-iwss.onrender.com/assets/connect_wallet.png","splashBackgroundColor":"#C4D4E8"}}}'>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Farcaster MiniApp SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@farcaster/miniapp-sdk@0.3.2/dist/index.min.js"></script>
     <script src="script.js"></script>
 </head>
 <body>
     <div class="game-container">
-        <!-- Game card wrapper with glass effect -->
+        <!-- Game card with glass effect -->
         <div class="game-card">
-            <div class="game-card-inner">
-                <!-- Game UI overlay -->
-                <div class="game-ui">
-                    <!-- Coins (top left) -->
-                    <div class="game-ui-left">
-                        <div class="ui-badge ui-badge-coins">
-                            <img src="./assets/eth.png" alt="" class="ui-badge-icon">
-                            <span class="ui-badge-text">COINS:</span>
-                            <span id="game-coins" class="ui-badge-value">0</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Score/Best (top right) -->
-                    <div class="game-ui-right">
-                        <div class="ui-badge ui-badge-best">
-                            <svg class="ui-badge-icon ui-trophy" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
-                            </svg>
-                            <span class="ui-badge-text">BEST</span>
-                        </div>
-                        <div class="ui-best-value">
-                            <span class="ui-best-label">BEST:</span>
-                            <span id="game-best">0</span>
-                        </div>
-                        <div class="ui-badge ui-badge-score">
-                            <span class="ui-badge-text">SCORE:</span>
-                            <span id="game-score" class="ui-badge-value">0</span>
-                        </div>
+            <!-- Corner decorations like menu -->
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            
+            <!-- Game UI overlay -->
+            <div class="game-ui">
+                <!-- Top left: Pause + Coins -->
+                <div class="game-ui-left">
+                    <button id="pause-button" class="pause-btn hidden" aria-label="Pause">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+                            <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <div class="ui-badge ui-badge-coins">
+                        <svg class="ui-badge-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
+                        </svg>
+                        <span class="ui-badge-text">COINS:</span>
+                        <span id="game-coins" class="ui-badge-value">0</span>
                     </div>
                 </div>
                 
-                <!-- Canvas -->
-                <canvas id="board"></canvas>
-                
-                <!-- Ground platform -->
-                <div class="game-ground"></div>
-                
-                <!-- Pause button -->
-                <button id="pause-button" class="pause-button hidden" aria-label="Pause">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/>
-                        <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>
-                    </svg>
-                </button>
+                <!-- Top right: Best + Score -->
+                <div class="game-ui-right">
+                    <div class="ui-best-text">
+                        <span>BEST:</span>
+                        <span id="game-best">0</span>
+                    </div>
+                    <div class="ui-badge ui-badge-score">
+                        <span class="ui-badge-text">SCORE:</span>
+                        <span id="game-score" class="ui-badge-value">0</span>
+                    </div>
+                </div>
             </div>
+            
+            <!-- Canvas -->
+            <canvas id="board"></canvas>
         </div>
     </div>
 
@@ -95,7 +86,7 @@
                     <li>Jump: Space / Arrow Up (tap left on mobile)</li>
                     <li>Duck: Arrow Down / S (hold right on mobile)</li>
                     <li>Avoid coins and birds as obstacles</li>
-                    <li>Earn 1 coin for every 10,000 score</li>
+                    <li>Earn 1 coin for every 10,000 points</li>
                 </ul>
             </div>
             <div class="card-ground"></div>
@@ -124,16 +115,10 @@
             </div>
             <div class="card-body menu-body">
                 <div class="checkin-section">
-                    <div class="checkin-row">
-                        <button id="checkin-button" class="btn btn-secondary btn-small">
-                            Check-in
-                        </button>
-                        <span id="checkin-streak" class="checkin-streak">x0</span>
-                    </div>
-                    <div class="checkin-info">
-                        <span id="checkin-timer" class="checkin-timer"></span>
-                        <span class="checkin-hint">Every 5th streak +1 coin</span>
-                    </div>
+                    <button id="checkin-button" class="btn btn-secondary btn-small">
+                        Check-in
+                    </button>
+                    <span id="checkin-status" class="checkin-badge"></span>
                 </div>
                 <button id="start-button" class="btn btn-primary btn-large">Start Game</button>
                 <button id="collection-button" class="btn btn-ghost btn-large" disabled>
@@ -151,7 +136,7 @@
                     <li>Jump: Space / Arrow Up (tap left on mobile)</li>
                     <li>Duck: Arrow Down / S (hold right on mobile)</li>
                     <li>Avoid coins and birds as obstacles</li>
-                    <li>Earn 1 coin for every 10,000 score</li>
+                    <li>Earn 1 coin for every 10,000 points</li>
                 </ul>
             </div>
             <div class="card-ground"></div>
@@ -185,7 +170,7 @@
                     <li>Jump: Space / Arrow Up (tap left on mobile)</li>
                     <li>Duck: Arrow Down / S (hold right on mobile)</li>
                     <li>Avoid coins and birds as obstacles</li>
-                    <li>Earn 1 coin for every 10,000 score</li>
+                    <li>Earn 1 coin for every 10,000 points</li>
                 </ul>
             </div>
             <div class="card-ground"></div>

@@ -1,7 +1,7 @@
 //board - scaled up by 1.5x
 let board;
 const BASE_BOARD_WIDTH = 1125; // 750 * 1.5
-const BASE_BOARD_HEIGHT = 520; // increased to give more space for UI at top
+const BASE_BOARD_HEIGHT = 450; // 250 * 1.5
 const MOBILE_MAX_WIDTH = 900;
 const MOBILE_MIN_BOARD_WIDTH = 480;
 const MOBILE_WIDTH_MULTIPLIER = 1.25;
@@ -70,12 +70,10 @@ let walletAddressDisplay;
 let startButton;
 let resumeButton;
 let checkinButton;
-let checkinStreak;
-let checkinTimer;
-let checkinTimerInterval = null;
+let checkinStatus;
 let ethImg;
 
-// Game UI HTML elements
+// Game UI elements
 let gameCoinsEl;
 let gameScoreEl;
 let gameBestEl;
@@ -104,16 +102,6 @@ let backendInputLog = [];
 let backendSessionStartMs = 0;
 let backendSessionActive = false;
 let backendRunSubmitted = false;
-
-// Base App MiniApp SDK integration
-let isInMiniApp = false;
-let miniAppContext = null;
-let miniAppUserInfo = {
-    fid: null,
-    username: null,
-    displayName: null,
-    pfpUrl: null
-};
 let rng = null;
 
 function getViewportSize() {
@@ -144,13 +132,6 @@ function getEthereumProvider() {
 
 function formatAddress(address) {
     if (!address) return "";
-    // In MiniApp, prefer username/displayName over 0x address
-    if (isInMiniApp && miniAppUserInfo.username) {
-        return `@${miniAppUserInfo.username}`;
-    }
-    if (isInMiniApp && miniAppUserInfo.displayName) {
-        return miniAppUserInfo.displayName;
-    }
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
@@ -622,48 +603,7 @@ function updateWalletUI() {
     updateCheckinUI();
 }
 
-async function initMiniAppSDK() {
-    // Check if Farcaster MiniApp SDK is available
-    if (typeof window.FarcasterMiniAppSdk === 'undefined' && typeof window.sdk === 'undefined') {
-        console.log("MiniApp SDK not available");
-        return false;
-    }
-    
-    const sdk = window.FarcasterMiniAppSdk || window.sdk;
-    if (!sdk) return false;
-    
-    try {
-        // Check if we're running inside a MiniApp (Base App or Farcaster client)
-        isInMiniApp = await sdk.isInMiniApp();
-        console.log("Is in MiniApp:", isInMiniApp);
-        
-        if (isInMiniApp) {
-            // Get user context
-            miniAppContext = await sdk.context;
-            if (miniAppContext && miniAppContext.user) {
-                miniAppUserInfo = {
-                    fid: miniAppContext.user.fid,
-                    username: miniAppContext.user.username,
-                    displayName: miniAppContext.user.displayName,
-                    pfpUrl: miniAppContext.user.pfpUrl
-                };
-                console.log("MiniApp user:", miniAppUserInfo);
-            }
-            
-            // Signal that app is ready to be displayed
-            await sdk.actions.ready();
-            return true;
-        }
-    } catch (err) {
-        console.warn("MiniApp SDK init error:", err);
-    }
-    return false;
-}
-
 async function initWalletState() {
-    // First, try to initialize MiniApp SDK
-    const isMiniApp = await initMiniAppSDK();
-    
     const provider = getEthereumProvider();
     if (!provider) {
         updateWalletUI();
@@ -676,37 +616,14 @@ async function initWalletState() {
     }
 
     try {
-        // In MiniApp, wallet is auto-connected - request accounts
-        if (isMiniApp) {
-            const accounts = await provider.request({ method: "eth_requestAccounts" });
-            walletAddress = accounts && accounts.length ? accounts[0] : null;
-            
-            // Get chain ID
-            const chainId = await provider.request({ method: "eth_chainId" });
-            walletChainId = normalizeChainId(chainId) || chainId;
-            
-            // If connected, try to auto-authenticate
-            if (walletAddress) {
-                resetAuthState();
-                const restored = await restoreAuthSession();
-                if (!restored) {
-                    // Need to authenticate - trigger full connect flow
-                    updateWalletUI();
-                    await connectWallet();
-                    return;
-                }
-            }
-        } else {
-            const accounts = await provider.request({ method: "eth_accounts" });
-            walletAddress = accounts && accounts.length ? accounts[0] : null;
-            
-            const chainId = await provider.request({ method: "eth_chainId" });
-            walletChainId = normalizeChainId(chainId) || chainId;
-            resetAuthState();
-            await restoreAuthSession();
-        }
+        const accounts = await provider.request({ method: "eth_accounts" });
+        walletAddress = accounts && accounts.length ? accounts[0] : null;
+        const chainId = await provider.request({ method: "eth_chainId" });
+        walletChainId = normalizeChainId(chainId) || chainId;
+        resetAuthState();
+        await restoreAuthSession();
     } catch (err) {
-        console.warn("Wallet init error:", err);
+        // ignore
     } finally {
         updateWalletUI();
     }
@@ -837,9 +754,9 @@ function handleChainChanged(chainId) {
     }
 }
 
-//player (human character) - adjusted for new sprite
-const BASE_PLAYER_WIDTH = 200; // reduced by 10%
-const BASE_PLAYER_HEIGHT = 200; // increased by 10%
+//player (human character) - scaled up by 1.5x, then widened by 15%, then +10% more
+const BASE_PLAYER_WIDTH = 250; // 152 * 1.1 (increased by 10% more)
+const BASE_PLAYER_HEIGHT = 141; // 94 * 1.5
 const BASE_PLAYER_DUCK_HEIGHT = 60; // For ducking (crouched pose, head visible)
 const BASE_PLAYER_X = 75; // 50 * 1.5
 let playerWidth = BASE_PLAYER_WIDTH;
@@ -874,11 +791,9 @@ const coinHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const stickHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const playerDrawRectScratch = { x: 0, y: 0, width: 0, height: 0 };
 
-// Tight insets for pixel-accurate collisions
-const PLAYER_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
-const OBSTACLE_HITBOX_INSET = { top: 0, bottom: 0, left: 0, right: 0 };
-// Bird hitbox - negative values EXPAND the collision area (triggers before visual overlap)
-const BIRD_HITBOX_INSET = { top: -10, bottom: -5, left: -15, right: -10 };
+// Small insets for fair but tight collisions
+const PLAYER_HITBOX_INSET = { top: 1, bottom: 2, left: 1, right: 1 };
+const OBSTACLE_HITBOX_INSET = { top: 1, bottom: 1, left: 1, right: 1 };
 
 // Normalized opaque bounds for sprite images (0..1)
 const spriteBounds = {
@@ -900,14 +815,9 @@ function isSpawnXClear(spawnX, minGap) {
 function adjustSpawnX(spawnX, minGap) {
     let adjusted = spawnX;
     let attempts = 0;
-    const maxAttempts = 10;
-    while (!isSpawnXClear(adjusted, minGap) && attempts < maxAttempts) {
-        adjusted += minGap * 0.5;
+    while (!isSpawnXClear(adjusted, minGap) && attempts < 3) {
+        adjusted += minGap;
         attempts++;
-    }
-    // If still not clear after max attempts, skip spawning by returning null
-    if (!isSpawnXClear(adjusted, minGap)) {
-        return null;
     }
     return adjusted;
 }
@@ -947,9 +857,9 @@ let birdY = boardHeight - birdHeight - BASE_BIRD_Y_OFFSET; // Head level flight
 let birdImg;
 
 //physics
-const SPEED_START = 5; // стартовая скорость (медленно) - уменьшено для дальности прыжков
-const SPEED_MAX = 14; // максимальная скорость (конечная)
-const MOBILE_SPEED_MAX = 10; // максимальная скорость на телефоне - уменьшено для дальности прыжков
+const SPEED_START = 10; // стартовая скорость (медленно)
+const SPEED_MAX = 17; // максимальная скорость (конечная)
+const MOBILE_SPEED_MAX = 12; // максимальная скорость на телефоне
 const SPEED_MAX_SCORE = 10000; // до этого счёта скорость плавно растёт
 const BASE_GRAVITY = 1.0;
 const BASE_JUMP_VELOCITY = -22.9;
@@ -983,10 +893,9 @@ window.onload = function() {
     startButton = document.getElementById("start-button");
     resumeButton = document.getElementById("resume-button");
     checkinButton = document.getElementById("checkin-button");
-    checkinStreak = document.getElementById("checkin-streak");
-    checkinTimer = document.getElementById("checkin-timer");
+    checkinStatus = document.getElementById("checkin-status");
     
-    // Game UI elements (HTML overlay)
+    // Game UI elements
     gameCoinsEl = document.getElementById("game-coins");
     gameScoreEl = document.getElementById("game-score");
     gameBestEl = document.getElementById("game-best");
@@ -1053,7 +962,7 @@ window.onload = function() {
 
     //load player image (human character)
     playerImg = new Image();
-    playerImg.src = "./assets/hum_vit_1.png";
+    playerImg.src = "./assets/hum_vit.png";
     playerImg.onload = function() {
         spriteBounds.player = getNormalizedSpriteBounds(playerImg);
         applyObjectScale(objectScale);
@@ -1076,8 +985,7 @@ window.onload = function() {
     birdImg = new Image();
     birdImg.src = "./assets/gen_bird.png";
     birdImg.onload = function() {
-        // Use higher alpha threshold to avoid early collisions on soft edges
-        spriteBounds.bird = getNormalizedSpriteBounds(birdImg, 40);
+        spriteBounds.bird = getNormalizedSpriteBounds(birdImg);
     }
 
     // Load best score from localStorage
@@ -1086,7 +994,7 @@ window.onload = function() {
     nextCoinScore = 10000;
 
     requestAnimationFrame(update);
-    setInterval(placeObstacle, 500); //500 milliseconds = 2x faster spawning
+    setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
     document.addEventListener("keydown", movePlayer);
     document.addEventListener("touchstart", handleTouchStart, { passive: false });
     document.addEventListener("touchend", handleTouchEnd, { passive: false });
@@ -1142,6 +1050,22 @@ function updateUIState() {
     gameActive = currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED;
 }
 
+function saveCoins() {
+    localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
+}
+
+function addCoins(amount) {
+    if (!amount) return;
+    coinCount += amount;
+    saveCoins();
+}
+
+function updatePauseButtonVisibility() {
+    if (!pauseButton) return;
+    const shouldShow = isMobileLayout && currentUIState === UI_STATE.RUNNING;
+    pauseButton.classList.toggle("hidden", !shouldShow);
+}
+
 function updateGameUIVisibility() {
     if (!gameUIContainer) return;
     // Show game UI only when game is running or paused
@@ -1163,22 +1087,6 @@ function updateGameUI() {
     if (gameBestEl) {
         gameBestEl.textContent = String(bestScore);
     }
-}
-
-function saveCoins() {
-    localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
-}
-
-function addCoins(amount) {
-    if (!amount) return;
-    coinCount += amount;
-    saveCoins();
-}
-
-function updatePauseButtonVisibility() {
-    if (!pauseButton) return;
-    const shouldShow = isMobileLayout && currentUIState === UI_STATE.RUNNING;
-    pauseButton.classList.toggle("hidden", !shouldShow);
 }
 
 function updateMenuState() {
@@ -1213,89 +1121,48 @@ function setCheckinButtonText(text) {
 function updateCheckinUI() {
     if (!checkinButton) return;
     
-    // Update streak display
-    if (checkinStreak) {
-        checkinStreak.textContent = `x${checkinState.streak}`;
-        const checkedIn = isToday(checkinState.lastCheckin);
-        checkinStreak.classList.toggle("active", checkedIn);
-    }
-    
     if (!walletReady) {
         checkinButton.disabled = true;
         setCheckinButtonText("Check-in");
-        stopCheckinTimer();
+        if (checkinStatus) {
+            checkinStatus.textContent = "";
+            checkinStatus.classList.remove("success");
+        }
         return;
     }
     if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
         checkinButton.disabled = true;
         setCheckinButtonText("Check-in");
-        stopCheckinTimer();
+        if (checkinStatus) {
+            checkinStatus.textContent = "Not available";
+            checkinStatus.classList.remove("success");
+        }
         return;
     }
     if (checkinState.loading) {
         checkinButton.disabled = true;
         setCheckinButtonText("Loading...");
+        if (checkinStatus) {
+            checkinStatus.textContent = "";
+            checkinStatus.classList.remove("success");
+        }
         return;
     }
     const checkedIn = isToday(checkinState.lastCheckin);
     checkinButton.disabled = checkedIn;
-    setCheckinButtonText("Check-in");
+    setCheckinButtonText(checkedIn ? "Done" : "Check-in");
     
-    // Start/update timer
-    if (checkedIn) {
-        startCheckinTimer();
-    } else {
-        stopCheckinTimer();
-    }
-}
-
-function getNextCheckinTime() {
-    // Next check-in is available at midnight UTC
-    const now = new Date();
-    const tomorrow = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate() + 1,
-        0, 0, 0, 0
-    ));
-    return tomorrow.getTime() - now.getTime();
-}
-
-function formatCountdown(ms) {
-    if (ms <= 0) return "00:00:00";
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-function updateCheckinTimerDisplay() {
-    if (!checkinTimer) return;
-    const remaining = getNextCheckinTime();
-    if (remaining <= 0) {
-        checkinTimer.textContent = "Available now!";
-        stopCheckinTimer();
-        // Refresh UI since check-in is now available
-        updateCheckinUI();
-    } else {
-        checkinTimer.textContent = `Next: ${formatCountdown(remaining)}`;
-    }
-}
-
-function startCheckinTimer() {
-    if (checkinTimerInterval) return; // Already running
-    updateCheckinTimerDisplay();
-    checkinTimerInterval = setInterval(updateCheckinTimerDisplay, 1000);
-}
-
-function stopCheckinTimer() {
-    if (checkinTimerInterval) {
-        clearInterval(checkinTimerInterval);
-        checkinTimerInterval = null;
-    }
-    if (checkinTimer) {
-        checkinTimer.textContent = "";
+    if (checkinStatus) {
+        if (checkinState.message) {
+            checkinStatus.textContent = checkinState.message;
+            checkinStatus.classList.toggle("success", checkedIn);
+        } else if (checkedIn) {
+            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
+            checkinStatus.classList.add("success");
+        } else {
+            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
+            checkinStatus.classList.remove("success");
+        }
     }
 }
 
@@ -1333,6 +1200,9 @@ async function handleCheckin() {
         if (!message) {
             throw new Error("Check-in message missing");
         }
+        if (checkinStatus) {
+            checkinStatus.textContent = "Подтвердите транзакцию check-in.";
+        }
         const txHash = await sendCheckinTransaction();
         const signature = await signWalletMessage(message);
         const submitResponse = await fetch(`${BACKEND_URL}/api/checkin/submit`, {
@@ -1356,8 +1226,13 @@ async function handleCheckin() {
                 coinCount = submitData.coinBalance;
                 saveCoins();
             }
-            // Message cleared - streak and timer will show status
-            checkinState.message = "";
+            const shortHash = txHash ? `${txHash.slice(0, 8)}...${txHash.slice(-6)}` : "";
+            const rewardText = submitData.bonusAwarded
+                ? `+${submitData.coinsAwarded} coins (bonus за стрик!)`
+                : `+${submitData.coinsAwarded} coin`;
+            checkinState.message = shortHash
+                ? `${rewardText}. Tx: ${shortHash}`
+                : rewardText;
         }
     } catch (err) {
         console.warn("Check-in failed", err);
@@ -1424,14 +1299,18 @@ function togglePause() {
 function applyResponsiveLayout() {
     const viewport = getViewportSize();
     const isMobile = viewport.width <= MOBILE_MAX_WIDTH;
-    // Use consistent object scale across all mobile devices
     const viewportScale = Math.max(
         MOBILE_SCALE_MIN,
         Math.min(MOBILE_SCALE_MAX, viewport.width / MOBILE_BASE_WIDTH)
     );
     const nextObjectScale = isMobile ? MOBILE_OBJECT_SCALE * viewportScale : 1;
-    // Use fixed board width for consistency across all devices
     let nextBoardWidth = BASE_BOARD_WIDTH;
+    if (isMobile) {
+        nextBoardWidth = Math.min(
+            BASE_BOARD_WIDTH,
+            Math.max(MOBILE_MIN_BOARD_WIDTH, Math.round(viewport.width * MOBILE_WIDTH_MULTIPLIER))
+        );
+    }
     const nextBoardHeight = BASE_BOARD_HEIGHT;
 
     const layoutChanged = boardWidth !== nextBoardWidth
@@ -1545,19 +1424,15 @@ function getRenderScale(dpr) {
     const bodyStyles = window.getComputedStyle(document.body);
     const paddingTop = parseFloat(bodyStyles.paddingTop) || 0;
     const paddingBottom = parseFloat(bodyStyles.paddingBottom) || 0;
-    // On mobile, use full width (no left/right padding)
-    const paddingLeft = isMobileLayout ? 0 : (parseFloat(bodyStyles.paddingLeft) || 0);
-    const paddingRight = isMobileLayout ? 0 : (parseFloat(bodyStyles.paddingRight) || 0);
+    const paddingLeft = parseFloat(bodyStyles.paddingLeft) || 0;
+    const paddingRight = parseFloat(bodyStyles.paddingRight) || 0;
     const availableWidth = viewport.width - paddingLeft - paddingRight;
     let availableHeight = viewport.height - paddingTop - paddingBottom - headerHeight - 12;
     if (availableHeight < boardHeight * 0.4) {
         headerHeight = 0;
         availableHeight = window.innerHeight - paddingTop - paddingBottom - 12;
     }
-    // For mobile: scale to fill width completely (edge-to-edge)
-    const rawScale = isMobileLayout 
-        ? availableWidth / boardWidth  // Fill width on mobile
-        : Math.min(availableWidth / boardWidth, availableHeight / boardHeight);
+    const rawScale = Math.min(availableWidth / boardWidth, availableHeight / boardHeight);
     const cappedScale = isMobileLayout ? rawScale : Math.min(rawScale, 1);
     const clampedScale = Math.max(cappedScale, 0.1);
     if (isMobileLayout && dpr >= 2) {
@@ -1567,8 +1442,8 @@ function getRenderScale(dpr) {
 }
 
 // Compute normalized opaque bounds for an image (0..1)
-function getNormalizedSpriteBounds(img, alphaThreshold = 10) {
-    const bounds = computeOpaqueBounds(img, alphaThreshold);
+function getNormalizedSpriteBounds(img) {
+    const bounds = computeOpaqueBounds(img);
     return {
         x: bounds.x / img.width,
         y: bounds.y / img.height,
@@ -1578,7 +1453,7 @@ function getNormalizedSpriteBounds(img, alphaThreshold = 10) {
 }
 
 // Find the bounding box of non-transparent pixels
-function computeOpaqueBounds(img, alphaThreshold = 10) {
+function computeOpaqueBounds(img) {
     const canvas = document.createElement("canvas");
     canvas.width = img.width;
     canvas.height = img.height;
@@ -1594,6 +1469,7 @@ function computeOpaqueBounds(img, alphaThreshold = 10) {
     let maxY = 0;
     let found = false;
 
+    const alphaThreshold = 10;
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const idx = (y * width + x) * 4 + 3;
@@ -1638,7 +1514,9 @@ function update(timestamp) {
     const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
     const maxSpeed = isMobileLayout ? MOBILE_SPEED_MAX : SPEED_MAX;
     speed = SPEED_START + (maxSpeed - SPEED_START) * speedProgress;
-    
+    velocityX = -speed;
+    const frameVelocityX = velocityX * stepScale;
+
     //player physics
     const prevY = player.y;
     const prevHeight = player.height;
@@ -1667,9 +1545,6 @@ function update(timestamp) {
     if (player.y >= groundY) {
         velocityY = 0;
     }
-    
-    velocityX = -speed;
-    const frameVelocityX = velocityX * stepScale;
     player.x = playerX + mobileEdgeGapWorld + mobileSafeLeftWorld;
     
     // Draw player with curl down animation for ducking
@@ -1772,7 +1647,7 @@ function update(timestamp) {
         birdHitboxScratch.y = Math.round(bird.y);
         birdHitboxScratch.width = bird.width;
         birdHitboxScratch.height = bird.height;
-        applySpriteBounds(birdHitboxScratch, spriteBounds.bird, BIRD_HITBOX_INSET, birdHitboxScratch);
+        applySpriteBounds(birdHitboxScratch, spriteBounds.bird, OBSTACLE_HITBOX_INSET, birdHitboxScratch);
         
         // Debug: draw bird hitbox if enabled
         if (debugHitboxes) {
@@ -1813,7 +1688,7 @@ function update(timestamp) {
         nextCoinScore += increments * 10000;
     }
     
-    // Update HTML UI elements (coins, score, best)
+    // Update HTML UI elements
     updateGameUI();
 
     if (isPaused) {
@@ -1833,7 +1708,7 @@ function update(timestamp) {
 
     if (gameOver) {
         const gameOverText = "GAME OVER";
-        const restartText = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
+        const restartText = "Press SPACE to restart";
         const gameOverFont = Math.round(30 * (isMobileLayout ? 1.0 : 1));
         const restartFont = Math.round(20 * (isMobileLayout ? 1.0 : 1));
         context.fillStyle="red";
@@ -1911,7 +1786,7 @@ function drawCoin(x, y, size) {
 function triggerJump() {
     const groundY = boardHeight - player.height;
     if (player.y >= groundY - 1) {
-        //jump - original height, distance extended by speed slowdown
+        //jump - tuned for reliable obstacle clearing with good airtime
         velocityY = jumpVelocity;
         recordInput("jump");
     }
@@ -1930,17 +1805,14 @@ function stopDucking() {
 }
 
 async function movePlayer(e) {
-    // ESC toggles pause on/off during gameplay (works even when paused)
-    if (e.code === "Escape") {
-        if (currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED) {
-            togglePause();
-        }
-        return;
-    }
     if (showWelcome) {
         if (e.code === "Space" || e.code === "Enter") {
             await startGameFromWelcome();
         }
+        return;
+    }
+    if (e.code === "Escape") {
+        togglePause();
         return;
     }
     if (isPaused) {
@@ -2038,17 +1910,14 @@ function placeObstacle() {
             tokenWidth = token1Width;
         }
         
-        const spawnX = adjustSpawnX(tokenX, SPAWN_X_GAP);
-        if (spawnX !== null) {
-            let token = {
-                x : spawnX,
-                y : tokenY,
-                width : tokenWidth,
-                height: tokenHeight,
-                type: tokenType
-            }
-            tokenArray.push(token);
+        let token = {
+            x : adjustSpawnX(tokenX, SPAWN_X_GAP),
+            y : tokenY,
+            width : tokenWidth,
+            height: tokenHeight,
+            type: tokenType
         }
+        tokenArray.push(token);
     }
     else if (placeObstacleChance > .35) { //20% chance for bird (flying obstacle)
         // Set bird at head level (can be ducked under)
@@ -2057,19 +1926,15 @@ function placeObstacle() {
         let duckedHeadTop = boardHeight - playerDuckHeight; // Top of player's head when ducking
         // Bird flies at standing head level, so ducking makes player shorter than bird
         let headLevelY = standingHeadTop - birdHeight + 15; // Bird bottom aligns with player head top
-        // Lower bird by 60% of its height for proper visual collision at head level
-        headLevelY += birdHeight * 0.6;
-        
-        const spawnX = adjustSpawnX(birdX, SPAWN_X_GAP);
-        if (spawnX !== null) {
-            let bird = {
-                x : spawnX,
-                y : headLevelY,
-                width : birdWidth,
-                height: birdHeight
-            }
-            birdArray.push(bird);
+        // Lower bird by 10% of its height so it collides properly
+        headLevelY += birdHeight * 0.1;
+        let bird = {
+            x : adjustSpawnX(birdX, SPAWN_X_GAP),
+            y : headLevelY,
+            width : birdWidth,
+            height: birdHeight
         }
+        birdArray.push(bird);
     }
 
 }
@@ -2101,7 +1966,7 @@ function getPlayerHitbox(out) {
     return applySpriteBounds(playerDrawRectScratch, spriteBounds.player, PLAYER_HITBOX_INSET, out);
 }
 
-// Player hitbox for bird collisions (full body - bird should not pass through)
+// Player hitbox for bird collisions (use the same, to match visuals)
 function getPlayerBirdHitbox(out) {
     return getPlayerHitbox(out);
 }
