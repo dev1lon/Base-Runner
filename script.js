@@ -1818,7 +1818,7 @@ function update(timestamp) {
 
     if (gameOver) {
         const gameOverText = "GAME OVER";
-        const restartText = "Press SPACE to restart";
+        const restartText = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
         const gameOverFont = Math.round(30 * (isMobileLayout ? 1.0 : 1));
         const restartFont = Math.round(20 * (isMobileLayout ? 1.0 : 1));
         context.fillStyle="red";
