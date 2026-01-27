@@ -165,6 +165,8 @@ let nextCoinScore = 10000;
 let coinPopupActive = false;
 let coinPopupStartTime = 0;
 let coinPopupAmount = 0;
+let coinPopupX = 0; // X position (set when coins UI is drawn)
+let coinPopupY = 0; // Y position
 const COIN_POPUP_DURATION = 3000; // 3 seconds fade out
 let walletAddress = null;
 let walletChainId = null;
@@ -973,7 +975,7 @@ const GAME_STATE = {
 let gameState = GAME_STATE.RUNNING;
 let gameOverTimestamp = 0;
 let gameOver = false;
-let score = 9700;
+let score = 0;
 let bestScore = 0;
 
 window.onload = function() {
@@ -1780,6 +1782,9 @@ function update(timestamp) {
     }
     if (gameUIContainer) {
         updateGameUI();
+        // For HTML UI, position popup at estimated location
+        coinPopupX = Math.round(padding + 120 * uiScale);
+        coinPopupY = Math.round(scoreTop * uiScale);
     } else {
         const coinLabel = "Coin:";
         const coinText = String(coinCount);
@@ -1807,33 +1812,41 @@ function update(timestamp) {
         if (ethImg && ethImg.complete) {
             context.drawImage(ethImg, iconX, iconY, iconSize, iconSize);
         }
+        // Store position for coin popup (right of icon)
+        coinPopupX = iconX + iconSize + Math.round(4 * uiScale);
+        coinPopupY = coinY;
+        
         context.fillText(scoreText, scoreX, scoreY);
         context.fillText(bestText, bestX, bestY);
     }
 
-    // Draw coin popup animation (+1 that fades out)
+    // Draw coin popup animation (+1 that fades out smoothly)
     if (coinPopupActive && timestamp) {
         const elapsed = timestamp - coinPopupStartTime;
         if (elapsed < COIN_POPUP_DURATION) {
-            // Calculate opacity (1.0 to 0.0 over 3 seconds)
+            // Smooth easeOut progress (starts fast, slows down)
             const progress = elapsed / COIN_POPUP_DURATION;
-            const opacity = 1 - progress;
-            // Float upward as it fades
-            const floatOffset = Math.round(progress * 30 * uiScale);
+            const easeOut = 1 - Math.pow(1 - progress, 3); // cubic ease out
+            
+            // Opacity fades smoothly
+            const opacity = 1 - easeOut;
+            // Float upward slowly as it fades
+            const floatOffset = Math.round(easeOut * 20 * uiScale);
             
             const popupText = "+" + coinPopupAmount;
-            const popupFontSize = Math.round(24 * uiScale);
+            // Font size reduced by 30% (24 * 0.7 ≈ 17)
+            const popupFontSize = Math.round(17 * uiScale);
             context.font = `bold ${popupFontSize}px courier`;
             
-            // Position near the coin counter (top left area)
-            const popupX = Math.round(padding + 80 * uiScale);
-            const popupY = Math.round(scoreTop * uiScale - floatOffset);
+            // Position to the right of coin counter
+            const popupX = coinPopupX;
+            const popupY = coinPopupY - floatOffset;
             
             // Draw with fading green color
             context.globalAlpha = opacity;
             context.fillStyle = "#00cc00";
             context.strokeStyle = "white";
-            context.lineWidth = 2;
+            context.lineWidth = 1.5;
             context.strokeText(popupText, popupX, popupY);
             context.fillText(popupText, popupX, popupY);
             context.globalAlpha = 1.0;
@@ -2191,8 +2204,8 @@ async function restartGame() {
     gameState = GAME_STATE.RUNNING;
     gameOverTimestamp = 0;
     gameOver = false;
-    score = 9700;
-    scoreFloat = 9700;
+    score = 0;
+    scoreFloat = 0;
     nextCoinScore = 10000;
     velocityY = 0;
     isDucking = false;
