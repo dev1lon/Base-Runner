@@ -525,13 +525,7 @@ function clearWalletMessages() {
 
 function setConnectButtonText(text) {
     if (!connectButton) return;
-    // Preserve icon if present, only update text
-    const icon = connectButton.querySelector('svg');
-    if (icon) {
-        connectButton.innerHTML = icon.outerHTML + ' ' + text;
-    } else {
-        connectButton.textContent = text;
-    }
+    connectButton.textContent = text;
 }
 
 function updateWalletUI() {
@@ -1083,13 +1077,7 @@ function applyProfileData(data) {
 
 function setCheckinButtonText(text) {
     if (!checkinButton) return;
-    // Preserve icon if present, only update text
-    const icon = checkinButton.querySelector('svg');
-    if (icon) {
-        checkinButton.innerHTML = icon.outerHTML + ' ' + text;
-    } else {
-        checkinButton.textContent = text;
-    }
+    checkinButton.textContent = text;
 }
 
 function updateCheckinUI() {
@@ -1477,6 +1465,11 @@ function update(timestamp) {
     const dtScale = deltaMs / FRAME_MS;
     const stepScale = gameActive && !isPaused ? dtScale : 0;
     context.clearRect(0, 0, boardWidth, boardHeight);
+
+    // Don't draw game elements when overlay is visible
+    if (showWelcome && !gameActive) {
+        return;
+    }
 
     // плавное ускорение до максимума к счёту SPEED_MAX_SCORE
     const displayScore = Math.floor(scoreFloat);
