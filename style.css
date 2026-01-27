@@ -303,6 +303,44 @@ body {
     display: none;
 }
 
+/* Game Over Overlay - Full Screen */
+.game-over-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(70, 70, 70, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    pointer-events: auto;
+}
+
+.game-over-overlay.hidden {
+    display: none;
+}
+
+.game-over-content {
+    text-align: center;
+    padding: var(--space-6);
+}
+
+.game-over-text {
+    font-family: "Inter", Arial, sans-serif;
+    font-size: clamp(28px, 8vw, 42px);
+    font-weight: 700;
+    color: #d11c1c;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: var(--space-3);
+}
+
+.game-over-restart {
+    font-family: "Inter", Arial, sans-serif;
+    font-size: clamp(14px, 4vw, 18px);
+    font-weight: 600;
+    color: #f3f3f3;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
 /* Mobile responsive */
 @media (max-width: 480px) {
     .game-container {

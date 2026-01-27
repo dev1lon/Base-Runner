@@ -84,6 +84,7 @@ let gameCoinsEl;
 let gameScoreEl;
 let gameBestEl;
 let gameUIContainer;
+let gameOverOverlay;
 let coinCount = 0;
 let nextCoinScore = 10000;
 let walletAddress = null;
@@ -555,6 +556,15 @@ function setGameOverState() {
     gameState = GAME_STATE.GAME_OVER;
     gameOverTimestamp = performance.now();
     gameOver = true;
+    // Show full-screen game over overlay
+    if (gameOverOverlay) {
+        // Update restart text based on device
+        const restartTextEl = gameOverOverlay.querySelector('.game-over-restart');
+        if (restartTextEl) {
+            restartTextEl.textContent = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
+        }
+        gameOverOverlay.classList.remove('hidden');
+    }
 }
 
 function setWalletStatus(message, isError) {
@@ -807,14 +817,17 @@ function handleChainChanged(chainId) {
 }
 
 function getBirdFlyY() {
-    // Bird should fly at head level when standing
-    return Math.round(playerY - birdHeight);
+    // Bird flies at player head level (bird bottom aligns with player top third)
+    // playerY is the top of the player, so bird bottom should be near playerY
+    const headLevel = groundY - playerHeight * 0.85; // 85% of player height from ground
+    return Math.round(headLevel - birdHeight);
 }
 
-//player (human character) - keep ~10-12% of panel height
-const BASE_PLAYER_WIDTH = 48;
-const BASE_PLAYER_HEIGHT = 60;
-const BASE_PLAYER_DUCK_HEIGHT = 30; // For ducking (crouched pose, head visible)
+// Player sprite = exactly 2x coin size for consistent scaling
+const BASE_COIN_SIZE_REF = 32; // Reference coin size for scaling calculations
+const BASE_PLAYER_WIDTH = 52; // ~1.6x coin width (maintains aspect ratio)
+const BASE_PLAYER_HEIGHT = 64; // Exactly 2x coin size (32 * 2 = 64)
+const BASE_PLAYER_DUCK_HEIGHT = 32; // Half player height when ducking
 const BASE_PLAYER_X = 60;
 let playerWidth = BASE_PLAYER_WIDTH;
 let playerHeight = BASE_PLAYER_HEIGHT;
@@ -828,9 +841,10 @@ let isDucking = false;
 // Debug mode flag (set to true to visualize hitboxes)
 let debugHitboxes = false;
 
-// Render/physics constants - scaled to match smaller sprites
+// Render/physics constants - scaled to match sprites
+// Coin is base unit, player = 2x coin, bird = 1.2x coin
 const BASE_COIN_SIZE = 32;
-const BASE_STICK_HEIGHT = 30;
+const BASE_STICK_HEIGHT = 24; // Shorter stick so coins are closer to ground
 const BASE_STICK_WIDTH = 4;
 const BASE_COIN_SPACING = 38;
 const SPAWN_X_GAP = 400; // minimum horizontal gap between obstacles
@@ -904,8 +918,9 @@ let tokenY = groundY - tokenHeight;
 let tokenImg;
 
 //bird obstacle (flying enemy) - sized proportionally to player
-const BASE_BIRD_WIDTH = 42;
-const BASE_BIRD_HEIGHT = 36;
+// Bird = ~1.2x coin size
+const BASE_BIRD_WIDTH = 44; // ~1.4x coin width
+const BASE_BIRD_HEIGHT = 38; // ~1.2x coin height (32 * 1.2 ≈ 38)
 const BASE_BIRD_Y_OFFSET = 150;
 let birdWidth = BASE_BIRD_WIDTH;
 let birdHeight = BASE_BIRD_HEIGHT;
@@ -963,6 +978,7 @@ window.onload = function() {
     gameScoreEl = document.getElementById("game-score");
     gameBestEl = document.getElementById("game-best");
     gameUIContainer = document.querySelector(".game-ui");
+    gameOverOverlay = document.getElementById("game-over-overlay");
 
     // Initial state
     showWelcome = true;
@@ -1813,50 +1829,8 @@ function update(timestamp) {
         context.fillText(pauseText, pauseX, pauseY);
     }
 
-    // GAME OVER overlay - render only in GAME_OVER state
-    if (isGameOver) {
-        // Semi-transparent overlay
-        context.fillStyle = "rgba(90, 90, 90, 0.55)";
-        context.fillRect(0, 0, boardWidth, boardHeight);
-        
-        const gameOverText = "GAME OVER";
-        const restartText = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
-        const maxTextWidth = Math.round(boardWidth * 0.8);
-        let gameOverFont = Math.round(34 * uiScale);
-        let restartFont = Math.round(14 * uiScale);
-        
-        // Center vertically in the play area
-        const centerY = Math.round(boardHeight / 2);
-        
-        // Game over text with strict, clean typography
-        context.font = `700 ${gameOverFont}px "Inter", Arial, sans-serif`;
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-
-        let gameOverWidth = context.measureText(gameOverText).width;
-        if (gameOverWidth > maxTextWidth) {
-            gameOverFont = Math.max(16, Math.floor(gameOverFont * (maxTextWidth / gameOverWidth)));
-            context.font = `700 ${gameOverFont}px "Inter", Arial, sans-serif`;
-            gameOverWidth = context.measureText(gameOverText).width;
-        }
-
-        context.fillStyle = "#d11c1c";
-        context.fillText(gameOverText, boardWidth / 2, centerY);
-        
-        // Restart hint
-        context.font = `600 ${restartFont}px "Inter", Arial, sans-serif`;
-        let restartWidth = context.measureText(restartText).width;
-        if (restartWidth > maxTextWidth) {
-            restartFont = Math.max(12, Math.floor(restartFont * (maxTextWidth / restartWidth)));
-            context.font = `600 ${restartFont}px "Inter", Arial, sans-serif`;
-        }
-        context.fillStyle = "#f3f3f3";
-        context.fillText(restartText, boardWidth / 2, centerY + gameOverFont);
-        
-        // Reset text align
-        context.textAlign = "left";
-        context.textBaseline = "alphabetic";
-    }
+    // Game over is now handled by DOM overlay (gameOverOverlay)
+    // No canvas drawing needed for game over state
 }
 
 function drawTokenObstacle(token) {
@@ -2175,6 +2149,11 @@ function detectCollision(a, b) {
 }
 
 async function restartGame() {
+    // Hide game over overlay
+    if (gameOverOverlay) {
+        gameOverOverlay.classList.add('hidden');
+    }
+    
     // Reset all game state variables
     gameState = GAME_STATE.RUNNING;
     gameOverTimestamp = 0;
