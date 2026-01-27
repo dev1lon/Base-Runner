@@ -45,7 +45,7 @@ const BASE_BIRD_HEIGHT = 38;
 const BASE_BIRD_WIDTH = 43;
 const BASE_STICK_HEIGHT = 20;
 const BASE_STICK_WIDTH = 3;
-const BASE_COIN_SPACING = 30;
+const BASE_COIN_SPACING = 33;
 const BASE_PLAYER_X = 60;
 
 // Foot offset: visually shift player sprite down so feet touch platform
@@ -1617,41 +1617,38 @@ function update(timestamp) {
     }
     player.x = playerX;
     
+    // Visual offset to align sprite feet with platform (sprite has transparent bottom padding)
+    const visualFootOffset = Math.round(8 * gameScale);
+    
     // Draw player with curl down animation for ducking
     let drawX = Math.round(player.x);
     let drawY = Math.round(player.y);
     let drawWidth = player.width;
     let drawHeight = player.height;
     
+    // Store physics-based rect for hitbox (NO visual offset)
+    playerDrawRectScratch.x = drawX;
+    playerDrawRectScratch.y = drawY;
+    playerDrawRectScratch.width = drawWidth;
+    playerDrawRectScratch.height = drawHeight;
+    
     if (canDuck) {
-        // Visual ducking: scale sprite to match current duck height,
-        // anchored to current player Y (works on ground and in air).
+        // Visual ducking: scale sprite to match current duck height
         const crouchScale = playerDuckHeight / playerHeight;
         const crouchHeight = drawHeight;
         const crouchWidth = Math.round(drawWidth * crouchScale);
-        const crouchX = drawX + (drawWidth - crouchWidth) / 2; // Center horizontally
-        const crouchY = drawY;
-
-        // Store actual draw rect for hitbox alignment (NO footOffset)
+        const crouchX = drawX + (drawWidth - crouchWidth) / 2;
+        const crouchY = drawY + visualFootOffset; // Apply visual offset
+        
+        // Update scratch for ducking dimensions (hitbox uses this)
         playerDrawRectScratch.x = Math.round(crouchX);
-        playerDrawRectScratch.y = Math.round(crouchY);
         playerDrawRectScratch.width = Math.round(crouchWidth);
         playerDrawRectScratch.height = Math.round(crouchHeight);
         
-        // Draw full sprite scaled down (shows head and body in crouch pose)
-        context.drawImage(
-            playerImg,
-            crouchX, crouchY, crouchWidth, crouchHeight
-        );
+        context.drawImage(playerImg, crouchX, crouchY, crouchWidth, crouchHeight);
     } else {
-        // Store actual draw rect for hitbox alignment (NO footOffset)
-        playerDrawRectScratch.x = Math.round(drawX);
-        playerDrawRectScratch.y = Math.round(drawY);
-        playerDrawRectScratch.width = Math.round(drawWidth);
-        playerDrawRectScratch.height = Math.round(drawHeight);
-
-        // Normal standing: draw full sprite
-        context.drawImage(playerImg, drawX, drawY, drawWidth, drawHeight);
+        // Normal standing: draw with visual offset to align feet
+        context.drawImage(playerImg, drawX, drawY + visualFootOffset, drawWidth, drawHeight);
     }
 
     // Prepare player hitbox once per frame
