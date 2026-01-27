@@ -197,6 +197,13 @@ body {
     color: var(--color-base-blue);
 }
 
+.ui-badge-icon-img {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
 .ui-badge-text {
     font-weight: 500;
     color: var(--color-gray-600);
@@ -229,13 +236,24 @@ body {
     color: var(--color-gray-500);
     text-align: right;
     padding: var(--space-1) var(--space-2);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
 }
 
-.ui-best-text span:first-child {
+.ui-best-icon {
+    width: 16px;
+    height: 16px;
+    color: #FFD700;
+    flex-shrink: 0;
+}
+
+.ui-best-text span:first-of-type {
     font-weight: 500;
 }
 
-.ui-best-text span:last-child {
+.ui-best-text span:last-of-type {
     font-weight: 700;
     color: var(--color-gray-600);
     font-variant-numeric: tabular-nums;
@@ -357,7 +375,8 @@ body {
         font-size: var(--font-size-xs);
     }
     
-    .ui-badge-icon {
+    .ui-badge-icon,
+    .ui-badge-icon-img {
         width: 16px;
         height: 16px;
     }
@@ -369,6 +388,11 @@ body {
     
     .ui-best-text {
         font-size: var(--font-size-xs);
+    }
+    
+    .ui-best-icon {
+        width: 14px;
+        height: 14px;
     }
 }
 
