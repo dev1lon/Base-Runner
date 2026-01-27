@@ -1915,14 +1915,17 @@ function stopDucking() {
 }
 
 async function movePlayer(e) {
+    // ESC toggles pause on/off during gameplay (works even when paused)
+    if (e.code === "Escape") {
+        if (currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED) {
+            togglePause();
+        }
+        return;
+    }
     if (showWelcome) {
         if (e.code === "Space" || e.code === "Enter") {
             await startGameFromWelcome();
         }
-        return;
-    }
-    if (e.code === "Escape") {
-        togglePause();
         return;
     }
     if (isPaused) {
