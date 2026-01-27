@@ -832,8 +832,8 @@ function handleChainChanged(chainId) {
 }
 
 //player (human character) - adjusted for new sprite
-const BASE_PLAYER_WIDTH = 198; // reduced by 10%
-const BASE_PLAYER_HEIGHT = 186; // increased by 10%
+const BASE_PLAYER_WIDTH = 200; // reduced by 10%
+const BASE_PLAYER_HEIGHT = 200; // increased by 10%
 const BASE_PLAYER_DUCK_HEIGHT = 60; // For ducking (crouched pose, head visible)
 const BASE_PLAYER_X = 75; // 50 * 1.5
 let playerWidth = BASE_PLAYER_WIDTH;
