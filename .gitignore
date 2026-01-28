@@ -32,9 +32,6 @@ backend/data/
 logs/
 *.log
 
-# Contracts
-contracts/
-
 # OS / editor
 .DS_Store
 Thumbs.db
