@@ -127,9 +127,20 @@ const BASE_SEPOLIA_PARAMS = {
     blockExplorerUrls: ["https://sepolia.basescan.org"]
 };
 const CHECKIN_CONTRACT_ADDRESS = "0xc24F4140df57BEadB3F19C9F7bEF0e49E8F47b44";
+const NFT_CONTRACT_ADDRESS = ""; // TODO: Set after deployment
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
 const ALLOW_GUEST_PLAY = false;
+
+// NFT Contract ABI (minimal for minting)
+const NFT_ABI = [
+    "function claimFreeCharacter() external returns (uint256)",
+    "function mintWithSignature(uint256 characterId, bytes32 nonce, uint256 expiry, bytes signature) external returns (uint256)",
+    "function canClaimFree(address user) external view returns (bool)",
+    "function hasClaimedFree(address) external view returns (bool)",
+    "function balanceOf(address owner) external view returns (uint256)",
+    "function getOwnedCharacters(address owner) external view returns (uint256[])"
+];
 
 // UI State Machine
 const UI_STATE = {
@@ -1368,6 +1379,201 @@ async function handleCheckin() {
         checkinState.loading = false;
         updateCheckinUI();
     }
+}
+
+// ============ Shop Functions ============
+
+// Shop state
+let shopState = {
+    characters: [],
+    inventory: [],
+    availableCoins: 0,
+    hasClaimedFree: false,
+    loading: false,
+    pendingPurchase: null
+};
+
+// Load shop characters
+async function loadShopCharacters() {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/shop/characters`);
+        const data = await response.json();
+        if (data.ok) {
+            shopState.characters = data.characters;
+        }
+    } catch (err) {
+        console.warn("Failed to load shop characters", err);
+    }
+}
+
+// Load user inventory
+async function loadUserInventory() {
+    if (!walletReady || !authToken) return;
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/shop/inventory`, {
+            headers: { Authorization: `Bearer ${authToken}` }
+        });
+        const data = await response.json();
+        if (data.ok) {
+            shopState.inventory = data.inventory;
+            shopState.availableCoins = data.availableCoins;
+            shopState.hasClaimedFree = data.hasClaimedFree;
+        }
+    } catch (err) {
+        console.warn("Failed to load inventory", err);
+    }
+}
+
+// Claim free character
+async function claimFreeCharacter() {
+    if (!walletReady || !NFT_CONTRACT_ADDRESS) {
+        console.warn("Cannot claim: wallet not ready or contract not set");
+        return { ok: false, error: "Wallet not ready" };
+    }
+    
+    shopState.loading = true;
+    
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+        
+        // Check if can claim
+        const canClaim = await contract.canClaimFree(walletAddress);
+        if (!canClaim) {
+            return { ok: false, error: "Already claimed or not available" };
+        }
+        
+        // Send transaction
+        const tx = await contract.claimFreeCharacter();
+        const receipt = await tx.wait();
+        
+        // Mark as claimed on backend
+        await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ txHash: receipt.hash })
+        });
+        
+        shopState.hasClaimedFree = true;
+        await loadUserInventory();
+        
+        return { ok: true, txHash: receipt.hash };
+    } catch (err) {
+        console.warn("Claim free character failed", err);
+        return { ok: false, error: err.message || "Transaction failed" };
+    } finally {
+        shopState.loading = false;
+    }
+}
+
+// Purchase character with coins
+async function purchaseCharacter(characterId) {
+    if (!walletReady || !NFT_CONTRACT_ADDRESS || !authToken) {
+        return { ok: false, error: "Wallet not ready" };
+    }
+    
+    shopState.loading = true;
+    
+    try {
+        // Step 1: Start purchase on backend (reserve coins, get signature)
+        const startResponse = await fetch(`${BACKEND_URL}/api/shop/purchase/start`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ characterId })
+        });
+        
+        const startData = await startResponse.json();
+        if (!startData.ok) {
+            return { ok: false, error: startData.error };
+        }
+        
+        shopState.pendingPurchase = startData;
+        
+        // Step 2: Send mint transaction
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+        
+        let txHash = null;
+        try {
+            const tx = await contract.mintWithSignature(
+                characterId,
+                startData.nonce,
+                startData.expiry,
+                startData.signature
+            );
+            const receipt = await tx.wait();
+            txHash = receipt.hash;
+        } catch (txErr) {
+            // Transaction failed or was cancelled - cancel purchase
+            await cancelPurchase(startData.nonce);
+            return { ok: false, error: "Transaction cancelled or failed" };
+        }
+        
+        // Step 3: Confirm purchase on backend
+        const confirmResponse = await fetch(`${BACKEND_URL}/api/shop/purchase/confirm`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ nonce: startData.nonce, txHash })
+        });
+        
+        const confirmData = await confirmResponse.json();
+        if (!confirmData.ok) {
+            console.warn("Purchase confirm failed but tx succeeded", confirmData);
+        }
+        
+        shopState.pendingPurchase = null;
+        await loadUserInventory();
+        
+        return { ok: true, txHash, coinsDeducted: confirmData.coinsDeducted };
+    } catch (err) {
+        console.warn("Purchase failed", err);
+        // Try to cancel if we have a pending purchase
+        if (shopState.pendingPurchase) {
+            await cancelPurchase(shopState.pendingPurchase.nonce);
+        }
+        return { ok: false, error: err.message || "Purchase failed" };
+    } finally {
+        shopState.loading = false;
+        shopState.pendingPurchase = null;
+    }
+}
+
+// Cancel pending purchase
+async function cancelPurchase(nonce) {
+    try {
+        await fetch(`${BACKEND_URL}/api/shop/purchase/cancel`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ nonce })
+        });
+    } catch (err) {
+        console.warn("Cancel purchase failed", err);
+    }
+}
+
+// Check if user needs to claim free character before playing
+function needsFreeClaim() {
+    return walletReady && 
+           NFT_CONTRACT_ADDRESS && 
+           !shopState.hasClaimedFree && 
+           shopState.characters.length > 0;
 }
 
 async function startGameFromWelcome() {

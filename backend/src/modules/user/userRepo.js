@@ -8,6 +8,7 @@ const USER_COLUMNS = `
   last_checkin,
   last_checkin_at,
   checkin_nonce,
+  has_claimed_free,
   last_login_at,
   created_at,
   updated_at
@@ -45,6 +46,7 @@ async function updateUser(address, updates) {
     last_checkin: "last_checkin",
     last_checkin_at: "last_checkin_at",
     checkin_nonce: "checkin_nonce",
+    has_claimed_free: "has_claimed_free",
     last_login_at: "last_login_at"
   };
   const sets = [];

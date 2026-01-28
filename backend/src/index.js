@@ -11,6 +11,16 @@ const {
 const { getOrCreateUser } = require("./modules/user/userRepo");
 const { applyScore } = require("./modules/user/userService");
 const { startCheckin, submitCheckin } = require("./modules/checkin/checkinService");
+const {
+  getCharacters,
+  getCharacter,
+  addCharacter,
+  startPurchase,
+  confirmPurchase,
+  cancelPurchase,
+  getAvailableCoins,
+  getUserInventory
+} = require("./modules/shop/shopService");
 const { ensureSchema } = require("./shared/db");
 const { normalizeAddress, verifyJwt } = require("./shared/auth");
 const { issueNonce, verifyNonce } = require("./modules/auth/authService");
@@ -246,6 +256,150 @@ app.post("/api/checkin/submit", requireAuth, async (req, res) => {
     streak: result.user.streak,
     lastCheckin: result.user.last_checkin
   });
+});
+
+// ============ Shop API ============
+
+// Get all available characters
+app.get("/api/shop/characters", async (req, res) => {
+  try {
+    const characters = await getCharacters();
+    res.json({ ok: true, characters });
+  } catch (err) {
+    console.error("Get characters error:", err);
+    res.status(500).json({ ok: false, error: "Failed to get characters" });
+  }
+});
+
+// Get user's inventory and available coins
+app.get("/api/shop/inventory", requireAuth, async (req, res) => {
+  try {
+    const inventory = await getUserInventory(req.user.address);
+    const availableCoins = await getAvailableCoins(req.user.address);
+    const user = await getOrCreateUser(req.user.address);
+    
+    res.json({
+      ok: true,
+      inventory,
+      availableCoins,
+      totalCoins: user.coins,
+      hasClaimedFree: user.has_claimed_free || false
+    });
+  } catch (err) {
+    console.error("Get inventory error:", err);
+    res.status(500).json({ ok: false, error: "Failed to get inventory" });
+  }
+});
+
+// Start a purchase (reserve coins, get signature)
+app.post("/api/shop/purchase/start", requireAuth, async (req, res) => {
+  const { characterId } = req.body || {};
+  
+  if (!characterId) {
+    res.status(400).json({ ok: false, error: "Missing characterId" });
+    return;
+  }
+  
+  try {
+    const result = await startPurchase(req.user.address, characterId);
+    if (!result.ok) {
+      res.status(400).json(result);
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("Start purchase error:", err);
+    res.status(500).json({ ok: false, error: "Failed to start purchase" });
+  }
+});
+
+// Confirm purchase after successful mint
+app.post("/api/shop/purchase/confirm", requireAuth, async (req, res) => {
+  const { nonce, txHash } = req.body || {};
+  
+  if (!nonce || !txHash) {
+    res.status(400).json({ ok: false, error: "Missing nonce or txHash" });
+    return;
+  }
+  
+  try {
+    const result = await confirmPurchase(req.user.address, nonce, txHash);
+    if (!result.ok) {
+      res.status(400).json(result);
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("Confirm purchase error:", err);
+    res.status(500).json({ ok: false, error: "Failed to confirm purchase" });
+  }
+});
+
+// Cancel pending purchase
+app.post("/api/shop/purchase/cancel", requireAuth, async (req, res) => {
+  const { nonce } = req.body || {};
+  
+  if (!nonce) {
+    res.status(400).json({ ok: false, error: "Missing nonce" });
+    return;
+  }
+  
+  try {
+    const result = await cancelPurchase(req.user.address, nonce);
+    res.json(result);
+  } catch (err) {
+    console.error("Cancel purchase error:", err);
+    res.status(500).json({ ok: false, error: "Failed to cancel purchase" });
+  }
+});
+
+// Mark free character as claimed (after successful on-chain claim)
+app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
+  const { txHash } = req.body || {};
+  
+  try {
+    const user = await getOrCreateUser(req.user.address);
+    
+    if (user.has_claimed_free) {
+      res.status(400).json({ ok: false, error: "Already claimed free character" });
+      return;
+    }
+    
+    const { updateUser } = require("./modules/user/userRepo");
+    await updateUser(req.user.address, { has_claimed_free: true });
+    
+    res.json({ ok: true, txHash });
+  } catch (err) {
+    console.error("Claim free error:", err);
+    res.status(500).json({ ok: false, error: "Failed to mark claim" });
+  }
+});
+
+// Admin: Add character (protected - implement proper admin auth in production)
+app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
+  // TODO: Add proper admin check
+  const { characterId, name, description, imageUrl, metadataUri, price, maxSupply } = req.body || {};
+  
+  if (!characterId || !name) {
+    res.status(400).json({ ok: false, error: "Missing required fields" });
+    return;
+  }
+  
+  try {
+    const character = await addCharacter({
+      characterId,
+      name,
+      description,
+      imageUrl,
+      metadataUri,
+      price: price || 0,
+      maxSupply: maxSupply || 0
+    });
+    res.json({ ok: true, character });
+  } catch (err) {
+    console.error("Add character error:", err);
+    res.status(500).json({ ok: false, error: "Failed to add character" });
+  }
 });
 
 setInterval(cleanupSessions, 60 * 1000);
