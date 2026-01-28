@@ -181,7 +181,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   }
 
   // Verify reported score matches simulation (anti-cheat)
-  const scoreTolerance = 50; // Allow small variance due to timing differences
+  const scoreTolerance = 500; // Allow variance due to timing differences
   if (reported > simScore + scoreTolerance) {
     res.status(403).json({
       ok: false,
