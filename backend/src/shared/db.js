@@ -19,9 +19,7 @@ async function ensureSchema() {
       address TEXT PRIMARY KEY,
       coins INTEGER NOT NULL DEFAULT 0,
       best_score INTEGER NOT NULL DEFAULT 0,
-      streak INTEGER NOT NULL DEFAULT 0,
-      last_checkin TEXT,
-      checkin_nonce TEXT,
+      has_claimed_free BOOLEAN DEFAULT FALSE,
       last_login_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -37,9 +35,18 @@ async function ensureSchema() {
     );
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMPTZ;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkin_tx TEXT;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS has_claimed_free BOOLEAN DEFAULT FALSE;`);
+  
+  // Remove deprecated columns (streak/checkin now on blockchain)
+  try {
+    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS streak;`);
+    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS last_checkin;`);
+    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS last_checkin_at;`);
+    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS last_checkin_tx;`);
+    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS checkin_nonce;`);
+  } catch (e) {
+    // Columns may not exist, ignore
+  }
   
   // Shop characters table
   await pool.query(`
