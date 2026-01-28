@@ -1,37 +1,39 @@
+// Synced with frontend script.js BASE_* constants
 const DEFAULT_CONFIG = {
   frameMs: 1000 / 60,
-  boardWidth: 1125,
-  boardHeight: 450,
-  baseSpawnOffset: 200,
-  spawnGap: 2000,
-  speedStart: 10,
-  speedMax: 17,
+  boardWidth: 750,
+  boardHeight: 400,
+  platformYRatio: 0.75, // Ground at 75% of canvas height
+  baseSpawnOffset: 150,
+  spawnGap: 350, // SPAWN_X_GAP in frontend
+  speedStart: 4,
+  speedMax: 4,
   speedMaxScore: 10000,
-  gravity: 1.0,
-  jumpVelocity: -22.9,
+  gravity: 0.8,
+  jumpVelocity: -16,
   player: {
-    width: 250,
-    height: 141,
-    duckHeight: 60,
-    x: 75
+    width: 63,
+    height: 80,
+    duckHeight: 55,
+    x: 10
   },
   token: {
-    height: 105,
+    height: 40, // BASE_STICK_HEIGHT + BASE_COIN_SIZE = 20 + 20
     widthByType: {
-      1: 51,
-      2: 103,
-      3: 153
+      1: 20,  // BASE_COIN_SIZE
+      2: 42,  // BASE_COIN_SPACING + BASE_COIN_SIZE = 22 + 20
+      3: 64   // BASE_COIN_SPACING * 2 + BASE_COIN_SIZE = 44 + 20
     }
   },
   coin: {
-    size: 45,
-    stickHeight: 45,
-    stickWidth: 6,
-    spacing: 50
+    size: 20,
+    stickHeight: 20,
+    stickWidth: 3,
+    spacing: 22
   },
   bird: {
-    width: 100,
-    height: 100,
+    width: 40,
+    height: 40,
     headAlignOffset: 15,
     lowerByPct: 0.1
   },
@@ -157,8 +159,9 @@ function getBirdHitbox(bird, config) {
 }
 
 function getTokenHitbox(token, config) {
-  const { coin, boardHeight } = config;
-  const stickY = Math.round(boardHeight - coin.stickHeight);
+  const { coin, boardHeight, platformYRatio } = config;
+  const groundY = Math.round(boardHeight * platformYRatio);
+  const stickY = Math.round(groundY - coin.stickHeight);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -220,9 +223,12 @@ function simulateRun({
   const rng = createRng(seed);
   const inputs = normalizeInputs(inputEvents);
 
+  // Ground level based on platform ratio (same as frontend)
+  const groundY = Math.round(config.boardHeight * config.platformYRatio);
+  
   const state = {
     playerX: config.player.x,
-    playerY: config.boardHeight - config.player.height,
+    playerY: groundY - config.player.height,
     playerHeight: config.player.height,
     velocityY: 0,
     isDucking: false,
@@ -232,10 +238,10 @@ function simulateRun({
 
   const tokens = [];
   const birds = [];
-  const tokenY = config.boardHeight - config.token.height;
+  const tokenY = groundY - config.token.height;
   const tokenX = config.boardWidth + config.baseSpawnOffset;
   const birdX = config.boardWidth + config.baseSpawnOffset;
-  const standingHeadTop = config.boardHeight - config.player.height;
+  const standingHeadTop = groundY - config.player.height;
   let nextSpawnMs = 1000;
   let gameOver = false;
   let collidedAtMs = null;
@@ -250,8 +256,8 @@ function simulateRun({
     while (inputIndex < inputs.length && inputs[inputIndex].t <= timeMs) {
       const ev = inputs[inputIndex];
       if (ev.type === "jump") {
-        const groundY = config.boardHeight - state.playerHeight;
-        if (state.playerY >= groundY - 1) {
+        const playerGroundY = groundY - state.playerHeight;
+        if (state.playerY >= playerGroundY - 1) {
           state.velocityY = config.jumpVelocity;
         }
       } else if (ev.type === "duck_down") {
@@ -269,26 +275,26 @@ function simulateRun({
 
     const prevY = state.playerY;
     const prevHeight = state.playerHeight;
-    const prevGroundY = config.boardHeight - prevHeight;
+    const prevGroundY = groundY - prevHeight;
     const wasAirborne = prevY < prevGroundY - 1;
     const onGround = !wasAirborne;
     state.canDuck = state.isDucking && onGround;
 
     state.playerHeight = state.canDuck ? config.player.duckHeight : config.player.height;
-    const groundY = config.boardHeight - state.playerHeight;
+    const playerGroundY = groundY - state.playerHeight;
 
     if (wasAirborne) {
       state.playerY = prevY;
     } else {
-      state.playerY = groundY;
+      state.playerY = playerGroundY;
       if (state.velocityY > 0) {
         state.velocityY = 0;
       }
     }
 
     state.velocityY += config.gravity;
-    state.playerY = Math.min(state.playerY + state.velocityY, groundY);
-    if (state.playerY >= groundY) {
+    state.playerY = Math.min(state.playerY + state.velocityY, playerGroundY);
+    if (state.playerY >= playerGroundY) {
       state.velocityY = 0;
     }
 
