@@ -1,6 +1,7 @@
 const { getOrCreateUser, updateUser } = require("../user/userRepo");
 const { getDateKey, isToday, isYesterday } = require("../../shared/dates");
 const { createNonce } = require("../../shared/nonce");
+const { mintCoins, isBlockchainReady } = require("../../shared/blockchain");
 
 // Maximum hours between check-ins to keep streak (36 hours = 1 day + 12 hour buffer)
 const STREAK_TIMEOUT_HOURS = 36;
@@ -63,6 +64,22 @@ async function submitCheckin(address, txHash) {
   const coinsAwarded = 1 + bonusAwarded;
   const now = new Date().toISOString();
   
+  // Mint coins on-chain
+  let mintResult = null;
+  let onChainMinted = 0;
+  
+  if (coinsAwarded > 0 && isBlockchainReady()) {
+    console.log(`Attempting to mint ${coinsAwarded} check-in coins on-chain to ${address}`);
+    mintResult = await mintCoins(address, coinsAwarded);
+    
+    if (mintResult.success) {
+      onChainMinted = coinsAwarded;
+      console.log(`✅ Check-in on-chain mint successful: ${mintResult.txHash}`);
+    } else {
+      console.warn(`⚠️ Check-in on-chain mint failed: ${mintResult.error}. Crediting in DB only.`);
+    }
+  }
+  
   const updated = await updateUser(address, {
     coins: user.coins + coinsAwarded,
     streak: nextStreak,
@@ -77,7 +94,10 @@ async function submitCheckin(address, txHash) {
     coinsAwarded,
     bonusAwarded,
     streakReset: !continueStreak && user.streak > 0,
-    user: updated
+    user: updated,
+    // On-chain mint info
+    onChainMinted,
+    mintTxHash: mintResult?.txHash || null
   };
 }
 

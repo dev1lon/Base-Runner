@@ -196,7 +196,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
 
   const finalScore = Math.min(reported, simScore + scoreTolerance);
   const coinsAwarded = Math.floor(finalScore / 10000);
-  const user = await applyScore(addressNorm, finalScore, coinsAwarded);
+  const result = await applyScore(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
 
   res.json({
@@ -205,9 +205,12 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     finalScore,
     maxScore,
     coinsAwarded,
-    coinBalance: user ? user.coins : 0,
-    bestScore: user ? user.best_score : finalScore,
-    collidedAtMs: simResult.collidedAtMs
+    coinBalance: result ? result.coins : 0,
+    bestScore: result ? result.best_score : finalScore,
+    collidedAtMs: simResult.collidedAtMs,
+    // On-chain mint info
+    onChainMinted: result?.onChainMinted || 0,
+    mintTxHash: result?.mintResult?.txHash || null
   });
 });
 
