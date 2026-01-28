@@ -37,6 +37,7 @@ async function ensureSchema() {
     );
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMPTZ;`);
 }
 
 async function query(text, params) {
