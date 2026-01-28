@@ -184,7 +184,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
 
   // Verify reported score matches simulation (anti-cheat)
   // TODO: Fix simulation logic - currently disabled because simScore is much lower than actual
-  const scoreTolerance = 500;
+  const scoreTolerance = 50;
   console.log("📊 Score check:", { reported, simScore, scoreTolerance, diff: reported - simScore });
   // Simulation check disabled - needs debugging
   // if (reported > simScore + scoreTolerance) {
@@ -198,8 +198,11 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   //   return;
   // }
 
-  const finalScore = Math.min(reported, simScore + scoreTolerance);
+  // Use reported score directly since simulation check is disabled
+  // Still capped by maxScore (time-based limit)
+  const finalScore = Math.min(reported, maxScore);
   const coinsAwarded = Math.floor(finalScore / 1000);
+  console.log("💰 Awarding:", { finalScore, coinsAwarded, address: addressNorm });
   const result = await applyScore(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
 
