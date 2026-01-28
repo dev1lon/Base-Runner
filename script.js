@@ -2479,16 +2479,15 @@ function getPlayerHitbox(out) {
     return applySpriteBounds(playerDrawRectScratch, spriteBounds.player, playerInset, out);
 }
 
-// Player hitbox for bird collisions (focuses on head/upper body)
+// Player hitbox for bird collisions (full body)
 function getPlayerBirdHitbox(out) {
     getPlayerHitbox(out);
-    // Focus on upper body/head for bird collisions
-    // When ducking, this hitbox is naturally smaller due to playerDrawRectScratch
-    const headHeight = Math.max(1, Math.round(out.height * 0.55));
+    // Use full body hitbox for bird collisions
+    // Small horizontal inset to be forgiving
     const insetX = Math.round(out.width * 0.1);
     out.x = out.x + insetX;
     out.width = Math.max(1, out.width - insetX * 2);
-    out.height = headHeight;
+    // Keep full height - bird should collide with entire body
     return out;
 }
 
