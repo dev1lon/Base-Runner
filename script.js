@@ -201,7 +201,7 @@ let gameBestEl;
 let gameUIContainer;
 let gameOverOverlay;
 let coinCount = 0;
-let nextCoinScore = 10000;
+let nextCoinScore = 1000;
 // Coin popup animation state
 let coinPopupActive = false;
 let coinPopupStartTime = 0;
@@ -1254,7 +1254,7 @@ window.onload = function() {
     // Load best score from localStorage
     bestScore = parseInt(localStorage.getItem('baseapp_runner_best_score')) || 0;
     coinCount = parseInt(localStorage.getItem(COIN_STORAGE_KEY)) || 0;
-    nextCoinScore = 10000;
+    nextCoinScore = 1000;
 
     requestAnimationFrame(update);
     setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
@@ -2139,11 +2139,11 @@ function update(timestamp) {
         score = nextScore;
     }
 
-    // Add coins at score milestones (every 10000 points)
+    // Add coins at score milestones (every 1000 points)
     if (score >= nextCoinScore) {
-        const increments = Math.floor((score - nextCoinScore) / 10000) + 1;
+        const increments = Math.floor((score - nextCoinScore) / 1000) + 1;
         addCoins(increments);
-        nextCoinScore += increments * 10000;
+        nextCoinScore += increments * 1000;
         // Start coin popup animation
         coinPopupActive = true;
         coinPopupStartTime = timestamp;
@@ -2574,7 +2574,7 @@ async function restartGame() {
     gameOver = false;
     score = 0;
     scoreFloat = 0;
-    nextCoinScore = 10000;
+    nextCoinScore = 1000;
     velocityY = 0;
     isDucking = false;
     isPaused = false;
