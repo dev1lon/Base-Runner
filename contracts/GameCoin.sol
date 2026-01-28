@@ -30,6 +30,19 @@ contract GameCoin is ERC20, Ownable {
     /// @notice Server signer address for mint signatures
     address public serverSigner;
     
+    /// @notice Contract paused state
+    bool public paused;
+    
+    /// @notice Maximum coins per mint (anti-abuse)
+    uint256 public maxMintAmount = 1000;
+    
+    /// @notice Daily mint limit per address
+    uint256 public dailyMintLimit = 100;
+    
+    /// @notice Track daily mints per address
+    mapping(address => uint256) public dailyMinted;
+    mapping(address => uint256) public lastMintDay;
+    
     // ============================================
     // Events
     // ============================================
@@ -52,6 +65,22 @@ contract GameCoin is ERC20, Ownable {
     error SignatureExpired();
     error ZeroAddress();
     error ZeroAmount();
+    error ContractPaused();
+    error ExceedsMaxMint();
+    error ExceedsDailyLimit();
+    
+    // ============================================
+    // Constructor
+    // ============================================
+    
+    // ============================================
+    // Modifiers
+    // ============================================
+    
+    modifier whenNotPaused() {
+        if (paused) revert ContractPaused();
+        _;
+    }
     
     // ============================================
     // Constructor
@@ -82,11 +111,15 @@ contract GameCoin is ERC20, Ownable {
         bytes32 nonce,
         uint256 expiry,
         bytes calldata signature
-    ) external {
+    ) external whenNotPaused {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
+        if (amount > maxMintAmount) revert ExceedsMaxMint();
         if (block.timestamp > expiry) revert SignatureExpired();
         if (usedNonces[nonce]) revert NonceAlreadyUsed();
+        
+        // Check daily limit
+        _checkAndUpdateDailyLimit(to, amount);
         
         // Verify signature
         bytes32 messageHash = keccak256(abi.encodePacked(
@@ -114,10 +147,14 @@ contract GameCoin is ERC20, Ownable {
     /**
      * @notice Direct mint by authorized minter (for batch operations)
      */
-    function mint(address to, uint256 amount) external {
+    function mint(address to, uint256 amount) external whenNotPaused {
         if (!minters[msg.sender]) revert NotAuthorizedMinter();
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
+        if (amount > maxMintAmount) revert ExceedsMaxMint();
+        
+        // Check daily limit
+        _checkAndUpdateDailyLimit(to, amount);
         
         _mint(to, amount);
         emit CoinsMinted(to, amount, bytes32(0));
@@ -204,9 +241,38 @@ contract GameCoin is ERC20, Ownable {
         emit SpenderUpdated(spender, status);
     }
     
+    function setPaused(bool _paused) external onlyOwner {
+        paused = _paused;
+    }
+    
+    function setMaxMintAmount(uint256 _max) external onlyOwner {
+        maxMintAmount = _max;
+    }
+    
+    function setDailyMintLimit(uint256 _limit) external onlyOwner {
+        dailyMintLimit = _limit;
+    }
+    
     // ============================================
     // Internal
     // ============================================
+    
+    function _checkAndUpdateDailyLimit(address to, uint256 amount) internal {
+        uint256 today = block.timestamp / 1 days;
+        
+        // Reset if new day
+        if (lastMintDay[to] < today) {
+            dailyMinted[to] = 0;
+            lastMintDay[to] = today;
+        }
+        
+        // Check limit
+        if (dailyMinted[to] + amount > dailyMintLimit) {
+            revert ExceedsDailyLimit();
+        }
+        
+        dailyMinted[to] += amount;
+    }
     
     function _recoverSigner(
         bytes32 hash,
@@ -235,5 +301,19 @@ contract GameCoin is ERC20, Ownable {
     
     function decimals() public pure override returns (uint8) {
         return 0; // Whole coins only, no decimals
+    }
+    
+    /**
+     * @notice Get remaining daily mint allowance for address
+     */
+    function getRemainingDailyMint(address account) external view returns (uint256) {
+        uint256 today = block.timestamp / 1 days;
+        if (lastMintDay[account] < today) {
+            return dailyMintLimit;
+        }
+        if (dailyMinted[account] >= dailyMintLimit) {
+            return 0;
+        }
+        return dailyMintLimit - dailyMinted[account];
     }
 }
