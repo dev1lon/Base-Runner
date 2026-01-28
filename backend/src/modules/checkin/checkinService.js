@@ -1,8 +1,6 @@
 const { getOrCreateUser, updateUser } = require("../user/userRepo");
 const { getDateKey, isToday, isYesterday } = require("../../shared/dates");
 const { createNonce } = require("../../shared/nonce");
-const { buildCheckinMessage } = require("../../shared/messages");
-const { verifySignature } = require("../../shared/auth");
 
 async function startCheckin(address) {
   const user = await getOrCreateUser(address);
@@ -15,24 +13,23 @@ async function startCheckin(address) {
     };
   }
   const nonce = createNonce();
-  const message = buildCheckinMessage(nonce);
   const updated = await updateUser(address, { checkin_nonce: nonce });
   return {
     alreadyCheckedIn: false,
-    message,
+    message: `Check-in nonce: ${nonce}`, // Still return message for compatibility
     nonce,
     user: updated
   };
 }
 
-async function submitCheckin(address, signature) {
+async function submitCheckin(address, txHash) {
   const user = await getOrCreateUser(address);
   if (!user.checkin_nonce) {
-    return { ok: false, error: "No checkin nonce" };
+    return { ok: false, error: "No checkin nonce - call /checkin/start first" };
   }
-  const message = buildCheckinMessage(user.checkin_nonce);
-  if (!verifySignature(address, message, signature)) {
-    return { ok: false, error: "Invalid signature" };
+  // txHash is proof of on-chain transaction (user already authenticated via JWT)
+  if (!txHash || typeof txHash !== "string" || txHash.length < 10) {
+    return { ok: false, error: "Invalid or missing txHash" };
   }
   if (isToday(user.last_checkin)) {
     const cleared = await updateUser(address, { checkin_nonce: null });

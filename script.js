@@ -1329,11 +1329,9 @@ async function handleCheckin() {
         if (!message) {
             throw new Error("Check-in message missing");
         }
-        if (checkinStatus) {
-            checkinStatus.textContent = "Подтвердите транзакцию check-in.";
-        }
+        setCheckinStatusText("Подтвердите транзакцию check-in.", false);
         const txHash = await sendCheckinTransaction();
-        const signature = await signWalletMessage(message);
+        // Send txHash instead of signature - transaction is proof of checkin
         const submitResponse = await fetch(`${BACKEND_URL}/api/checkin/submit`, {
             method: "POST",
             headers: {
@@ -1341,7 +1339,7 @@ async function handleCheckin() {
                 Authorization: `Bearer ${authToken}`
             },
             body: JSON.stringify({
-                signature
+                txHash
             })
         });
         if (!submitResponse.ok) {

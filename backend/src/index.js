@@ -227,12 +227,12 @@ app.post("/api/checkin/start", requireAuth, async (req, res) => {
 });
 
 app.post("/api/checkin/submit", requireAuth, async (req, res) => {
-  const { signature } = req.body || {};
-  if (!signature) {
-    res.status(400).json({ ok: false, error: "Missing signature" });
+  const { txHash } = req.body || {};
+  if (!txHash) {
+    res.status(400).json({ ok: false, error: "Missing txHash" });
     return;
   }
-  const result = await submitCheckin(req.user.address, signature);
+  const result = await submitCheckin(req.user.address, txHash);
   if (!result.ok) {
     res.status(400).json({ ok: false, error: result.error });
     return;
