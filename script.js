@@ -126,9 +126,9 @@ const BASE_SEPOLIA_PARAMS = {
     rpcUrls: ["https://sepolia.base.org"],
     blockExplorerUrls: ["https://sepolia.basescan.org"]
 };
-// Contract addresses (set after deployment)
-const GAMECOIN_CONTRACT_ADDRESS = ""; // TODO: Set after deployment
-const NFT_CONTRACT_ADDRESS = ""; // TODO: Set after deployment
+// Contract addresses (Base Sepolia)
+const GAMECOIN_CONTRACT_ADDRESS = "0xE0fAEcB04144b4D3608edb188D9bFC56B2B494fc";
+const NFT_CONTRACT_ADDRESS = "0xBA33be5dc1dfa3A44C9D62a49269ca2545aE5a20";
 
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
