@@ -152,6 +152,8 @@ let startButton;
 let resumeButton;
 let checkinButton;
 let checkinStatus;
+let checkinButtonPause;
+let checkinStatusPause;
 let ethImg;
 // Game UI elements
 let gameCoinsEl;
@@ -993,6 +995,8 @@ window.onload = function() {
     resumeButton = document.getElementById("resume-button");
     checkinButton = document.getElementById("checkin-button");
     checkinStatus = document.getElementById("checkin-status");
+    checkinButtonPause = document.getElementById("checkin-button-pause");
+    checkinStatusPause = document.getElementById("checkin-status-pause");
     
     // Game UI elements
     gameCoinsEl = document.getElementById("game-coins");
@@ -1044,6 +1048,14 @@ window.onload = function() {
     if (checkinButton) {
         checkinButton.addEventListener("click", handleCheckin);
         checkinButton.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleCheckin();
+        }, { passive: false });
+    }
+    if (checkinButtonPause) {
+        checkinButtonPause.addEventListener("click", handleCheckin);
+        checkinButtonPause.addEventListener("touchstart", function(e) {
             e.stopPropagation();
             e.preventDefault();
             handleCheckin();
@@ -1228,55 +1240,58 @@ function applyProfileData(data) {
 }
 
 function setCheckinButtonText(text) {
-    if (!checkinButton) return;
-    checkinButton.textContent = text;
+    if (checkinButton) checkinButton.textContent = text;
+    if (checkinButtonPause) checkinButtonPause.textContent = text;
+}
+
+function setCheckinButtonDisabled(disabled) {
+    if (checkinButton) checkinButton.disabled = disabled;
+    if (checkinButtonPause) checkinButtonPause.disabled = disabled;
+}
+
+function setCheckinStatusText(text, isSuccess) {
+    const updateStatus = (el) => {
+        if (!el) return;
+        el.textContent = text;
+        if (isSuccess !== undefined) {
+            el.classList.toggle("success", isSuccess);
+        }
+    };
+    updateStatus(checkinStatus);
+    updateStatus(checkinStatusPause);
 }
 
 function updateCheckinUI() {
-    if (!checkinButton) return;
+    if (!checkinButton && !checkinButtonPause) return;
     
     if (!walletReady) {
-        checkinButton.disabled = true;
+        setCheckinButtonDisabled(true);
         setCheckinButtonText("Check-in");
-        if (checkinStatus) {
-            checkinStatus.textContent = "";
-            checkinStatus.classList.remove("success");
-        }
+        setCheckinStatusText("", false);
         return;
     }
     if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
-        checkinButton.disabled = true;
+        setCheckinButtonDisabled(true);
         setCheckinButtonText("Check-in");
-        if (checkinStatus) {
-            checkinStatus.textContent = "Not available";
-            checkinStatus.classList.remove("success");
-        }
+        setCheckinStatusText("Not available", false);
         return;
     }
     if (checkinState.loading) {
-        checkinButton.disabled = true;
+        setCheckinButtonDisabled(true);
         setCheckinButtonText("Loading...");
-        if (checkinStatus) {
-            checkinStatus.textContent = "";
-            checkinStatus.classList.remove("success");
-        }
+        setCheckinStatusText("", false);
         return;
     }
     const checkedIn = isToday(checkinState.lastCheckin);
-    checkinButton.disabled = checkedIn;
+    setCheckinButtonDisabled(checkedIn);
     setCheckinButtonText(checkedIn ? "Done" : "Check-in");
     
-    if (checkinStatus) {
-        if (checkinState.message) {
-            checkinStatus.textContent = checkinState.message;
-            checkinStatus.classList.toggle("success", checkedIn);
-        } else if (checkedIn) {
-            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
-            checkinStatus.classList.add("success");
-        } else {
-            checkinStatus.textContent = `Streak: ${checkinState.streak}`;
-            checkinStatus.classList.remove("success");
-        }
+    if (checkinState.message) {
+        setCheckinStatusText(checkinState.message, checkedIn);
+    } else if (checkedIn) {
+        setCheckinStatusText(`Streak: ${checkinState.streak}`, true);
+    } else {
+        setCheckinStatusText(`Streak: ${checkinState.streak}`, false);
     }
 }
 
