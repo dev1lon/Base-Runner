@@ -172,7 +172,19 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     return;
   }
 
-  const finalScore = Math.min(reported, maxScore);
+  // Verify reported score matches simulation (anti-cheat)
+  const scoreTolerance = 50; // Allow small variance due to timing differences
+  if (reported > simScore + scoreTolerance) {
+    res.status(403).json({
+      ok: false,
+      error: "Score mismatch - simulation does not match reported score",
+      simScore,
+      reported
+    });
+    return;
+  }
+
+  const finalScore = Math.min(reported, simScore + scoreTolerance);
   const coinsAwarded = Math.floor(finalScore / 10000);
   const user = await applyScore(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
