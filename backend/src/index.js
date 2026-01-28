@@ -193,7 +193,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   }
 
   const finalScore = Math.min(reported, simScore + scoreTolerance);
-  const coinsAwarded = Math.floor(finalScore / 10000);
+  const coinsAwarded = Math.floor(finalScore / 1000);
   const result = await applyScore(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
 
