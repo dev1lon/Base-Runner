@@ -451,7 +451,7 @@ async function restoreAuthSession() {
             throw new Error("Session rejected");
         }
         walletAuthenticated = true;
-        applyProfileData(data);
+        await applyProfileData(data);
         return true;
     } catch (err) {
         resetAuthState();
@@ -536,7 +536,7 @@ async function authenticateWallet() {
         authToken = data.token || "";
         walletAuthenticated = true;
         storeAuthSession(authToken, walletAddress);
-        applyProfileData(data);
+        await applyProfileData(data);
     } catch (err) {
         console.warn("Auth failed", err);
         walletAuthenticated = false;
@@ -1364,21 +1364,36 @@ function updateMenuState() {
     updateCheckinUI();
 }
 
-function applyProfileData(data) {
+async function applyProfileData(data) {
     if (!data) return;
-    // Use MAX of local and backend values to not lose progress
-    if (Number.isFinite(data.coinBalance)) {
-        const localCoins = parseInt(localStorage.getItem(COIN_STORAGE_KEY)) || 0;
-        coinCount = Math.max(localCoins, data.coinBalance);
-        saveCoins();
-    }
+    
+    // Best score from backend (for anti-cheat)
     if (Number.isFinite(data.bestScore)) {
         const localBest = parseInt(localStorage.getItem('baseapp_runner_best_score')) || 0;
         bestScore = Math.max(localBest, data.bestScore);
         localStorage.setItem("baseapp_runner_best_score", String(bestScore));
     }
-    checkinState.lastCheckin = data.lastCheckin || null;
-    checkinState.streak = Number.isFinite(data.streak) ? data.streak : 0;
+    
+    // Coins from BLOCKCHAIN (not DB)
+    try {
+        const onChainBalance = await getOnChainCoinBalance();
+        coinCount = onChainBalance;
+        saveCoins();
+    } catch (e) {
+        console.warn("Failed to get on-chain balance:", e);
+    }
+    
+    // Checkin stats from BLOCKCHAIN
+    try {
+        const stats = await getCheckinStats();
+        if (stats) {
+            checkinState.lastCheckin = stats.lastCheckin;
+            checkinState.streak = stats.streak;
+        }
+    } catch (e) {
+        console.warn("Failed to get checkin stats:", e);
+    }
+    
     checkinState.message = "";
     updateCheckinUI();
 }
