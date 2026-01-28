@@ -134,12 +134,14 @@ const ALLOW_GUEST_PLAY = false;
 
 // NFT Contract ABI (minimal for minting)
 const NFT_ABI = [
-    "function claimFreeCharacter() external returns (uint256)",
-    "function mintWithSignature(uint256 characterId, bytes32 nonce, uint256 expiry, bytes signature) external returns (uint256)",
-    "function canClaimFree(address user) external view returns (bool)",
-    "function hasClaimedFree(address) external view returns (bool)",
-    "function balanceOf(address owner) external view returns (uint256)",
-    "function getOwnedCharacters(address owner) external view returns (uint256[])"
+    "function mintFreeCharacter() external",
+    "function mintWithSignature(uint8 characterType, bytes32 nonce, uint256 expiry, bytes signature) external",
+    "function canClaimFreeMint(address wallet) external view returns (bool)",
+    "function hasClaimedFreeMint(address) external view returns (bool)",
+    "function ownsCharacter(address wallet, uint8 characterType) external view returns (bool)",
+    "function getOwnedCharacterList(address wallet) external view returns (uint8[])",
+    "function getOwnedTokenIds(address owner) external view returns (uint256[])",
+    "function balanceOf(address owner) external view returns (uint256)"
 ];
 
 // UI State Machine
@@ -1441,13 +1443,13 @@ async function claimFreeCharacter() {
         const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
         
         // Check if can claim
-        const canClaim = await contract.canClaimFree(walletAddress);
+        const canClaim = await contract.canClaimFreeMint(walletAddress);
         if (!canClaim) {
             return { ok: false, error: "Already claimed or not available" };
         }
         
         // Send transaction
-        const tx = await contract.claimFreeCharacter();
+        const tx = await contract.mintFreeCharacter();
         const receipt = await tx.wait();
         
         // Mark as claimed on backend
