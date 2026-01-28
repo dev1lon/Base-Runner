@@ -1102,7 +1102,7 @@ window.onload = function() {
 
     //load bird image (flying enemy)
     birdImg = new Image();
-    birdImg.src = "./assets/gen_bird.png";
+    birdImg.src = "./assets/bird.png";
     birdImg.onload = function() {
         spriteBounds.bird = getNormalizedSpriteBounds(birdImg);
     };
