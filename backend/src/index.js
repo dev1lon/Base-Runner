@@ -121,7 +121,7 @@ app.post("/api/session/start", requireAuth, (req, res) => {
 });
 
 app.post("/api/session/submit", requireAuth, async (req, res) => {
-  const { sessionId, inputLog, reportedScore } = req.body || {};
+  const { sessionId, inputLog, reportedScore, gameElapsedMs } = req.body || {};
 
   if (!sessionId) {
     res.status(400).json({ ok: false, error: "Missing sessionId" });
@@ -148,15 +148,36 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     return;
   }
 
+  // Calculate duration - prefer client-reported gameElapsedMs, fallback to server time
   const serverDurationMs = Math.min(Date.now() - session.issuedAt, MAX_DURATION_MS);
-  if (!Number.isFinite(serverDurationMs) || serverDurationMs <= 0) {
+  const clientElapsedMs = Number.isFinite(Number(gameElapsedMs)) ? Number(gameElapsedMs) : 0;
+  
+  // Get last input time as sanity check
+  const inputLogArray = Array.isArray(inputLog) ? inputLog : [];
+  const lastInputTime = inputLogArray.reduce((max, ev) => {
+    const t = Number(ev?.t);
+    return Number.isFinite(t) && t > max ? t : max;
+  }, 0);
+  
+  // Use client elapsed time if reasonable, otherwise fallback
+  // Client time must be <= server time (can't play longer than session exists)
+  let gameDurationMs;
+  if (clientElapsedMs > 0 && clientElapsedMs <= serverDurationMs + 5000) {
+    gameDurationMs = Math.min(clientElapsedMs, MAX_DURATION_MS);
+  } else {
+    gameDurationMs = Math.max(lastInputTime + 500, Math.min(serverDurationMs, MAX_DURATION_MS));
+  }
+  
+  console.log("⏱️ Duration:", { clientElapsedMs, serverDurationMs, lastInputTime, gameDurationMs });
+  
+  if (!Number.isFinite(gameDurationMs) || gameDurationMs <= 0) {
     res.status(400).json({ ok: false, error: "Invalid duration" });
     return;
   }
 
   const simResult = simulateRun({
     seed: session.seed,
-    durationMs: serverDurationMs,
+    durationMs: gameDurationMs,
     inputEvents: inputLog
   });
 
@@ -165,7 +186,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     ? Number(reportedScore)
     : null;
   const tolerance = 2;
-  const maxScore = Math.floor(serverDurationMs / DEFAULT_CONFIG.frameMs) + tolerance;
+  const maxScore = Math.floor(gameDurationMs / DEFAULT_CONFIG.frameMs) + tolerance;
 
   if (reported === null) {
     res.status(400).json({ ok: false, error: "Missing reportedScore" });
@@ -183,20 +204,20 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   }
 
   // Verify reported score matches simulation (anti-cheat)
-  // TODO: Fix simulation logic - currently disabled because simScore is much lower than actual
-  const scoreTolerance = 50;
-  console.log("📊 Score check:", { reported, simScore, scoreTolerance, diff: reported - simScore });
-  // Simulation check disabled - needs debugging
-  // if (reported > simScore + scoreTolerance) {
-  //   console.log("❌ 403: Score mismatch", { reported, simScore, scoreTolerance });
-  //   res.status(403).json({
-  //     ok: false,
-  //     error: "Score mismatch - simulation does not match reported score",
-  //     simScore,
-  //     reported
-  //   });
-  //   return;
-  // }
+  // Higher tolerance to account for frame rate variations and timing differences
+  const scoreTolerance = Math.max(200, Math.floor(gameDurationMs / 50)); // ~20% tolerance
+  console.log("📊 Score check:", { reported, simScore, scoreTolerance, diff: reported - simScore, gameDurationMs });
+  
+  if (reported > simScore + scoreTolerance) {
+    console.log("❌ 403: Score mismatch", { reported, simScore, scoreTolerance });
+    res.status(403).json({
+      ok: false,
+      error: "Score mismatch - simulation does not match reported score",
+      simScore,
+      reported
+    });
+    return;
+  }
 
   // Use reported score directly since simulation check is disabled
   // Still capped by maxScore (time-based limit)

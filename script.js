@@ -732,10 +732,12 @@ async function submitBackendRun(finalScore) {
         return;
     }
     backendRunSubmitted = true;
+    const gameElapsedMs = Math.round(performance.now() - backendSessionStartMs);
     const payload = {
         sessionId: backendSessionId,
         reportedScore: finalScore,
-        inputLog: backendInputLog
+        inputLog: backendInputLog,
+        gameElapsedMs: gameElapsedMs
     };
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
