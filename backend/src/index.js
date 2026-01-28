@@ -143,6 +143,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
 
   const addressNorm = req.user.address;
   if (!addressNorm || addressNorm !== session.address) {
+    console.log("❌ 403: Session address mismatch", { addressNorm, sessionAddress: session.address });
     res.status(403).json({ ok: false, error: "Session address mismatch" });
     return;
   }
@@ -172,6 +173,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   }
 
   if (reported > maxScore) {
+    console.log("❌ 403: Score exceeds time limit", { reported, maxScore, serverDurationMs });
     res.status(403).json({
       ok: false,
       error: "Score exceeds time limit",
@@ -182,7 +184,9 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
 
   // Verify reported score matches simulation (anti-cheat)
   const scoreTolerance = 500; // Allow variance due to timing differences
+  console.log("📊 Score check:", { reported, simScore, scoreTolerance, diff: reported - simScore });
   if (reported > simScore + scoreTolerance) {
+    console.log("❌ 403: Score mismatch", { reported, simScore, scoreTolerance });
     res.status(403).json({
       ok: false,
       error: "Score mismatch - simulation does not match reported score",
