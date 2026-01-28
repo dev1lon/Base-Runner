@@ -126,22 +126,48 @@ const BASE_SEPOLIA_PARAMS = {
     rpcUrls: ["https://sepolia.base.org"],
     blockExplorerUrls: ["https://sepolia.basescan.org"]
 };
-const CHECKIN_CONTRACT_ADDRESS = "0xc24F4140df57BEadB3F19C9F7bEF0e49E8F47b44";
+// Contract addresses (set after deployment)
+const GAMECOIN_CONTRACT_ADDRESS = ""; // TODO: Set after deployment
 const NFT_CONTRACT_ADDRESS = ""; // TODO: Set after deployment
+
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
 const ALLOW_GUEST_PLAY = false;
 
-// NFT Contract ABI (minimal for minting)
+// GameCoin ABI (coins + check-in + buy with ETH)
+const GAMECOIN_ABI = [
+    // Coin functions
+    "function balanceOf(address account) external view returns (uint256)",
+    "function buyWithETH(uint256 minCoins) external payable",
+    "function calculateCoinsForETH(uint256 ethAmount) external view returns (uint256)",
+    "function calculateETHForCoins(uint256 coinAmount) external view returns (uint256)",
+    "function coinPriceUSD() external view returns (uint256)",
+    "function ethPriceUSD() external view returns (uint256)",
+    "function saleEnabled() external view returns (bool)",
+    // Check-in functions
+    "function checkin() external",
+    "function canCheckin(address user) external view returns (bool)",
+    "function timeUntilNextCheckin(address user) external view returns (uint256)",
+    "function previewReward(address user) external view returns (uint256)",
+    "function getCheckinStats(address user) external view returns (uint256 lastCheckinTime, uint256 totalCheckins, uint256 streak, bool canCheckinNow, uint256 nextReward)",
+    "function currentStreak(address) external view returns (uint256)",
+    "function checkinCount(address) external view returns (uint256)",
+    // Approve for NFT
+    "function approve(address spender, uint256 amount) external returns (bool)",
+    "function allowance(address owner, address spender) external view returns (uint256)"
+];
+
+// NFT Contract ABI (buy with GameCoins)
 const NFT_ABI = [
     "function mintFreeCharacter() external",
-    "function mintWithSignature(uint8 characterType, bytes32 nonce, uint256 expiry, bytes signature) external",
+    "function mintWithCoins(uint8 characterType) external",
     "function canClaimFreeMint(address wallet) external view returns (bool)",
     "function hasClaimedFreeMint(address) external view returns (bool)",
-    "function ownsCharacter(address wallet, uint8 characterType) external view returns (bool)",
+    "function ownsCharacterType(address, uint8) external view returns (bool)",
     "function getOwnedCharacterList(address wallet) external view returns (uint8[])",
     "function getOwnedTokenIds(address owner) external view returns (uint256[])",
-    "function balanceOf(address owner) external view returns (uint256)"
+    "function balanceOf(address owner) external view returns (uint256)",
+    "function characterTypes(uint8) external view returns (string name, uint8 rarity, uint256 price, bool exists)"
 ];
 
 // UI State Machine
@@ -528,18 +554,123 @@ async function sendCheckinTransaction() {
     if (!provider || !walletAddress) {
         throw new Error("Wallet not connected");
     }
-    if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
-        throw new Error("Checkin contract not set");
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
+        throw new Error("GameCoin contract not set");
     }
-    const tx = {
-        from: walletAddress,
-        to: CHECKIN_CONTRACT_ADDRESS,
-        value: "0x0"
-    };
-    return await provider.request({
-        method: "eth_sendTransaction",
-        params: [tx]
+    
+    // Use ethers to call checkin() on GameCoin - mints coins in same tx!
+    const ethersProvider = new ethers.BrowserProvider(provider);
+    const signer = await ethersProvider.getSigner();
+    const gameCoinContract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, signer);
+    
+    const tx = await gameCoinContract.checkin();
+    const receipt = await tx.wait();
+    return receipt.hash;
+}
+
+// Get check-in stats from GameCoin contract
+async function getCheckinStats() {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !walletAddress) {
+        return null;
+    }
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
+        
+        const stats = await contract.getCheckinStats(walletAddress);
+        return {
+            lastCheckin: Number(stats.lastCheckinTime) * 1000, // to ms
+            totalCheckins: Number(stats.totalCheckins),
+            streak: Number(stats.streak),
+            canCheckin: stats.canCheckinNow,
+            nextReward: Number(stats.nextReward)
+        };
+    } catch (err) {
+        console.warn("Failed to get checkin stats:", err);
+        return null;
+    }
+}
+
+// ============ GameCoin Functions ============
+
+// Get on-chain coin balance
+async function getOnChainCoinBalance() {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !walletAddress) {
+        return 0;
+    }
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
+        const balance = await contract.balanceOf(walletAddress);
+        return Number(balance);
+    } catch (err) {
+        console.warn("Failed to get coin balance:", err);
+        return 0;
+    }
+}
+
+// Calculate coins for ETH amount
+async function calculateCoinsForETH(ethAmount) {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
+        return 0;
+    }
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
+        const coins = await contract.calculateCoinsForETH(ethers.parseEther(ethAmount.toString()));
+        return Number(coins);
+    } catch (err) {
+        console.warn("Failed to calculate coins:", err);
+        return 0;
+    }
+}
+
+// Buy coins with ETH
+async function buyCoinsWithETH(ethAmount, minCoins = 0) {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !walletAddress) {
+        throw new Error("GameCoin contract not set");
+    }
+    
+    const provider = getEthereumProvider();
+    const ethersProvider = new ethers.BrowserProvider(provider);
+    const signer = await ethersProvider.getSigner();
+    const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, signer);
+    
+    const tx = await contract.buyWithETH(minCoins, {
+        value: ethers.parseEther(ethAmount.toString())
     });
+    const receipt = await tx.wait();
+    return receipt.hash;
+}
+
+// Get coin sale info
+async function getCoinSaleInfo() {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
+        return null;
+    }
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
+        
+        const [coinPrice, ethPrice, saleEnabled] = await Promise.all([
+            contract.coinPriceUSD(),
+            contract.ethPriceUSD(),
+            contract.saleEnabled()
+        ]);
+        
+        return {
+            coinPriceUSD: Number(coinPrice) / 1e18,
+            ethPriceUSD: Number(ethPrice) / 1e18,
+            saleEnabled
+        };
+    } catch (err) {
+        console.warn("Failed to get sale info:", err);
+        return null;
+    }
 }
 
 function resetBackendSession() {
@@ -1283,7 +1414,7 @@ function updateCheckinUI() {
         setCheckinStatusText("", false);
         return;
     }
-    if (!isValidAddress(CHECKIN_CONTRACT_ADDRESS)) {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
         setCheckinButtonDisabled(true);
         setCheckinButtonText("Check-in");
         setCheckinStatusText("Not available", false);
@@ -1313,70 +1444,64 @@ async function handleCheckin() {
         updateCheckinUI();
         return;
     }
+    
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
+        checkinState.message = "Контракт не настроен";
+        updateCheckinUI();
+        return;
+    }
+    
     checkinState.message = "";
     checkinState.loading = true;
     updateCheckinUI();
+    
     try {
-        const startResponse = await fetch(`${BACKEND_URL}/api/checkin/start`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authToken}`
-            },
-            body: JSON.stringify({})
-        });
-        if (!startResponse.ok) {
-            throw new Error(`Check-in start failed: ${startResponse.status}`);
-        }
-        const startData = await startResponse.json();
-        if (startData.alreadyCheckedIn) {
-            checkinState.lastCheckin = startData.lastCheckin || checkinState.lastCheckin;
-            checkinState.streak = Number.isFinite(startData.streak) ? startData.streak : checkinState.streak;
-            if (Number.isFinite(startData.coinBalance)) {
-                coinCount = startData.coinBalance;
-                saveCoins();
-            }
+        // Check if can checkin from contract
+        const stats = await getCheckinStats();
+        if (stats && !stats.canCheckin) {
+            checkinState.lastCheckin = stats.lastCheckin;
+            checkinState.streak = stats.streak;
+            checkinState.message = "Уже сделан check-in сегодня";
             return;
         }
-        const message = startData.message;
-        if (!message) {
-            throw new Error("Check-in message missing");
-        }
-        setCheckinStatusText("Подтвердите транзакцию check-in.", false);
+        
+        const expectedReward = stats ? stats.nextReward : 1;
+        
+        setCheckinStatusText(`Подтвердите транзакцию (+${expectedReward} coins)`, false);
+        
+        // Call contract - check-in + mint coins in ONE transaction!
         const txHash = await sendCheckinTransaction();
-        // Send txHash instead of signature - transaction is proof of checkin
-        const submitResponse = await fetch(`${BACKEND_URL}/api/checkin/submit`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authToken}`
-            },
-            body: JSON.stringify({
-                txHash
-            })
-        });
-        if (!submitResponse.ok) {
-            throw new Error(`Check-in submit failed: ${submitResponse.status}`);
+        
+        // Update local state from contract
+        const newStats = await getCheckinStats();
+        if (newStats) {
+            checkinState.lastCheckin = newStats.lastCheckin;
+            checkinState.streak = newStats.streak;
         }
-        const submitData = await submitResponse.json();
-        if (submitData && submitData.ok) {
-            checkinState.lastCheckin = submitData.lastCheckin || checkinState.lastCheckin;
-            checkinState.streak = Number.isFinite(submitData.streak) ? submitData.streak : checkinState.streak;
-            if (Number.isFinite(submitData.coinBalance)) {
-                coinCount = submitData.coinBalance;
-                saveCoins();
-            }
-            const shortHash = txHash ? `${txHash.slice(0, 8)}...${txHash.slice(-6)}` : "";
-            const rewardText = submitData.bonusAwarded
-                ? `+${submitData.coinsAwarded} coins (bonus за стрик!)`
-                : `+${submitData.coinsAwarded} coin`;
-            checkinState.message = shortHash
-                ? `${rewardText}. Tx: ${shortHash}`
-                : rewardText;
-        }
+        
+        // Update on-chain coin balance
+        const onChainBalance = await getOnChainCoinBalance();
+        coinCount = onChainBalance;
+        saveCoins();
+        
+        const shortHash = txHash ? `${txHash.slice(0, 8)}...${txHash.slice(-6)}` : "";
+        const isBonus = checkinState.streak > 0 && checkinState.streak % 5 === 0;
+        const rewardText = isBonus
+            ? `+${expectedReward} coins (bonus за стрик!)`
+            : `+${expectedReward} coin`;
+        checkinState.message = shortHash
+            ? `${rewardText} Tx: ${shortHash}`
+            : rewardText;
+            
     } catch (err) {
         console.warn("Check-in failed", err);
-        checkinState.message = "Check-in не удался. Попробуйте ещё раз.";
+        if (err.message && err.message.includes("TooEarlyToCheckin")) {
+            checkinState.message = "Уже сделан check-in сегодня";
+        } else if (err.message && err.message.includes("user rejected")) {
+            checkinState.message = "Транзакция отменена";
+        } else {
+            checkinState.message = "Check-in не удался. Попробуйте ещё раз.";
+        }
     } finally {
         checkinState.loading = false;
         updateCheckinUI();
@@ -1474,99 +1599,107 @@ async function claimFreeCharacter() {
     }
 }
 
-// Purchase character with coins
+// Approve GameCoin spending for NFT contract
+async function approveGameCoinForNFT(amount) {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !isValidAddress(NFT_CONTRACT_ADDRESS)) {
+        throw new Error("Contracts not set");
+    }
+    
+    const provider = getEthereumProvider();
+    const ethersProvider = new ethers.BrowserProvider(provider);
+    const signer = await ethersProvider.getSigner();
+    const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, signer);
+    
+    const tx = await contract.approve(NFT_CONTRACT_ADDRESS, amount);
+    await tx.wait();
+}
+
+// Check GameCoin allowance for NFT contract
+async function getGameCoinAllowance() {
+    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !isValidAddress(NFT_CONTRACT_ADDRESS) || !walletAddress) {
+        return 0;
+    }
+    
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
+        
+        const allowance = await contract.allowance(walletAddress, NFT_CONTRACT_ADDRESS);
+        return Number(allowance);
+    } catch (err) {
+        console.warn("Failed to get allowance:", err);
+        return 0;
+    }
+}
+
+// Purchase character with on-chain GameCoins
 async function purchaseCharacter(characterId) {
-    if (!walletReady || !NFT_CONTRACT_ADDRESS || !authToken) {
-        return { ok: false, error: "Wallet not ready" };
+    if (!walletReady || !isValidAddress(NFT_CONTRACT_ADDRESS) || !isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
+        return { ok: false, error: "Contracts not configured" };
     }
     
     shopState.loading = true;
     
     try {
-        // Step 1: Start purchase on backend (reserve coins, get signature)
-        const startResponse = await fetch(`${BACKEND_URL}/api/shop/purchase/start`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ characterId })
-        });
-        
-        const startData = await startResponse.json();
-        if (!startData.ok) {
-            return { ok: false, error: startData.error };
-        }
-        
-        shopState.pendingPurchase = startData;
-        
-        // Step 2: Send mint transaction
         const provider = getEthereumProvider();
         const ethersProvider = new ethers.BrowserProvider(provider);
         const signer = await ethersProvider.getSigner();
-        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+        const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
         
-        let txHash = null;
-        try {
-            const tx = await contract.mintWithSignature(
-                characterId,
-                startData.nonce,
-                startData.expiry,
-                startData.signature
-            );
-            const receipt = await tx.wait();
-            txHash = receipt.hash;
-        } catch (txErr) {
-            // Transaction failed or was cancelled - cancel purchase
-            await cancelPurchase(startData.nonce);
-            return { ok: false, error: "Transaction cancelled or failed" };
+        // Get character price from contract
+        const charInfo = await nftContract.characterTypes(characterId);
+        const price = Number(charInfo.price);
+        
+        if (price === 0) {
+            return { ok: false, error: "Use free mint for this character" };
         }
         
-        // Step 3: Confirm purchase on backend
-        const confirmResponse = await fetch(`${BACKEND_URL}/api/shop/purchase/confirm`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ nonce: startData.nonce, txHash })
-        });
-        
-        const confirmData = await confirmResponse.json();
-        if (!confirmData.ok) {
-            console.warn("Purchase confirm failed but tx succeeded", confirmData);
+        // Check on-chain balance
+        const balance = await getOnChainCoinBalance();
+        if (balance < price) {
+            return { ok: false, error: `Недостаточно coins (нужно ${price}, есть ${balance})` };
         }
         
-        shopState.pendingPurchase = null;
+        // Check allowance
+        const allowance = await getGameCoinAllowance();
+        if (allowance < price) {
+            // Need to approve first
+            shopState.message = "Подтвердите разрешение на трату coins...";
+            await approveGameCoinForNFT(price);
+        }
+        
+        // Mint NFT (contract will transfer and burn coins)
+        shopState.message = "Подтвердите покупку NFT...";
+        const tx = await nftContract.mintWithCoins(characterId);
+        const receipt = await tx.wait();
+        const txHash = receipt.hash;
+        
+        // Update balance
+        coinCount = await getOnChainCoinBalance();
+        saveCoins();
+        
+        // Reload inventory
         await loadUserInventory();
         
-        return { ok: true, txHash, coinsDeducted: confirmData.coinsDeducted };
+        return { ok: true, txHash, coinsDeducted: price };
     } catch (err) {
         console.warn("Purchase failed", err);
-        // Try to cancel if we have a pending purchase
-        if (shopState.pendingPurchase) {
-            await cancelPurchase(shopState.pendingPurchase.nonce);
+        
+        if (err.message && err.message.includes("InsufficientCoins")) {
+            return { ok: false, error: "Недостаточно coins" };
         }
+        if (err.message && err.message.includes("AlreadyOwnsCharacterType")) {
+            return { ok: false, error: "У вас уже есть этот персонаж" };
+        }
+        if (err.message && err.message.includes("user rejected")) {
+            return { ok: false, error: "Транзакция отменена" };
+        }
+        
         return { ok: false, error: err.message || "Purchase failed" };
     } finally {
         shopState.loading = false;
-        shopState.pendingPurchase = null;
-    }
-}
-
-// Cancel pending purchase
-async function cancelPurchase(nonce) {
-    try {
-        await fetch(`${BACKEND_URL}/api/shop/purchase/cancel`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ nonce })
-        });
-    } catch (err) {
-        console.warn("Cancel purchase failed", err);
+        shopState.message = "";
     }
 }
 

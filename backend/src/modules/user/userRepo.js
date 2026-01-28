@@ -7,6 +7,7 @@ const USER_COLUMNS = `
   streak,
   last_checkin,
   last_checkin_at,
+  last_checkin_tx,
   checkin_nonce,
   has_claimed_free,
   last_login_at,
@@ -45,6 +46,7 @@ async function updateUser(address, updates) {
     streak: "streak",
     last_checkin: "last_checkin",
     last_checkin_at: "last_checkin_at",
+    last_checkin_tx: "last_checkin_tx",
     checkin_nonce: "checkin_nonce",
     has_claimed_free: "has_claimed_free",
     last_login_at: "last_login_at"

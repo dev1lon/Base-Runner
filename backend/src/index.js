@@ -10,7 +10,6 @@ const {
 } = require("./modules/session/sessionStore");
 const { getOrCreateUser } = require("./modules/user/userRepo");
 const { applyScore } = require("./modules/user/userService");
-const { startCheckin, submitCheckin } = require("./modules/checkin/checkinService");
 const {
   getCharacters,
   getCharacter,
@@ -226,42 +225,8 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
   });
 });
 
-app.post("/api/checkin/start", requireAuth, async (req, res) => {
-  const result = await startCheckin(req.user.address);
-  res.json({
-    ok: true,
-    alreadyCheckedIn: result.alreadyCheckedIn,
-    message: result.message,
-    nonce: result.nonce,
-    coinBalance: result.user.coins,
-    streak: result.user.streak,
-    lastCheckin: result.user.last_checkin
-  });
-});
-
-app.post("/api/checkin/submit", requireAuth, async (req, res) => {
-  const { txHash } = req.body || {};
-  if (!txHash) {
-    res.status(400).json({ ok: false, error: "Missing txHash" });
-    return;
-  }
-  const result = await submitCheckin(req.user.address, txHash);
-  if (!result.ok) {
-    res.status(400).json({ ok: false, error: result.error });
-    return;
-  }
-  res.json({
-    ok: true,
-    alreadyCheckedIn: result.alreadyCheckedIn,
-    coinsAwarded: result.coinsAwarded,
-    bonusAwarded: result.bonusAwarded,
-    coinBalance: result.user.coins,
-    streak: result.user.streak,
-    lastCheckin: result.user.last_checkin
-  });
-});
-
 // ============ Shop API ============
+// Note: Check-in is now fully on-chain via GameCoin.checkin()
 
 // Get all available characters
 app.get("/api/shop/characters", async (req, res) => {
