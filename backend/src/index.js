@@ -91,9 +91,8 @@ app.post("/auth/verify", async (req, res) => {
     token: result.token,
     address: result.user.address,
     coinBalance: result.user.coins,
-    bestScore: result.user.best_score,
-    streak: result.user.streak,
-    lastCheckin: result.user.last_checkin
+    bestScore: result.user.best_score
+    // streak and lastCheckin now read from blockchain
   });
 });
 
@@ -219,9 +218,8 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     ok: true,
     address: user.address,
     coinBalance: user.coins,
-    bestScore: user.best_score,
-    streak: user.streak,
-    lastCheckin: user.last_checkin
+    bestScore: user.best_score
+    // streak and lastCheckin now read from blockchain
   });
 });
 

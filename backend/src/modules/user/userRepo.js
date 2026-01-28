@@ -43,11 +43,7 @@ async function updateUser(address, updates) {
   const allowed = {
     coins: "coins",
     best_score: "best_score",
-    streak: "streak",
-    last_checkin: "last_checkin",
-    last_checkin_at: "last_checkin_at",
-    last_checkin_tx: "last_checkin_tx",
-    checkin_nonce: "checkin_nonce",
+    // streak, last_checkin now on blockchain (GameCoin contract)
     has_claimed_free: "has_claimed_free",
     last_login_at: "last_login_at"
   };
