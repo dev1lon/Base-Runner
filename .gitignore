@@ -32,6 +32,9 @@ backend/data/
 logs/
 *.log
 
+# Contracts (keep private until audit)
+contracts/
+
 # OS / editor
 .DS_Store
 Thumbs.db
