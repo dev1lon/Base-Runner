@@ -129,7 +129,7 @@ const BASE_SEPOLIA_PARAMS = {
 const CHECKIN_CONTRACT_ADDRESS = "0xc24F4140df57BEadB3F19C9F7bEF0e49E8F47b44";
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
-const ALLOW_GUEST_PLAY = true;
+const ALLOW_GUEST_PLAY = false;
 
 // UI State Machine
 const UI_STATE = {
