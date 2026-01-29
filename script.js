@@ -2431,6 +2431,7 @@ function updateCollectionUI() {
     }
     
     // Trump card (character type 1)
+    const trumpPrice = CHARACTER_PRICES[1] || 50;
     if (trumpCard && mintTrumpBtn && trumpLock) {
         if (ownsTrump) {
             trumpCard.classList.add('owned');
@@ -2453,10 +2454,10 @@ function updateCollectionUI() {
             trumpCard.classList.remove('owned');
             trumpCard.classList.remove('selected');
             // Show lock only if not enough coins
-            trumpLock.style.display = coinCount >= 50 ? 'none' : 'flex';
-            mintTrumpBtn.textContent = '50 Coins';
+            trumpLock.style.display = coinCount >= trumpPrice ? 'none' : 'flex';
+            mintTrumpBtn.textContent = `${trumpPrice} Coins`;
             // Enable if has free mint AND enough coins
-            mintTrumpBtn.disabled = !hasFreeMint || coinCount < 50;
+            mintTrumpBtn.disabled = !hasFreeMint || coinCount < trumpPrice;
             mintTrumpBtn.classList.add('btn-secondary');
             mintTrumpBtn.classList.remove('btn-ghost');
         }
@@ -2573,8 +2574,15 @@ async function handleMintVitalik() {
     }
 }
 
+// Character prices (in coins)
+const CHARACTER_PRICES = {
+    0: 0,   // Vitalik - free
+    1: 50   // Trump - 50 coins
+};
+
 async function handleMintTrump() {
     const ownsTrump = ownedCharacters.includes(1);
+    const charPrice = CHARACTER_PRICES[1] || 50;
     
     // If already owns, this is a Select action
     if (ownsTrump) {
@@ -2582,7 +2590,7 @@ async function handleMintTrump() {
         return;
     }
     
-    if (collectionLoading || !hasFreeMint || coinCount < 50) return;
+    if (collectionLoading || !hasFreeMint || coinCount < charPrice) return;
     
     collectionLoading = true;
     const previousCoinCount = coinCount; // Save for rollback on error
@@ -2599,7 +2607,7 @@ async function handleMintTrump() {
         
         // Check allowance first
         const allowance = await getGameCoinAllowance();
-        const priceWei = ethers.parseUnits('50', 18);
+        const priceWei = ethers.parseUnits(String(charPrice), 18);
         
         if (allowance < priceWei) {
             if (mintTrumpBtn) mintTrumpBtn.textContent = 'Approving...';
@@ -2612,7 +2620,7 @@ async function handleMintTrump() {
         const tx = await nftContract.mintWithCoins(1);
         
         // Immediately deduct coins visually
-        coinCount -= 50;
+        coinCount -= charPrice;
         updateCollectionCoins();
         
         if (mintTrumpBtn) mintTrumpBtn.textContent = 'Confirming...';
