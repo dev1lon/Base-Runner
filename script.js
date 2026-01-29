@@ -334,49 +334,47 @@ function showWalletSelector() {
     const hasInjected = !!window.ethereum;
     const mobile = isMobile();
     
-    // If we have an injected provider, connect directly
+    // If we have an injected provider (PC with extension or inside wallet app), connect directly
     if (hasInjected) {
         connectWithInjected();
         return;
     }
     
-    // No wallet - show options to open in wallet app
+    // No wallet - show options
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
     
-    // Deeplinks for wallet apps (mobile only)
+    // Deeplinks
     const coinbaseDeeplink = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
-    const metamaskDeeplink = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
+    // WalletConnect universal link - opens QR modal on their site
+    const walletConnectLink = `https://explorer.walletconnect.com/?type=wallet&chains=eip155%3A84532`;
     
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
         <div class="wallet-modal-content">
-            <h3>${mobile ? 'Open in Wallet' : 'Connect Wallet'}</h3>
-            <p class="wallet-modal-subtitle">${mobile ? 'Choose wallet app' : 'Install a wallet extension'}</p>
+            <h3>Connect Wallet</h3>
             <div class="wallet-options">
                 ${mobile ? `
-                <div class="wallet-option" onclick="window.location.href='${coinbaseDeeplink}'">
+                <button type="button" class="wallet-option" id="btn-coinbase">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
-                    <span class="wallet-badge">Base</span>
-                </div>
-                <div class="wallet-option" onclick="window.location.href='${metamaskDeeplink}'">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
-                    <span>MetaMask</span>
-                </div>
+                </button>
+                <button type="button" class="wallet-option" id="btn-walletconnect">
+                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
+                    <span>WalletConnect</span>
+                </button>
                 ` : `
-                <div class="wallet-option" onclick="window.open('https://www.coinbase.com/wallet', '_blank')">
-                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Install" width="32" height="32">
+                <button type="button" class="wallet-option" id="btn-install-coinbase">
+                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Install Coinbase Wallet</span>
-                    <span class="wallet-badge">Base</span>
-                </div>
-                <div class="wallet-option" onclick="window.open('https://metamask.io/download/', '_blank')">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Install" width="32" height="32">
+                </button>
+                <button type="button" class="wallet-option" id="btn-install-metamask">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
                     <span>Install MetaMask</span>
-                </div>
+                </button>
                 `}
             </div>
-            <button class="wallet-modal-close">Cancel</button>
+            <button type="button" class="wallet-modal-close">Cancel</button>
         </div>
     `;
     document.body.appendChild(modal);
@@ -437,19 +435,25 @@ function showWalletSelector() {
                 display: flex;
                 align-items: center;
                 gap: 12px;
-                padding: 14px 16px;
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                padding: 16px 18px;
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.15);
                 border-radius: 12px;
                 color: white;
                 cursor: pointer;
-                transition: all 0.2s;
-                font-size: 15px;
+                transition: all 0.15s;
+                font-size: 16px;
                 text-decoration: none;
+                width: 100%;
+                text-align: left;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
             }
-            .wallet-option:hover {
-                background: rgba(255, 255, 255, 0.1);
+            .wallet-option:hover,
+            .wallet-option:active {
+                background: rgba(255, 255, 255, 0.15);
                 border-color: #0052ff;
+                transform: scale(0.98);
             }
             .wallet-option img {
                 border-radius: 8px;
@@ -496,6 +500,39 @@ function showWalletSelector() {
     
     backdrop.addEventListener('click', () => modal.remove());
     closeBtn.addEventListener('click', () => modal.remove());
+    
+    // Handle wallet buttons
+    const coinbaseBtn = modal.querySelector('#btn-coinbase');
+    const wcBtn = modal.querySelector('#btn-walletconnect');
+    const installCoinbaseBtn = modal.querySelector('#btn-install-coinbase');
+    const installMetamaskBtn = modal.querySelector('#btn-install-metamask');
+    
+    if (coinbaseBtn) {
+        coinbaseBtn.addEventListener('click', () => {
+            const coinbaseDeeplink = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
+            window.location.href = coinbaseDeeplink;
+        });
+    }
+    
+    if (wcBtn) {
+        wcBtn.addEventListener('click', () => {
+            // Open MetaMask deeplink as WalletConnect alternative for mobile
+            const metamaskDeeplink = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
+            window.location.href = metamaskDeeplink;
+        });
+    }
+    
+    if (installCoinbaseBtn) {
+        installCoinbaseBtn.addEventListener('click', () => {
+            window.open('https://www.coinbase.com/wallet', '_blank');
+        });
+    }
+    
+    if (installMetamaskBtn) {
+        installMetamaskBtn.addEventListener('click', () => {
+            window.open('https://metamask.io/download/', '_blank');
+        });
+    }
 }
 
 // Connect with injected wallet (MetaMask, etc.)
