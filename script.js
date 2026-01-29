@@ -1251,8 +1251,18 @@ function updateWalletUI() {
     }
 
     // Transition UI state based on wallet status
-    if (currentUIState === UI_STATE.CONNECT || currentUIState === UI_STATE.MENU) {
-        currentUIState = canPlayNow ? UI_STATE.MENU : UI_STATE.CONNECT;
+    if (!canPlayNow) {
+        // Wallet disconnected - force back to connect screen from any state
+        if (currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED) {
+            gameActive = false;
+            isPaused = false;
+            gameState = GAME_STATE.GAME_OVER;
+        }
+        currentUIState = UI_STATE.CONNECT;
+        updateUIState();
+    } else if (currentUIState === UI_STATE.CONNECT) {
+        // Wallet connected - move to menu
+        currentUIState = UI_STATE.MENU;
         updateUIState();
     }
     
@@ -2434,6 +2444,13 @@ function computeOpaqueBounds(img) {
 
 function update(timestamp) {
     requestAnimationFrame(update);
+    
+    // Check if wallet disconnected during gameplay
+    if (gameActive && !canPlayGame()) {
+        openWalletMenu();
+        return;
+    }
+    
     if (lastFrameTime === null) {
         lastFrameTime = timestamp;
     }
