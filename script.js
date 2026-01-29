@@ -1481,6 +1481,7 @@ async function trySwitchToBaseSepolia() {
 }
 
 function handleAccountsChanged(accounts) {
+    const wasConnected = !!walletAddress;
     if (accounts && accounts.length) {
         walletAddress = accounts[0];
     } else {
@@ -1491,6 +1492,14 @@ function handleAccountsChanged(accounts) {
     checkinState.streak = 0;
     checkinState.message = "";
     clearWalletMessages();
+    
+    // If wallet was disconnected during game, stop game
+    if (wasConnected && !walletAddress) {
+        gameActive = false;
+        isPaused = false;
+        gameState = GAME_STATE.GAME_OVER;
+    }
+    
     openWalletMenu();
     updateWalletUI();
     if (walletAddress) {
@@ -2224,6 +2233,11 @@ function openWalletMenu() {
 
 function resumeGame() {
     if (currentUIState !== UI_STATE.PAUSED) return;
+    // Check wallet is still connected
+    if (!canPlayGame()) {
+        openWalletMenu();
+        return;
+    }
     currentUIState = UI_STATE.RUNNING;
     isPaused = false;
     showWelcome = false;
@@ -3023,6 +3037,12 @@ function detectCollision(a, b) {
 }
 
 async function restartGame() {
+    // Check wallet is still connected
+    if (!canPlayGame()) {
+        openWalletMenu();
+        return;
+    }
+    
     // Hide game over overlay
     if (gameOverOverlay) {
         gameOverOverlay.classList.add('hidden');
