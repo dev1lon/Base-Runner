@@ -262,11 +262,19 @@ const APP_URL = 'https://base-runner-k9oj.onrender.com';
 // Check if running inside a wallet browser (Coinbase, MetaMask, Trust, etc.)
 function isWalletBrowser() {
     const ua = navigator.userAgent.toLowerCase();
-    return ua.includes('coinbase') || 
-           ua.includes('metamask') || 
-           ua.includes('trust') ||
-           ua.includes('rainbow') ||
-           (window.ethereum && window.ethereum.isWalletBrowser);
+    // Check user agent
+    if (ua.includes('coinbase') || ua.includes('metamask') || ua.includes('trust') || ua.includes('rainbow')) {
+        return true;
+    }
+    // Check provider flags
+    if (window.ethereum) {
+        return window.ethereum.isCoinbaseWallet || 
+               window.ethereum.isCoinbaseBrowser ||
+               window.ethereum.isMetaMask ||
+               window.ethereum.isTrust ||
+               window.ethereum.isWalletBrowser;
+    }
+    return false;
 }
 
 // Check if mobile device
@@ -1117,11 +1125,43 @@ async function initWalletState() {
     const provider = await waitForEthereumProvider(3000);
     isDetectingWallet = false;
     
-    // Update UI regardless of whether provider is available
-    // (we can still show deeplink options for mobile wallets)
+    // No provider available
     if (!provider) {
         updateWalletUI();
         return;
+    }
+    
+    // Auto-connect if inside wallet browser (Coinbase Wallet, MetaMask app, etc.)
+    if (isWalletBrowser() || isMobile()) {
+        console.log("Wallet browser detected, auto-connecting...");
+        try {
+            const accounts = await provider.request({ method: "eth_accounts" });
+            if (accounts && accounts.length > 0) {
+                // Already connected, just use existing connection
+                handleAccountsChanged(accounts);
+                const chainId = await provider.request({ method: "eth_chainId" });
+                handleChainChanged(chainId);
+                await switchToBaseSepolia();
+                await authenticateWallet();
+                updateWalletUI();
+                return;
+            } else {
+                // Not connected yet, request connection
+                activeWalletType = 'injected';
+                isConnectingWallet = true;
+                updateWalletUI();
+                const newAccounts = await provider.request({ method: "eth_requestAccounts" });
+                handleAccountsChanged(newAccounts);
+                await switchToBaseSepolia();
+                isConnectingWallet = false;
+                updateWalletUI();
+                return;
+            }
+        } catch (err) {
+            console.error("Auto-connect error:", err);
+            isConnectingWallet = false;
+            updateWalletUI();
+        }
     }
 
     if (provider && provider.on) {
