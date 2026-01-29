@@ -648,11 +648,22 @@ function showWalletSelector() {
             modal.remove();
             
             if (web3modal) {
+                // Add class to body so CSS can disable game container pointer events
+                document.body.classList.add('w3m-modal-open');
+                
+                // Subscribe to modal state to remove class when closed
+                web3modal.subscribeEvents((event) => {
+                    if (event.data.event === 'MODAL_CLOSE') {
+                        document.body.classList.remove('w3m-modal-open');
+                    }
+                });
+                
                 await web3modal.open();
                 return;
             }
         } catch (err) {
             console.error('Web3Modal error:', err);
+            document.body.classList.remove('w3m-modal-open');
         }
         
         modal.remove();

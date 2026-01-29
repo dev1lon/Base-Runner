@@ -891,3 +891,49 @@ body {
     white-space: nowrap;
     border: 0;
 }
+
+/* ============================================
+   Web3Modal Fix - Ensure all buttons are clickable
+   ============================================ */
+
+/* Main modal container */
+w3m-modal {
+    position: fixed !important;
+    z-index: 999999 !important;
+    pointer-events: auto !important;
+}
+
+/* Modal backdrop and content */
+w3m-modal::part(modal),
+w3m-modal::part(content),
+w3m-modal::part(container) {
+    pointer-events: auto !important;
+}
+
+/* All elements inside modal should be clickable */
+w3m-modal * {
+    pointer-events: auto !important;
+}
+
+/* Ensure body doesn't block when modal is open */
+body:has(w3m-modal) {
+    pointer-events: auto !important;
+}
+
+/* Fix for any overlay blocking */
+.game-container,
+.card,
+.overlay {
+    pointer-events: auto;
+}
+
+/* When Web3Modal is open, allow clicks through to it */
+body.w3m-modal-open .game-container,
+body.w3m-modal-open .card,
+body.w3m-modal-open .overlay {
+    pointer-events: none;
+}
+
+body.w3m-modal-open w3m-modal {
+    pointer-events: auto !important;
+}
