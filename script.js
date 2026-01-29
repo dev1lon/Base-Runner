@@ -2467,9 +2467,9 @@ function updateCollectionUI() {
         } else {
             trumpCard.classList.remove('owned');
             trumpCard.classList.remove('selected');
-            // Show lock only if not enough coins
+            // Lock always visible until purchased
+            trumpLock.style.display = 'flex';
             const canBuy = hasFreeMint && coinCount >= trumpPrice;
-            trumpLock.style.display = canBuy ? 'none' : 'flex';
             mintTrumpBtn.textContent = `${trumpPrice} Coins`;
             mintTrumpBtn.disabled = !canBuy;
             // Blue button when available, gray when not
