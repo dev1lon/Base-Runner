@@ -947,6 +947,34 @@ body.w3m-modal-open w3m-modal {
     width: 90%;
 }
 
+.collection-title {
+    font-size: var(--font-size-xl) !important;
+    margin-bottom: 0.25rem !important;
+}
+
+.collection-coins {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--color-white);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+    margin-top: 0.25rem;
+}
+
+.collection-coin-icon {
+    width: 20px;
+    height: 20px;
+}
+
+#collection-coins-count {
+    font-weight: 700;
+    font-size: var(--font-size-base);
+    color: var(--color-gray-700);
+}
+
 .collection-body {
     display: flex;
     flex-direction: column;

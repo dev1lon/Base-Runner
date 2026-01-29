@@ -2471,6 +2471,9 @@ function updateCollectionUI() {
             collectionHint.textContent = '';
         }
     }
+    
+    // Update coins display
+    updateCollectionCoins();
 }
 
 function updateStartButtonState() {
@@ -2499,7 +2502,15 @@ function openCollection() {
     if (!overlayCollection) return;
     currentUIState = UI_STATE.COLLECTION;
     updateUIState();
+    updateCollectionCoins(); // Update coins display
     checkCollectionStatus(); // Refresh status
+}
+
+function updateCollectionCoins() {
+    const coinsEl = document.getElementById('collection-coins-count');
+    if (coinsEl) {
+        coinsEl.textContent = coinCount;
+    }
 }
 
 function closeCollection() {
