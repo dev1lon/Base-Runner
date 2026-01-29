@@ -336,53 +336,37 @@ function showWalletSelector() {
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
     
-    // Deeplinks for wallet apps
-    const encodedUrl = encodeURIComponent(APP_URL);
-    const coinbaseDeeplink = mobile 
-        ? `https://go.cb-w.com/dapp?cb_url=${encodedUrl}`
-        : `https://go.cb-w.com/dapp?cb_url=${encodedUrl}`;
-    const metamaskDeeplink = mobile
-        ? `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`
-        : null;
-    const trustDeeplink = mobile
-        ? `https://link.trustwallet.com/open_url?coin_id=60&url=${encodedUrl}`
-        : null;
+    // Deeplinks for wallet apps (mobile only)
+    const coinbaseDeeplink = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
+    const metamaskDeeplink = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
     
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
         <div class="wallet-modal-content">
-            <h3>${mobile ? 'Open in Wallet App' : 'Connect Wallet'}</h3>
-            <p class="wallet-modal-subtitle">${mobile ? 'Choose your wallet to continue' : 'Install a wallet extension or open on mobile'}</p>
+            <h3>${mobile ? 'Open in Wallet' : 'Connect Wallet'}</h3>
+            <p class="wallet-modal-subtitle">${mobile ? 'Choose wallet app' : 'Install a wallet extension'}</p>
             <div class="wallet-options">
-                <a href="${coinbaseDeeplink}" class="wallet-option" target="_blank" rel="noopener">
+                ${mobile ? `
+                <div class="wallet-option" onclick="window.location.href='${coinbaseDeeplink}'">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
-                    <span class="wallet-badge">Recommended</span>
-                </a>
-                ${mobile && metamaskDeeplink ? `
-                <a href="${metamaskDeeplink}" class="wallet-option" target="_blank" rel="noopener">
+                    <span class="wallet-badge">Base</span>
+                </div>
+                <div class="wallet-option" onclick="window.location.href='${metamaskDeeplink}'">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
                     <span>MetaMask</span>
-                </a>
-                ` : ''}
-                ${mobile && trustDeeplink ? `
-                <a href="${trustDeeplink}" class="wallet-option" target="_blank" rel="noopener">
-                    <img src="https://trustwallet.com/assets/images/media/assets/trust_platform.svg" alt="Trust" width="32" height="32">
-                    <span>Trust Wallet</span>
-                </a>
-                ` : ''}
-                ${!mobile ? `
-                <a href="https://www.coinbase.com/wallet" class="wallet-option" target="_blank" rel="noopener">
+                </div>
+                ` : `
+                <div class="wallet-option" onclick="window.open('https://www.coinbase.com/wallet', '_blank')">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Install" width="32" height="32">
-                    <span>Install Coinbase Extension</span>
-                    <span class="wallet-badge-secondary">Chrome</span>
-                </a>
-                <a href="https://metamask.io/download/" class="wallet-option" target="_blank" rel="noopener">
+                    <span>Install Coinbase Wallet</span>
+                    <span class="wallet-badge">Base</span>
+                </div>
+                <div class="wallet-option" onclick="window.open('https://metamask.io/download/', '_blank')">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Install" width="32" height="32">
                     <span>Install MetaMask</span>
-                    <span class="wallet-badge-secondary">Chrome</span>
-                </a>
-                ` : ''}
+                </div>
+                `}
             </div>
             <button class="wallet-modal-close">Cancel</button>
         </div>
@@ -1283,6 +1267,14 @@ async function connectWalletLegacy() {
     }
 }
 
+async function switchToBaseSepolia() {
+    const result = await trySwitchToBaseSepolia();
+    if (!result.ok && result.error) {
+        console.error("Failed to switch network:", result.error);
+    }
+    return result.ok;
+}
+
 async function trySwitchToBaseSepolia() {
     const provider = getEthereumProvider();
     if (!provider || !provider.request) {
@@ -1296,11 +1288,15 @@ async function trySwitchToBaseSepolia() {
         return { ok: true };
     } catch (err) {
         if (err && err.code === 4902) {
-            await provider.request({
-                method: "wallet_addEthereumChain",
-                params: [BASE_SEPOLIA_PARAMS]
-            });
-            return { ok: true };
+            try {
+                await provider.request({
+                    method: "wallet_addEthereumChain",
+                    params: [BASE_SEPOLIA_PARAMS]
+                });
+                return { ok: true };
+            } catch (addErr) {
+                return { ok: false, error: addErr };
+            }
         } else if (err && err.code === 4001) {
             return { ok: false, error: err };
         } else {
