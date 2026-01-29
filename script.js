@@ -283,8 +283,48 @@ function isMobile() {
 }
 
 function getEthereumProvider() {
+    // Return AppKit provider if connected via WalletConnect
+    if (activeWalletType === 'walletconnect' && window.appKitProvider) {
+        return window.appKitProvider;
+    }
     // Return injected provider (MetaMask, Coinbase, Trust, etc.)
     return window.ethereum || null;
+}
+
+// Setup AppKit event listeners
+function setupAppKitListeners() {
+    if (!window.appKit) return;
+    
+    // Subscribe to account changes
+    window.appKit.subscribeAccount(async (account) => {
+        if (account.isConnected && account.address) {
+            console.log('AppKit connected:', account.address);
+            walletAddress = account.address;
+            activeWalletType = 'walletconnect';
+            
+            // Get provider
+            const provider = window.appKit.getWalletProvider();
+            if (provider) {
+                window.appKitProvider = provider;
+                const chainId = await provider.request({ method: 'eth_chainId' });
+                walletChainId = chainId;
+            }
+            
+            // Authenticate
+            const restored = await restoreAuthSession();
+            if (!restored) {
+                await authenticateWallet();
+            }
+            updateWalletUI();
+        } else if (!account.isConnected && activeWalletType === 'walletconnect') {
+            console.log('AppKit disconnected');
+            walletAddress = null;
+            activeWalletType = null;
+            window.appKitProvider = null;
+            resetAuthState();
+            updateWalletUI();
+        }
+    });
 }
 // Wait for ethereum provider to be injected (some wallets inject asynchronously)
 function waitForEthereumProvider(maxWaitMs = 3000) {
@@ -359,13 +399,9 @@ function showWalletSelector() {
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
                 </button>
-                <button type="button" class="wallet-option" id="btn-metamask">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
-                    <span>MetaMask</span>
-                </button>
-                <button type="button" class="wallet-option" id="btn-trust">
-                    <img src="https://trustwallet.com/assets/images/media/assets/trust_platform.svg" alt="Trust" width="32" height="32">
-                    <span>Trust Wallet</span>
+                <button type="button" class="wallet-option" id="btn-other">
+                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
+                    <span>Other Wallets</span>
                 </button>
                 ` : `
                 <button type="button" class="wallet-option" id="btn-install-coinbase">
@@ -528,8 +564,7 @@ function showWalletSelector() {
     
     // Handle wallet buttons with both click and touch
     const coinbaseBtn = modal.querySelector('#btn-coinbase');
-    const metamaskBtn = modal.querySelector('#btn-metamask');
-    const trustBtn = modal.querySelector('#btn-trust');
+    const otherBtn = modal.querySelector('#btn-other');
     const installCoinbaseBtn = modal.querySelector('#btn-install-coinbase');
     const installMetamaskBtn = modal.querySelector('#btn-install-metamask');
     
@@ -541,19 +576,23 @@ function showWalletSelector() {
         window.location.href = link;
     };
     
-    const handleMetaMask = (e) => {
+    const handleOtherWallets = async (e) => {
         e.preventDefault();
         e.stopPropagation();
         modal.remove();
+        
+        // Use AppKit if available
+        if (window.appKit && window.appKitReady) {
+            try {
+                await window.appKit.open();
+                return;
+            } catch (err) {
+                console.error('AppKit error:', err);
+            }
+        }
+        
+        // Fallback - open MetaMask deeplink
         const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
-        window.location.href = link;
-    };
-    
-    const handleTrust = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        modal.remove();
-        const link = `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(APP_URL)}`;
         window.location.href = link;
     };
     
@@ -574,14 +613,9 @@ function showWalletSelector() {
         coinbaseBtn.addEventListener('touchend', handleCoinbase);
     }
     
-    if (metamaskBtn) {
-        metamaskBtn.addEventListener('click', handleMetaMask);
-        metamaskBtn.addEventListener('touchend', handleMetaMask);
-    }
-    
-    if (trustBtn) {
-        trustBtn.addEventListener('click', handleTrust);
-        trustBtn.addEventListener('touchend', handleTrust);
+    if (otherBtn) {
+        otherBtn.addEventListener('click', handleOtherWallets);
+        otherBtn.addEventListener('touchend', handleOtherWallets);
     }
     
     if (installCoinbaseBtn) {
@@ -1225,6 +1259,13 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
+    // Setup AppKit listeners when ready
+    if (window.appKitReady) {
+        setupAppKitListeners();
+    } else {
+        window.addEventListener('appKitReady', setupAppKitListeners, { once: true });
+    }
+    
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();

@@ -9,6 +9,42 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
+    <!-- Web3Modal Standalone -->
+    <script type="module">
+        import { createAppKit } from 'https://cdn.jsdelivr.net/npm/@reown/appkit@1.6.8/+esm';
+        import { EthersAdapter } from 'https://cdn.jsdelivr.net/npm/@reown/appkit-adapter-ethers@1.6.8/+esm';
+        import { base, baseSepolia } from 'https://cdn.jsdelivr.net/npm/@reown/appkit/networks/+esm';
+
+        const projectId = 'fd7ad326d39318ccae064253cf5a1862';
+
+        const metadata = {
+            name: 'Base Runner',
+            description: 'Run and earn on Base',
+            url: window.location.origin,
+            icons: [window.location.origin + '/assets/eth.png']
+        };
+
+        try {
+            const appKit = createAppKit({
+                adapters: [new EthersAdapter()],
+                networks: [baseSepolia, base],
+                metadata,
+                projectId,
+                themeMode: 'dark',
+                features: {
+                    analytics: false
+                }
+            });
+
+            window.appKit = appKit;
+            window.appKitReady = true;
+            console.log('AppKit initialized');
+            window.dispatchEvent(new Event('appKitReady'));
+        } catch (err) {
+            console.error('AppKit failed:', err);
+            window.appKitFailed = true;
+        }
+    </script>
     <script src="script.js"></script>
 </head>
 <body>
