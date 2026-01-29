@@ -1796,17 +1796,17 @@ window.onload = function() {
         }, { passive: false });
     }
     
-    // Character selection buttons (for all characters)
+    // Character selection/purchase buttons (for all characters)
     document.querySelectorAll('.char-select-btn').forEach(btn => {
         const card = btn.closest('.character-card');
         if (!card) return;
         const charId = parseInt(card.dataset.charId);
         
-        btn.addEventListener("click", () => selectCharacter(charId));
+        btn.addEventListener("click", () => handleCharacterAction(charId));
         btn.addEventListener("touchstart", function(e) {
             e.stopPropagation();
             e.preventDefault();
-            selectCharacter(charId);
+            handleCharacterAction(charId);
         }, { passive: false });
     });
     
@@ -2398,13 +2398,16 @@ function updateCollectionUI() {
         const charId = parseInt(card.dataset.charId);
         const btn = card.querySelector('.char-select-btn');
         const img = card.querySelector('.character-image img');
+        const char = CHARACTERS[charId];
         
-        if (!btn) return;
+        if (!btn || !char) return;
         
-        // Check if character is owned
+        const price = char.price;
         const isOwned = ownedCharacters.includes(charId) || (charId === 0 && hasFreeMint);
+        const canAfford = coinCount >= price;
+        const isFreeChar = charId === 0;
         
-        // Update image - show real sprite for owned, locked for others
+        // Update image - show real sprite for owned, locked version for others
         if (img) {
             if (isOwned && loadedSprites[charId]) {
                 // Load real sprite from backend
@@ -2417,16 +2420,18 @@ function updateCollectionUI() {
                         img.src = URL.createObjectURL(blob);
                     })
                     .catch(() => {
-                        img.src = 'assets/locked/character_locked.png';
+                        img.src = char.lockedSprite;
                     });
                 }
-            } else if (!isOwned) {
-                img.src = 'assets/locked/character_locked.png';
+            } else {
+                // Show locked sprite (with character visible)
+                img.src = char.lockedSprite;
             }
         }
         
         // Update card state
         if (isOwned) {
+            // OWNED - can select
             card.classList.add('owned');
             card.classList.remove('locked');
             
@@ -2434,28 +2439,50 @@ function updateCollectionUI() {
                 card.classList.add('selected');
                 btn.textContent = 'Selected ✓';
                 btn.disabled = true;
-                btn.classList.remove('btn-primary');
+                btn.classList.remove('btn-primary', 'btn-secondary');
                 btn.classList.add('btn-ghost');
             } else {
                 card.classList.remove('selected');
                 btn.textContent = 'Select';
                 btn.disabled = false;
+                btn.classList.remove('btn-secondary', 'btn-ghost');
                 btn.classList.add('btn-primary');
-                btn.classList.remove('btn-ghost');
             }
         } else {
+            // NOT OWNED - show price
             card.classList.remove('owned', 'selected');
             card.classList.add('locked');
-            btn.textContent = 'Locked';
-            btn.disabled = true;
-            btn.classList.remove('btn-primary');
-            btn.classList.add('btn-secondary');
+            
+            if (isFreeChar) {
+                // Free mint - always blue, always available
+                btn.textContent = 'Free Mint';
+                btn.disabled = false;
+                btn.classList.remove('btn-secondary', 'btn-ghost');
+                btn.classList.add('btn-primary');
+            } else if (canAfford) {
+                // Can afford - blue button
+                btn.textContent = `${price} Coins`;
+                btn.disabled = false;
+                btn.classList.remove('btn-secondary', 'btn-ghost');
+                btn.classList.add('btn-primary');
+            } else {
+                // Can't afford - grey button
+                btn.textContent = `${price} Coins`;
+                btn.disabled = true;
+                btn.classList.remove('btn-primary', 'btn-ghost');
+                btn.classList.add('btn-secondary');
+            }
         }
     });
     
-    // Update hint
+    // Update hint - show only for free mint
     if (collectionHint) {
-        collectionHint.textContent = '';
+        if (!hasFreeMint) {
+            collectionHint.textContent = 'Mint your first character to play!';
+            collectionHint.style.color = 'var(--color-warning)';
+        } else {
+            collectionHint.textContent = '';
+        }
     }
     
     // Update coins display
@@ -2589,17 +2616,18 @@ async function handleMintVitalik() {
 
 // Character data - sprites point to locked versions by default
 // Real sprites are loaded from backend for owned characters
+// Prices: FREE=0, COMMON=10, RARE=25, EPIC=50, LEGENDARY=100
 const CHARACTERS = {
-    0: { name: 'Vitalik', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'FREE', price: 0 },
-    1: { name: 'Doge', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'COMMON', price: 0 },
-    2: { name: 'Hamaha', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'COMMON', price: 0 },
-    3: { name: 'Hayes', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'RARE', price: 0 },
-    4: { name: 'Pepe', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'RARE', price: 0 },
-    5: { name: 'Mask', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'EPIC', price: 0 },
-    6: { name: 'Sam', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'EPIC', price: 0 },
-    7: { name: 'Vlad', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'EPIC', price: 0 },
-    8: { name: 'CZ', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'LEGENDARY', price: 0 },
-    9: { name: 'Trump', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'LEGENDARY', price: 0 }
+    0: { name: 'Vitalik', sprite: 'assets/locked/0_locked.png', lockedSprite: 'assets/locked/0_locked.png', rarity: 'FREE', price: 0 },
+    1: { name: 'Doge', sprite: 'assets/locked/1_locked.png', lockedSprite: 'assets/locked/1_locked.png', rarity: 'COMMON', price: 10 },
+    2: { name: 'Hamaha', sprite: 'assets/locked/2_locked.png', lockedSprite: 'assets/locked/2_locked.png', rarity: 'COMMON', price: 10 },
+    3: { name: 'Hayes', sprite: 'assets/locked/3_locked.png', lockedSprite: 'assets/locked/3_locked.png', rarity: 'RARE', price: 25 },
+    4: { name: 'Pepe', sprite: 'assets/locked/4_locked.png', lockedSprite: 'assets/locked/4_locked.png', rarity: 'RARE', price: 25 },
+    5: { name: 'Mask', sprite: 'assets/locked/5_locked.png', lockedSprite: 'assets/locked/5_locked.png', rarity: 'EPIC', price: 50 },
+    6: { name: 'Sam', sprite: 'assets/locked/6_locked.png', lockedSprite: 'assets/locked/6_locked.png', rarity: 'EPIC', price: 50 },
+    7: { name: 'Vlad', sprite: 'assets/locked/7_locked.png', lockedSprite: 'assets/locked/7_locked.png', rarity: 'EPIC', price: 50 },
+    8: { name: 'CZ', sprite: 'assets/locked/8_locked.png', lockedSprite: 'assets/locked/8_locked.png', rarity: 'LEGENDARY', price: 100 },
+    9: { name: 'Trump', sprite: 'assets/locked/9_locked.png', lockedSprite: 'assets/locked/9_locked.png', rarity: 'LEGENDARY', price: 100 }
 };
 
 // Cache for loaded real sprites
@@ -2746,6 +2774,115 @@ async function handleMintTrump() {
         updateCollectionUI();
     } finally {
         collectionLoading = false;
+    }
+}
+
+// Handle character button click - select if owned, purchase if not
+async function handleCharacterAction(charId) {
+    const char = CHARACTERS[charId];
+    if (!char) return;
+    
+    const isOwned = ownedCharacters.includes(charId) || (charId === 0 && hasFreeMint);
+    
+    if (isOwned) {
+        // Already owned - select it
+        await selectCharacter(charId);
+    } else if (charId === 0) {
+        // Free mint
+        await handleFreeMint();
+    } else {
+        // Purchase
+        await handlePurchase(charId);
+    }
+}
+
+// Handle free mint (character 0 - Vitalik)
+async function handleFreeMint() {
+    if (hasFreeMint) return;
+    
+    // TODO: Integrate with blockchain for actual NFT mint
+    // For now, just mark as owned in backend
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ characterId: 0 })
+        });
+        
+        const data = await response.json();
+        if (data.ok) {
+            hasFreeMint = true;
+            if (!ownedCharacters.includes(0)) {
+                ownedCharacters.push(0);
+            }
+            // Load the real sprite
+            await loadOwnedSprites();
+            updateCollectionUI();
+            updateStartButtonState();
+            console.log('Free mint successful!');
+        }
+    } catch (e) {
+        console.error('Free mint failed:', e);
+    }
+}
+
+// Handle character purchase
+async function handlePurchase(charId) {
+    const char = CHARACTERS[charId];
+    if (!char) return;
+    
+    const price = char.price;
+    if (coinCount < price) {
+        console.warn('Not enough coins for purchase');
+        return;
+    }
+    
+    // Optimistic UI update
+    const previousCoins = coinCount;
+    coinCount -= price;
+    updateCollectionCoins();
+    
+    try {
+        // TODO: Integrate with blockchain for actual NFT purchase
+        // For now, just record in backend
+        const response = await fetch(`${BACKEND_URL}/api/shop/record-purchase`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ 
+                characterId: charId, 
+                price: price,
+                txHash: 'test-' + Date.now() // Placeholder
+            })
+        });
+        
+        const data = await response.json();
+        if (data.ok) {
+            // Update from backend response
+            coinCount = data.coinBalance;
+            ownedCharacters = data.ownedCharacters;
+            saveCoins();
+            
+            // Load the real sprite
+            await loadOwnedSprites();
+            updateCollectionUI();
+            console.log(`Purchased ${char.name} for ${price} coins!`);
+        } else {
+            // Rollback on failure
+            coinCount = previousCoins;
+            updateCollectionCoins();
+            console.error('Purchase failed:', data.error);
+        }
+    } catch (e) {
+        // Rollback on error
+        coinCount = previousCoins;
+        updateCollectionCoins();
+        console.error('Purchase error:', e);
     }
 }
 
