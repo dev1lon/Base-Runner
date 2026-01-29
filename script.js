@@ -1208,9 +1208,13 @@ async function submitBackendRun(finalScore) {
         }
         const data = await response.json();
         if (data && data.ok) {
-            if (Number.isFinite(data.coinBalance)) {
-                coinCount = data.coinBalance;
+            // Refresh coin balance from BLOCKCHAIN (not DB)
+            try {
+                const onChainBalance = await getOnChainCoinBalance();
+                coinCount = onChainBalance;
                 saveCoins();
+            } catch (e) {
+                console.warn("Failed to get on-chain balance after submit:", e);
             }
             if (Number.isFinite(data.bestScore)) {
                 bestScore = data.bestScore;
@@ -2047,6 +2051,10 @@ async function applyProfileData(data) {
     
     checkinState.message = "";
     updateCheckinUI();
+    
+    // Update UI state after all data loaded
+    updateStartButtonState();
+    updateUIState();
 }
 
 function setCheckinButtonText(text) {
