@@ -235,7 +235,20 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
 });
 
 app.get("/api/user/me", requireAuth, async (req, res) => {
-  const user = await getOrCreateUser(req.user.address);
+  let user = await getOrCreateUser(req.user.address);
+  
+  // Auto-sync from blockchain if DB shows no free mint but user might have minted
+  if (!user.has_claimed_free) {
+    try {
+      const synced = await syncUserFromBlockchain(req.user.address);
+      if (synced) {
+        user = await getOrCreateUser(req.user.address);
+      }
+    } catch (e) {
+      console.warn("Failed to sync from blockchain:", e.message);
+    }
+  }
+  
   res.json({
     ok: true,
     address: user.address,
@@ -246,6 +259,51 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     selectedCharacter: user.selected_character || 0
   });
 });
+
+// Sync user data from blockchain (for users who minted before DB update)
+async function syncUserFromBlockchain(address) {
+  const { ethers } = require("ethers");
+  const { updateUser, addOwnedCharacter } = require("./modules/user/userRepo");
+  
+  const NFT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS;
+  if (!NFT_ADDRESS) return false;
+  
+  const RPC_URL = process.env.RPC_URL || "https://sepolia.base.org";
+  
+  try {
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const nftAbi = [
+      "function hasClaimedFreeMint(address) view returns (bool)",
+      "function getOwnedCharacterList(address) view returns (uint8[])"
+    ];
+    const contract = new ethers.Contract(NFT_ADDRESS, nftAbi, provider);
+    
+    const hasFreeMint = await contract.hasClaimedFreeMint(address);
+    
+    if (hasFreeMint) {
+      await updateUser(address, { has_claimed_free: true });
+      
+      // Get owned characters
+      try {
+        const owned = await contract.getOwnedCharacterList(address);
+        for (const charId of owned) {
+          await addOwnedCharacter(address, Number(charId));
+        }
+      } catch (e) {
+        // If getOwnedCharacterList fails, at least add character 0
+        await addOwnedCharacter(address, 0);
+      }
+      
+      console.log(`✅ Synced user ${address} from blockchain: hasFreeMint=${hasFreeMint}`);
+      return true;
+    }
+    
+    return false;
+  } catch (err) {
+    console.error("Blockchain sync error:", err.message);
+    return false;
+  }
+}
 
 // ============ Shop API ============
 // Note: Check-in is now fully on-chain via GameCoin.checkin()
