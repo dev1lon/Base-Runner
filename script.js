@@ -403,9 +403,11 @@ function showWalletSelector() {
                 bottom: 0;
                 background: rgba(0, 0, 0, 0.6);
                 backdrop-filter: blur(4px);
+                z-index: 1;
             }
             .wallet-modal-content {
                 position: relative;
+                z-index: 2;
                 background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 16px;
@@ -413,6 +415,7 @@ function showWalletSelector() {
                 min-width: 320px;
                 max-width: 90%;
                 box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+                pointer-events: auto;
             }
             .wallet-modal-content h3 {
                 color: white;
@@ -446,14 +449,18 @@ function showWalletSelector() {
                 text-decoration: none;
                 width: 100%;
                 text-align: left;
-                -webkit-tap-highlight-color: transparent;
+                -webkit-tap-highlight-color: rgba(0,82,255,0.3);
                 touch-action: manipulation;
+                pointer-events: auto;
+                user-select: none;
+                -webkit-user-select: none;
             }
             .wallet-option:hover,
+            .wallet-option:focus,
             .wallet-option:active {
                 background: rgba(255, 255, 255, 0.15);
                 border-color: #0052ff;
-                transform: scale(0.98);
+                outline: none;
             }
             .wallet-option img {
                 border-radius: 8px;
@@ -501,37 +508,56 @@ function showWalletSelector() {
     backdrop.addEventListener('click', () => modal.remove());
     closeBtn.addEventListener('click', () => modal.remove());
     
-    // Handle wallet buttons
+    // Handle wallet buttons with both click and touch
     const coinbaseBtn = modal.querySelector('#btn-coinbase');
     const wcBtn = modal.querySelector('#btn-walletconnect');
     const installCoinbaseBtn = modal.querySelector('#btn-install-coinbase');
     const installMetamaskBtn = modal.querySelector('#btn-install-metamask');
     
+    const handleCoinbase = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        modal.remove();
+        const link = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
+        window.location.href = link;
+    };
+    
+    const handleWC = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        modal.remove();
+        const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
+        window.location.href = link;
+    };
+    
+    const handleInstallCoinbase = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open('https://www.coinbase.com/wallet', '_blank');
+    };
+    
+    const handleInstallMetamask = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open('https://metamask.io/download/', '_blank');
+    };
+    
     if (coinbaseBtn) {
-        coinbaseBtn.addEventListener('click', () => {
-            const coinbaseDeeplink = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
-            window.location.href = coinbaseDeeplink;
-        });
+        coinbaseBtn.addEventListener('click', handleCoinbase);
+        coinbaseBtn.addEventListener('touchend', handleCoinbase);
     }
     
     if (wcBtn) {
-        wcBtn.addEventListener('click', () => {
-            // Open MetaMask deeplink as WalletConnect alternative for mobile
-            const metamaskDeeplink = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
-            window.location.href = metamaskDeeplink;
-        });
+        wcBtn.addEventListener('click', handleWC);
+        wcBtn.addEventListener('touchend', handleWC);
     }
     
     if (installCoinbaseBtn) {
-        installCoinbaseBtn.addEventListener('click', () => {
-            window.open('https://www.coinbase.com/wallet', '_blank');
-        });
+        installCoinbaseBtn.addEventListener('click', handleInstallCoinbase);
     }
     
     if (installMetamaskBtn) {
-        installMetamaskBtn.addEventListener('click', () => {
-            window.open('https://metamask.io/download/', '_blank');
-        });
+        installMetamaskBtn.addEventListener('click', handleInstallMetamask);
     }
 }
 
