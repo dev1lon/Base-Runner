@@ -522,16 +522,20 @@ function showWalletSelector() {
             .wallet-modal-close {
                 width: 100%;
                 margin-top: 16px;
-                padding: 12px;
-                background: transparent;
+                padding: 14px;
+                background: rgba(255, 255, 255, 0.05);
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 8px;
                 color: rgba(255, 255, 255, 0.7);
                 cursor: pointer;
-                font-size: 14px;
+                font-size: 15px;
+                pointer-events: auto;
+                touch-action: manipulation;
+                -webkit-tap-highlight-color: rgba(255,255,255,0.1);
             }
-            .wallet-modal-close:hover {
-                background: rgba(255, 255, 255, 0.05);
+            .wallet-modal-close:hover,
+            .wallet-modal-close:active {
+                background: rgba(255, 255, 255, 0.1);
             }
         `;
         document.head.appendChild(styles);
@@ -541,8 +545,18 @@ function showWalletSelector() {
     const backdrop = modal.querySelector('.wallet-modal-backdrop');
     const closeBtn = modal.querySelector('.wallet-modal-close');
     
-    backdrop.addEventListener('click', () => modal.remove());
-    closeBtn.addEventListener('click', () => modal.remove());
+    const closeModal = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        modal.remove();
+    };
+    
+    backdrop.addEventListener('click', closeModal);
+    backdrop.addEventListener('touchend', closeModal);
+    closeBtn.addEventListener('click', closeModal);
+    closeBtn.addEventListener('touchend', closeModal);
     
     // Handle wallet buttons with both click and touch
     const coinbaseBtn = modal.querySelector('#btn-coinbase');
@@ -561,20 +575,38 @@ function showWalletSelector() {
     const handleWC = async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        modal.remove();
         
         // Use Web3Modal if available
         if (window.web3modal) {
+            modal.remove();
             try {
                 await window.web3modal.open();
             } catch (err) {
                 console.error("Web3Modal error:", err);
+                setWalletError("WalletConnect failed to open");
             }
-        } else if (window.web3modalReady === undefined) {
-            // Wait for web3modal to load
+        } else {
+            // Web3Modal not loaded - show loading and wait
+            if (wcBtn) {
+                wcBtn.innerHTML = '<span>Loading...</span>';
+                wcBtn.disabled = true;
+            }
+            
+            // Wait for web3modal with timeout
+            const timeout = setTimeout(() => {
+                modal.remove();
+                setWalletError("WalletConnect failed to load");
+            }, 5000);
+            
             window.addEventListener('web3modalReady', async () => {
+                clearTimeout(timeout);
+                modal.remove();
                 if (window.web3modal) {
-                    await window.web3modal.open();
+                    try {
+                        await window.web3modal.open();
+                    } catch (err) {
+                        console.error("Web3Modal error:", err);
+                    }
                 }
             }, { once: true });
         }
@@ -604,10 +636,12 @@ function showWalletSelector() {
     
     if (installCoinbaseBtn) {
         installCoinbaseBtn.addEventListener('click', handleInstallCoinbase);
+        installCoinbaseBtn.addEventListener('touchend', handleInstallCoinbase);
     }
     
     if (installMetamaskBtn) {
         installMetamaskBtn.addEventListener('click', handleInstallMetamask);
+        installMetamaskBtn.addEventListener('touchend', handleInstallMetamask);
     }
 }
 
