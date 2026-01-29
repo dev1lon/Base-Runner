@@ -212,40 +212,118 @@
             </div>
             <div class="card-body collection-body">
                 <div class="collection-grid">
-                    <!-- Vitalik - Free Mint -->
-                    <div class="character-card" id="char-vitalik">
+                    <!-- 0: Vitalik - FREE -->
+                    <div class="character-card" data-char-id="0">
                         <div class="character-image">
-                            <img src="assets/hum_vit_1.png" alt="Vitalik">
-                            <div class="character-lock" id="vitalik-lock">
-                                <span class="lock-icon">🔒</span>
-                            </div>
+                            <img src="assets/vitalik_free.png" alt="Vitalik">
                         </div>
                         <div class="character-info">
                             <span class="character-name">Vitalik</span>
+                            <span class="character-rarity rarity-common">FREE</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 1: Doge - COMMON -->
+                    <div class="character-card" data-char-id="1">
+                        <div class="character-image">
+                            <img src="assets/doge_common.png" alt="Doge">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Doge</span>
                             <span class="character-rarity rarity-common">COMMON</span>
                         </div>
-                        <button id="mint-vitalik-btn" class="btn btn-primary character-btn">
-                            Free Mint
-                        </button>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
                     </div>
-                    <!-- Trump - 50 Coins -->
-                    <div class="character-card" id="char-trump">
+                    <!-- 2: Hamaha - COMMON -->
+                    <div class="character-card" data-char-id="2">
                         <div class="character-image">
-                            <img src="assets/trump.png" alt="Trump">
-                            <div class="character-lock" id="trump-lock">
-                                <span class="lock-icon">🔒</span>
-                            </div>
+                            <img src="assets/hamaha_common.png" alt="Hamaha">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Hamaha</span>
+                            <span class="character-rarity rarity-common">COMMON</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 3: Hayes - RARE -->
+                    <div class="character-card" data-char-id="3">
+                        <div class="character-image">
+                            <img src="assets/hayes_rare.png" alt="Hayes">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Hayes</span>
+                            <span class="character-rarity rarity-rare">RARE</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 4: Pepe - RARE -->
+                    <div class="character-card" data-char-id="4">
+                        <div class="character-image">
+                            <img src="assets/pepe_rare.png" alt="Pepe">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Pepe</span>
+                            <span class="character-rarity rarity-rare">RARE</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 5: Mask (Elon) - EPIC -->
+                    <div class="character-card" data-char-id="5">
+                        <div class="character-image">
+                            <img src="assets/mask_epic.png" alt="Mask">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Mask</span>
+                            <span class="character-rarity rarity-epic">EPIC</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 6: Sam - EPIC -->
+                    <div class="character-card" data-char-id="6">
+                        <div class="character-image">
+                            <img src="assets/sam_epic.png" alt="Sam">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Sam</span>
+                            <span class="character-rarity rarity-epic">EPIC</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 7: Vlad - EPIC -->
+                    <div class="character-card" data-char-id="7">
+                        <div class="character-image">
+                            <img src="assets/vlad_epic.png" alt="Vlad">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Vlad</span>
+                            <span class="character-rarity rarity-epic">EPIC</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 8: CZ - LEGENDARY -->
+                    <div class="character-card" data-char-id="8">
+                        <div class="character-image">
+                            <img src="assets/cz_leg.png" alt="CZ">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">CZ</span>
+                            <span class="character-rarity rarity-legendary">LEGENDARY</span>
+                        </div>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
+                    </div>
+                    <!-- 9: Trump - LEGENDARY -->
+                    <div class="character-card" data-char-id="9">
+                        <div class="character-image">
+                            <img src="assets/trump_leg.png" alt="Trump">
                         </div>
                         <div class="character-info">
                             <span class="character-name">Trump</span>
                             <span class="character-rarity rarity-legendary">LEGENDARY</span>
                         </div>
-                        <button id="mint-trump-btn" class="btn btn-secondary character-btn" disabled>
-                            50 Coins
-                        </button>
+                        <button class="btn btn-primary character-btn char-select-btn">Select</button>
                     </div>
                 </div>
-                <p class="collection-hint" id="collection-hint">Mint your first character to play!</p>
+                <p class="collection-hint" id="collection-hint"></p>
             </div>
             <button id="collection-close-btn" class="btn btn-ghost">Close</button>
             <div class="card-ground"></div>

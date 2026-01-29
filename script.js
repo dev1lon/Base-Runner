@@ -1795,22 +1795,21 @@ window.onload = function() {
             closeCollection();
         }, { passive: false });
     }
-    if (mintVitalikBtn) {
-        mintVitalikBtn.addEventListener("click", handleMintVitalik);
-        mintVitalikBtn.addEventListener("touchstart", function(e) {
+    
+    // Character selection buttons (for all characters)
+    document.querySelectorAll('.char-select-btn').forEach(btn => {
+        const card = btn.closest('.character-card');
+        if (!card) return;
+        const charId = parseInt(card.dataset.charId);
+        
+        btn.addEventListener("click", () => selectCharacter(charId));
+        btn.addEventListener("touchstart", function(e) {
             e.stopPropagation();
             e.preventDefault();
-            handleMintVitalik();
+            selectCharacter(charId);
         }, { passive: false });
-    }
-    if (mintTrumpBtn) {
-        mintTrumpBtn.addEventListener("click", handleMintTrump);
-        mintTrumpBtn.addEventListener("touchstart", function(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            handleMintTrump();
-        }, { passive: false });
-    }
+    });
+    
     if (pauseButton) {
         pauseButton.addEventListener("click", togglePause);
         pauseButton.addEventListener("touchstart", function(e) {
@@ -2375,7 +2374,9 @@ async function purchaseCharacter(characterId) {
 
 // Check if user needs to claim free character before playing
 function needsFreeClaim() {
-    return walletReady && !hasFreeMint;
+    // Testing mode - no free claim required
+    return false;
+    // Original: return walletReady && !hasFreeMint;
 }
 
 // ============ Collection Functions ============
@@ -2390,95 +2391,33 @@ async function checkCollectionStatus() {
 }
 
 function updateCollectionUI() {
-    const vitalikCard = document.getElementById('char-vitalik');
-    const trumpCard = document.getElementById('char-trump');
-    const vitalikLock = document.getElementById('vitalik-lock');
-    const trumpLock = document.getElementById('trump-lock');
+    // Update all character cards
+    const cards = document.querySelectorAll('.character-card[data-char-id]');
     
-    const ownsVitalik = hasFreeMint || ownedCharacters.includes(0);
-    const ownsTrump = ownedCharacters.includes(1);
-    
-    // Vitalik card (character type 0)
-    if (vitalikCard && mintVitalikBtn) {
-        if (ownsVitalik) {
-            vitalikCard.classList.add('owned');
-            if (vitalikLock) vitalikLock.style.display = 'none';
-            // Show Select button if owned
-            if (selectedCharacter === 0) {
-                mintVitalikBtn.textContent = 'Selected ✓';
-                mintVitalikBtn.disabled = true;
-                mintVitalikBtn.classList.remove('btn-primary');
-                mintVitalikBtn.classList.add('btn-ghost');
-                vitalikCard.classList.add('selected');
-            } else {
-                mintVitalikBtn.textContent = 'Select';
-                mintVitalikBtn.disabled = false;
-                mintVitalikBtn.classList.add('btn-primary');
-                mintVitalikBtn.classList.remove('btn-ghost');
-                vitalikCard.classList.remove('selected');
-            }
+    cards.forEach(card => {
+        const charId = parseInt(card.dataset.charId);
+        const btn = card.querySelector('.char-select-btn');
+        
+        if (!btn) return;
+        
+        if (selectedCharacter === charId) {
+            card.classList.add('selected');
+            btn.textContent = 'Selected ✓';
+            btn.disabled = true;
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-ghost');
         } else {
-            vitalikCard.classList.remove('owned');
-            vitalikCard.classList.remove('selected');
-            if (vitalikLock) vitalikLock.style.display = 'flex';
-            mintVitalikBtn.textContent = 'Free Mint';
-            mintVitalikBtn.disabled = false;
-            mintVitalikBtn.classList.add('btn-primary');
-            mintVitalikBtn.classList.remove('btn-ghost');
+            card.classList.remove('selected');
+            btn.textContent = 'Select';
+            btn.disabled = false;
+            btn.classList.add('btn-primary');
+            btn.classList.remove('btn-ghost');
         }
-    }
+    });
     
-    // Trump card (character type 1)
-    const trumpPrice = CHARACTER_PRICES[1] || 50;
-    if (trumpCard && mintTrumpBtn && trumpLock) {
-        if (ownsTrump) {
-            trumpCard.classList.add('owned');
-            trumpLock.style.display = 'none';
-            // Show Select button if owned
-            if (selectedCharacter === 1) {
-                mintTrumpBtn.textContent = 'Selected ✓';
-                mintTrumpBtn.disabled = true;
-                mintTrumpBtn.classList.remove('btn-primary');
-                mintTrumpBtn.classList.remove('btn-secondary');
-                mintTrumpBtn.classList.add('btn-ghost');
-                trumpCard.classList.add('selected');
-            } else {
-                mintTrumpBtn.textContent = 'Select';
-                mintTrumpBtn.disabled = false;
-                mintTrumpBtn.classList.add('btn-primary');
-                mintTrumpBtn.classList.remove('btn-secondary');
-                mintTrumpBtn.classList.remove('btn-ghost');
-                trumpCard.classList.remove('selected');
-            }
-        } else {
-            trumpCard.classList.remove('owned');
-            trumpCard.classList.remove('selected');
-            // Lock always visible until purchased
-            trumpLock.style.display = 'flex';
-            const canBuy = hasFreeMint && coinCount >= trumpPrice;
-            mintTrumpBtn.textContent = `${trumpPrice} Coins`;
-            mintTrumpBtn.disabled = !canBuy;
-            // Blue button when available, gray when not
-            if (canBuy) {
-                mintTrumpBtn.classList.add('btn-primary');
-                mintTrumpBtn.classList.remove('btn-secondary');
-                mintTrumpBtn.classList.remove('btn-ghost');
-            } else {
-                mintTrumpBtn.classList.remove('btn-primary');
-                mintTrumpBtn.classList.add('btn-secondary');
-                mintTrumpBtn.classList.remove('btn-ghost');
-            }
-        }
-    }
-    
-    // Update hint - only show before free mint
+    // Update hint
     if (collectionHint) {
-        if (!hasFreeMint) {
-            collectionHint.textContent = 'Mint your first character to play!';
-            collectionHint.style.color = 'var(--color-warning)';
-        } else {
-            collectionHint.textContent = '';
-        }
+        collectionHint.textContent = '';
     }
     
     // Update coins display
@@ -2610,11 +2549,24 @@ async function handleMintVitalik() {
     }
 }
 
-// Character prices (in coins)
-const CHARACTER_PRICES = {
-    0: 0,   // Vitalik - free
-    1: 50   // Trump - 50 coins
+// Character data
+const CHARACTERS = {
+    0: { name: 'Vitalik', sprite: 'assets/vitalik_free.png', rarity: 'FREE', price: 0 },
+    1: { name: 'Doge', sprite: 'assets/doge_common.png', rarity: 'COMMON', price: 0 },
+    2: { name: 'Hamaha', sprite: 'assets/hamaha_common.png', rarity: 'COMMON', price: 0 },
+    3: { name: 'Hayes', sprite: 'assets/hayes_rare.png', rarity: 'RARE', price: 0 },
+    4: { name: 'Pepe', sprite: 'assets/pepe_rare.png', rarity: 'RARE', price: 0 },
+    5: { name: 'Mask', sprite: 'assets/mask_epic.png', rarity: 'EPIC', price: 0 },
+    6: { name: 'Sam', sprite: 'assets/sam_epic.png', rarity: 'EPIC', price: 0 },
+    7: { name: 'Vlad', sprite: 'assets/vlad_epic.png', rarity: 'EPIC', price: 0 },
+    8: { name: 'CZ', sprite: 'assets/cz_leg.png', rarity: 'LEGENDARY', price: 0 },
+    9: { name: 'Trump', sprite: 'assets/trump_leg.png', rarity: 'LEGENDARY', price: 0 }
 };
+
+// For backwards compatibility
+const CHARACTER_PRICES = Object.fromEntries(
+    Object.entries(CHARACTERS).map(([id, char]) => [id, char.price])
+);
 
 async function handleMintTrump() {
     const ownsTrump = ownedCharacters.includes(1);
@@ -2711,9 +2663,9 @@ async function handleMintTrump() {
 
 // Select a character to play with
 async function selectCharacter(charType) {
-    if (!ownedCharacters.includes(charType) && !(charType === 0 && hasFreeMint)) {
-        return; // Can't select unowned character
-    }
+    // Testing mode - allow selecting any character
+    const char = CHARACTERS[charType];
+    if (!char) return;
     
     selectedCharacter = charType;
     localStorage.setItem('selectedCharacter', String(charType));
@@ -2724,32 +2676,29 @@ async function selectCharacter(charType) {
     // Update UI
     updateCollectionUI();
     
-    // Save to backend
-    try {
-        await fetch(`${BACKEND_URL}/api/user/select-character`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ characterId: charType })
-        });
-    } catch (e) {
-        console.warn('Failed to save character selection:', e);
+    // Save to backend (if authenticated)
+    if (authToken) {
+        try {
+            await fetch(`${BACKEND_URL}/api/user/select-character`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({ characterId: charType })
+            });
+        } catch (e) {
+            console.warn('Failed to save character selection:', e);
+        }
     }
     
-    console.log('Selected character:', charType === 0 ? 'Vitalik' : 'Trump');
+    console.log('Selected character:', char.name);
 }
 
 // Update player sprite based on selected character
 function updatePlayerSprite() {
-    // Character sprites mapping
-    const sprites = {
-        0: 'assets/hum_vit_1.png', // Vitalik
-        1: 'assets/trump.png'      // Trump
-    };
-    
-    const spritePath = sprites[selectedCharacter] || sprites[0];
+    const char = CHARACTERS[selectedCharacter] || CHARACTERS[0];
+    const spritePath = char.sprite;
     
     // Update the playerImg if it exists
     if (typeof playerImg !== 'undefined' && playerImg) {
@@ -2762,8 +2711,8 @@ function loadSelectedCharacter() {
     const saved = localStorage.getItem('selectedCharacter');
     if (saved !== null) {
         const charType = parseInt(saved);
-        // Verify user owns this character
-        if (ownedCharacters.includes(charType) || (charType === 0 && hasFreeMint)) {
+        // Testing mode - allow any valid character
+        if (CHARACTERS[charType]) {
             selectedCharacter = charType;
         } else {
             selectedCharacter = 0; // Default to Vitalik
