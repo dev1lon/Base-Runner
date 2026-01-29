@@ -2585,6 +2585,8 @@ async function handleMintTrump() {
     if (collectionLoading || !hasFreeMint || coinCount < 50) return;
     
     collectionLoading = true;
+    const previousCoinCount = coinCount; // Save for rollback on error
+    
     if (mintTrumpBtn) {
         mintTrumpBtn.textContent = 'Processing...';
         mintTrumpBtn.disabled = true;
@@ -2609,6 +2611,10 @@ async function handleMintTrump() {
         const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
         const tx = await nftContract.mintWithCoins(1);
         
+        // Immediately deduct coins visually
+        coinCount -= 50;
+        updateCollectionCoins();
+        
         if (mintTrumpBtn) mintTrumpBtn.textContent = 'Confirming...';
         await tx.wait();
         
@@ -2616,13 +2622,17 @@ async function handleMintTrump() {
         if (!ownedCharacters.includes(1)) ownedCharacters.push(1);
         selectedCharacter = 1; // Auto-select after purchase
         
-        // Refresh coin balance from chain
+        // Refresh coin balance from chain (to sync exact value)
         coinCount = await getOnChainCoinBalance();
         
         updateCollectionUI();
         updateStartButtonState();
     } catch (err) {
         console.error('Purchase failed:', err);
+        // Rollback coin count on failure
+        coinCount = previousCoinCount;
+        updateCollectionCoins();
+        
         if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
             alert('Transaction cancelled');
         } else {
