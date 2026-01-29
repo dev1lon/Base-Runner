@@ -283,9 +283,45 @@ function isMobile() {
 }
 
 function getEthereumProvider() {
+    // Return Web3Modal provider if connected via WalletConnect
+    if (activeWalletType === 'walletconnect' && window.web3modalProvider) {
+        return window.web3modalProvider;
+    }
     // Return injected provider (MetaMask, Coinbase, Trust, etc.)
     return window.ethereum || null;
 }
+// Setup Web3Modal event listeners
+function setupWeb3ModalListeners() {
+    if (!window.web3modal) return;
+    
+    // Subscribe to provider changes
+    window.web3modal.subscribeProvider(async ({ provider, address, chainId }) => {
+        if (provider && address) {
+            console.log("Web3Modal connected:", address, chainId);
+            walletAddress = address;
+            walletChainId = chainId ? '0x' + chainId.toString(16) : null;
+            activeWalletType = 'walletconnect';
+            
+            // Store the provider for later use
+            window.web3modalProvider = provider;
+            
+            // Try to restore or create auth session
+            const restored = await restoreAuthSession();
+            if (!restored) {
+                await authenticateWallet();
+            }
+            updateWalletUI();
+        } else if (!address && walletAddress && activeWalletType === 'walletconnect') {
+            // Disconnected
+            console.log("Web3Modal disconnected");
+            walletAddress = null;
+            activeWalletType = null;
+            resetAuthState();
+            updateWalletUI();
+        }
+    });
+}
+
 // Wait for ethereum provider to be injected (some wallets inject asynchronously)
 function waitForEthereumProvider(maxWaitMs = 3000) {
     return new Promise((resolve) => {
@@ -522,12 +558,26 @@ function showWalletSelector() {
         window.location.href = link;
     };
     
-    const handleWC = (e) => {
+    const handleWC = async (e) => {
         e.preventDefault();
         e.stopPropagation();
         modal.remove();
-        const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
-        window.location.href = link;
+        
+        // Use Web3Modal if available
+        if (window.web3modal) {
+            try {
+                await window.web3modal.open();
+            } catch (err) {
+                console.error("Web3Modal error:", err);
+            }
+        } else if (window.web3modalReady === undefined) {
+            // Wait for web3modal to load
+            window.addEventListener('web3modalReady', async () => {
+                if (window.web3modal) {
+                    await window.web3modal.open();
+                }
+            }, { once: true });
+        }
     };
     
     const handleInstallCoinbase = (e) => {
@@ -1181,6 +1231,13 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
+    // Listen for Web3Modal connection
+    if (window.web3modal) {
+        setupWeb3ModalListeners();
+    } else {
+        window.addEventListener('web3modalReady', setupWeb3ModalListeners, { once: true });
+    }
+    
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();

@@ -9,6 +9,40 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
+    <!-- Web3Modal for WalletConnect -->
+    <script type="module">
+        import { createWeb3Modal, defaultConfig } from 'https://cdn.jsdelivr.net/npm/@web3modal/ethers@5.1.11/+esm';
+        
+        const projectId = 'fd7ad326d39318ccae064253cf5a1862';
+        
+        const baseSepolia = {
+            chainId: 84532,
+            name: 'Base Sepolia',
+            currency: 'ETH',
+            explorerUrl: 'https://sepolia.basescan.org',
+            rpcUrl: 'https://sepolia.base.org'
+        };
+        
+        const metadata = {
+            name: 'Base Runner',
+            description: 'Run and earn on Base',
+            url: 'https://base-runner-k9oj.onrender.com',
+            icons: ['https://base-runner-k9oj.onrender.com/assets/eth.png']
+        };
+        
+        const ethersConfig = defaultConfig({ metadata });
+        
+        window.web3modal = createWeb3Modal({
+            ethersConfig,
+            chains: [baseSepolia],
+            projectId,
+            enableAnalytics: false,
+            themeMode: 'dark'
+        });
+        
+        window.web3modalReady = true;
+        window.dispatchEvent(new Event('web3modalReady'));
+    </script>
     <script src="script.js"></script>
 </head>
 <body>
