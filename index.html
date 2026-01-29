@@ -9,67 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
-    <!-- Web3Modal via esm.sh (better ES module support) -->
-    <script type="module">
-        try {
-            const { createWeb3Modal, defaultConfig } = await import('https://esm.sh/@web3modal/ethers@5.1.11');
-            
-            const projectId = 'fd7ad326d39318ccae064253cf5a1862';
-            
-            const baseSepolia = {
-                chainId: 84532,
-                name: 'Base Sepolia',
-                currency: 'ETH',
-                explorerUrl: 'https://sepolia.basescan.org',
-                rpcUrl: 'https://sepolia.base.org'
-            };
-            
-            const metadata = {
-                name: 'Base Runner',
-                description: 'Run and earn on Base',
-                url: window.location.origin,
-                icons: [window.location.origin + '/assets/eth.png']
-            };
-            
-            const ethersConfig = defaultConfig({ metadata });
-            
-            const modal = createWeb3Modal({
-                ethersConfig,
-                chains: [baseSepolia],
-                projectId,
-                enableAnalytics: false,
-                themeMode: 'dark',
-                featuredWalletIds: [
-                    'c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96', // MetaMask
-                    'fd20dc426fb37566d803205b19bbc1d4096b248ac04548e3cfb6b3a38bd033aa', // Coinbase
-                    '4622a2b2d6af1c9844944291e5e7351a6aa24cd7b23099efac1b2fd875da31a0'  // Trust
-                ]
-            });
-            
-            window.web3modal = modal;
-            window.web3modalReady = true;
-            
-            // Subscribe to connection events
-            modal.subscribeProvider(async ({ provider, address, chainId, isConnected }) => {
-                if (isConnected && address && provider) {
-                    console.log('Web3Modal connected:', address);
-                    window.dispatchEvent(new CustomEvent('web3modalConnected', { 
-                        detail: { provider, address, chainId } 
-                    }));
-                } else if (!isConnected && window.web3modalWasConnected) {
-                    console.log('Web3Modal disconnected');
-                    window.dispatchEvent(new Event('web3modalDisconnected'));
-                }
-                window.web3modalWasConnected = isConnected;
-            });
-            
-            console.log('Web3Modal initialized successfully');
-            window.dispatchEvent(new Event('web3modalReady'));
-        } catch (err) {
-            console.error('Web3Modal failed to load:', err);
-            window.web3modalFailed = true;
-        }
-    </script>
     <script src="script.js"></script>
 </head>
 <body>

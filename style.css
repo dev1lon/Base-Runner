@@ -891,24 +891,3 @@ body {
     white-space: nowrap;
     border: 0;
 }
-
-/* Web3Modal z-index fix */
-w3m-modal,
-wcm-modal,
-w3m-core,
-.w3m-overlay,
-.wcm-overlay {
-    z-index: 99999 !important;
-    pointer-events: auto !important;
-}
-
-w3m-modal *,
-wcm-modal * {
-    pointer-events: auto !important;
-}
-
-/* Ensure body doesn't block modal */
-body.w3m-active,
-body.wcm-active {
-    overflow: hidden;
-}

@@ -283,43 +283,8 @@ function isMobile() {
 }
 
 function getEthereumProvider() {
-    // Return Web3Modal provider if connected via WalletConnect
-    if (activeWalletType === 'walletconnect' && window.web3modalProvider) {
-        return window.web3modalProvider;
-    }
     // Return injected provider (MetaMask, Coinbase, Trust, etc.)
     return window.ethereum || null;
-}
-
-// Handle Web3Modal connection
-function setupWeb3ModalListeners() {
-    window.addEventListener('web3modalConnected', async (e) => {
-        const { provider, address, chainId } = e.detail;
-        console.log('Handling Web3Modal connection:', address);
-        
-        walletAddress = address;
-        walletChainId = chainId ? '0x' + chainId.toString(16) : null;
-        activeWalletType = 'walletconnect';
-        window.web3modalProvider = provider;
-        
-        // Try to restore or create auth session
-        const restored = await restoreAuthSession();
-        if (!restored) {
-            await authenticateWallet();
-        }
-        updateWalletUI();
-    });
-    
-    window.addEventListener('web3modalDisconnected', () => {
-        if (activeWalletType === 'walletconnect') {
-            console.log('Handling Web3Modal disconnection');
-            walletAddress = null;
-            activeWalletType = null;
-            window.web3modalProvider = null;
-            resetAuthState();
-            updateWalletUI();
-        }
-    });
 }
 // Wait for ethereum provider to be injected (some wallets inject asynchronously)
 function waitForEthereumProvider(maxWaitMs = 3000) {
@@ -394,9 +359,13 @@ function showWalletSelector() {
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
                 </button>
-                <button type="button" class="wallet-option" id="btn-walletconnect">
-                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
-                    <span>Other Wallets</span>
+                <button type="button" class="wallet-option" id="btn-metamask">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
+                    <span>MetaMask</span>
+                </button>
+                <button type="button" class="wallet-option" id="btn-trust">
+                    <img src="https://trustwallet.com/assets/images/media/assets/trust_platform.svg" alt="Trust" width="32" height="32">
+                    <span>Trust Wallet</span>
                 </button>
                 ` : `
                 <button type="button" class="wallet-option" id="btn-install-coinbase">
@@ -559,7 +528,8 @@ function showWalletSelector() {
     
     // Handle wallet buttons with both click and touch
     const coinbaseBtn = modal.querySelector('#btn-coinbase');
-    const wcBtn = modal.querySelector('#btn-walletconnect');
+    const metamaskBtn = modal.querySelector('#btn-metamask');
+    const trustBtn = modal.querySelector('#btn-trust');
     const installCoinbaseBtn = modal.querySelector('#btn-install-coinbase');
     const installMetamaskBtn = modal.querySelector('#btn-install-metamask');
     
@@ -571,23 +541,19 @@ function showWalletSelector() {
         window.location.href = link;
     };
     
-    const handleWC = async (e) => {
+    const handleMetaMask = (e) => {
         e.preventDefault();
         e.stopPropagation();
         modal.remove();
-        
-        // Try Web3Modal first
-        if (window.web3modal && window.web3modalReady) {
-            try {
-                await window.web3modal.open();
-                return;
-            } catch (err) {
-                console.error('Web3Modal error:', err);
-            }
-        }
-        
-        // Fallback to MetaMask deeplink
         const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
+        window.location.href = link;
+    };
+    
+    const handleTrust = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        modal.remove();
+        const link = `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(APP_URL)}`;
         window.location.href = link;
     };
     
@@ -608,9 +574,14 @@ function showWalletSelector() {
         coinbaseBtn.addEventListener('touchend', handleCoinbase);
     }
     
-    if (wcBtn) {
-        wcBtn.addEventListener('click', handleWC);
-        wcBtn.addEventListener('touchend', handleWC);
+    if (metamaskBtn) {
+        metamaskBtn.addEventListener('click', handleMetaMask);
+        metamaskBtn.addEventListener('touchend', handleMetaMask);
+    }
+    
+    if (trustBtn) {
+        trustBtn.addEventListener('click', handleTrust);
+        trustBtn.addEventListener('touchend', handleTrust);
     }
     
     if (installCoinbaseBtn) {
@@ -1254,9 +1225,6 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
-    // Setup Web3Modal listeners
-    setupWeb3ModalListeners();
-    
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();
