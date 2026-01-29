@@ -648,22 +648,41 @@ function showWalletSelector() {
             modal.remove();
             
             if (web3modal) {
-                // Add class to body so CSS can disable game container pointer events
-                document.body.classList.add('w3m-modal-open');
+                // Hide game overlays completely
+                document.querySelectorAll('.overlay, .game-container, .card').forEach(el => {
+                    el.style.display = 'none';
+                });
+                document.body.style.overflow = 'hidden';
                 
-                // Subscribe to modal state to remove class when closed
+                // Subscribe to modal state to restore UI when closed
                 web3modal.subscribeEvents((event) => {
                     if (event.data.event === 'MODAL_CLOSE') {
-                        document.body.classList.remove('w3m-modal-open');
+                        document.querySelectorAll('.overlay, .game-container, .card').forEach(el => {
+                            el.style.display = '';
+                        });
+                        document.body.style.overflow = '';
+                        updateUIState();
                     }
                 });
                 
                 await web3modal.open();
+                
+                // Force w3m-modal to be clickable
+                setTimeout(() => {
+                    const w3mModal = document.querySelector('w3m-modal');
+                    if (w3mModal) {
+                        w3mModal.style.cssText = 'position:fixed!important;z-index:999999!important;pointer-events:auto!important;top:0!important;left:0!important;right:0!important;bottom:0!important;';
+                    }
+                }, 100);
+                
                 return;
             }
         } catch (err) {
             console.error('Web3Modal error:', err);
-            document.body.classList.remove('w3m-modal-open');
+            document.querySelectorAll('.overlay, .game-container, .card').forEach(el => {
+                el.style.display = '';
+            });
+            document.body.style.overflow = '';
         }
         
         modal.remove();
