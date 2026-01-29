@@ -957,22 +957,24 @@ body.w3m-modal-open w3m-modal {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    background: var(--color-white);
-    padding: 0.35rem 0.75rem;
-    border-radius: var(--border-radius-md);
-    box-shadow: var(--shadow-sm);
-    margin-top: 0.25rem;
+    background: rgba(74, 144, 217, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(74, 144, 217, 0.3);
+    margin-top: 0.5rem;
 }
 
 .collection-coin-icon {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
 }
 
 #collection-coins-count {
     font-weight: 700;
-    font-size: var(--font-size-base);
-    color: var(--color-gray-700);
+    font-size: var(--font-size-lg);
+    color: var(--color-base-dark);
 }
 
 .collection-body {
