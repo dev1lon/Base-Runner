@@ -184,6 +184,7 @@ let currentUIState = UI_STATE.CONNECT;
 let hasFreeMint = false; // User has minted free character
 let ownedCharacters = []; // List of owned character types
 let collectionLoading = false;
+let selectedCharacter = 0; // Currently selected character (0=Vitalik, 1=Trump)
 
 // Overlay elements
 let overlayConnect;
@@ -2383,6 +2384,7 @@ async function checkCollectionStatus() {
         }
         
         console.log('Collection status:', { hasFreeMint, ownedCharacters });
+        loadSelectedCharacter(); // Load saved selection
         updateCollectionUI();
         updateStartButtonState();
     } catch (err) {
@@ -2397,16 +2399,30 @@ function updateCollectionUI() {
     const trumpCard = document.getElementById('char-trump');
     const trumpLock = document.getElementById('trump-lock');
     
+    const ownsVitalik = hasFreeMint || ownedCharacters.includes(0);
+    const ownsTrump = ownedCharacters.includes(1);
+    
     // Vitalik card (character type 0)
     if (vitalikCard && mintVitalikBtn) {
-        if (hasFreeMint || ownedCharacters.includes(0)) {
+        if (ownsVitalik) {
             vitalikCard.classList.add('owned');
-            mintVitalikBtn.textContent = 'Owned ✓';
-            mintVitalikBtn.disabled = true;
-            mintVitalikBtn.classList.remove('btn-primary');
-            mintVitalikBtn.classList.add('btn-ghost');
+            // Show Select button if owned
+            if (selectedCharacter === 0) {
+                mintVitalikBtn.textContent = 'Selected ✓';
+                mintVitalikBtn.disabled = true;
+                mintVitalikBtn.classList.remove('btn-primary');
+                mintVitalikBtn.classList.add('btn-ghost');
+                vitalikCard.classList.add('selected');
+            } else {
+                mintVitalikBtn.textContent = 'Select';
+                mintVitalikBtn.disabled = false;
+                mintVitalikBtn.classList.add('btn-primary');
+                mintVitalikBtn.classList.remove('btn-ghost');
+                vitalikCard.classList.remove('selected');
+            }
         } else {
             vitalikCard.classList.remove('owned');
+            vitalikCard.classList.remove('selected');
             mintVitalikBtn.textContent = 'Free Mint';
             mintVitalikBtn.disabled = false;
             mintVitalikBtn.classList.add('btn-primary');
@@ -2416,15 +2432,26 @@ function updateCollectionUI() {
     
     // Trump card (character type 1)
     if (trumpCard && mintTrumpBtn && trumpLock) {
-        if (ownedCharacters.includes(1)) {
+        if (ownsTrump) {
             trumpCard.classList.add('owned');
             trumpLock.style.display = 'none';
-            mintTrumpBtn.textContent = 'Owned ✓';
-            mintTrumpBtn.disabled = true;
-            mintTrumpBtn.classList.remove('btn-secondary');
-            mintTrumpBtn.classList.add('btn-ghost');
+            // Show Select button if owned
+            if (selectedCharacter === 1) {
+                mintTrumpBtn.textContent = 'Selected ✓';
+                mintTrumpBtn.disabled = true;
+                mintTrumpBtn.classList.remove('btn-secondary');
+                mintTrumpBtn.classList.add('btn-ghost');
+                trumpCard.classList.add('selected');
+            } else {
+                mintTrumpBtn.textContent = 'Select';
+                mintTrumpBtn.disabled = false;
+                mintTrumpBtn.classList.add('btn-secondary');
+                mintTrumpBtn.classList.remove('btn-ghost');
+                trumpCard.classList.remove('selected');
+            }
         } else {
             trumpCard.classList.remove('owned');
+            trumpCard.classList.remove('selected');
             // Show lock only if not enough coins
             trumpLock.style.display = coinCount >= 50 ? 'none' : 'flex';
             mintTrumpBtn.textContent = '50 Coins';
@@ -2449,17 +2476,18 @@ function updateCollectionUI() {
 function updateStartButtonState() {
     if (!startButton) return;
     
-    if (needsFreeClaim()) {
+    const needsMint = needsFreeClaim();
+    
+    if (needsMint) {
         startButton.classList.add('btn-locked');
-        startButton.textContent = 'Start Game';
     } else {
         startButton.classList.remove('btn-locked');
-        startButton.textContent = 'Start Game';
     }
+    startButton.textContent = 'Start Game';
     
-    // Pulse collection button if needs free mint
+    // Pulse collection button only if needs free mint
     if (collectionButton) {
-        if (needsFreeClaim()) {
+        if (needsMint) {
             collectionButton.classList.add('btn-pulse');
         } else {
             collectionButton.classList.remove('btn-pulse');
@@ -2480,7 +2508,15 @@ function closeCollection() {
 }
 
 async function handleMintVitalik() {
-    if (collectionLoading || hasFreeMint) return;
+    const ownsVitalik = hasFreeMint || ownedCharacters.includes(0);
+    
+    // If already owns, this is a Select action
+    if (ownsVitalik) {
+        selectCharacter(0);
+        return;
+    }
+    
+    if (collectionLoading) return;
     
     collectionLoading = true;
     if (mintVitalikBtn) {
@@ -2508,15 +2544,11 @@ async function handleMintVitalik() {
         
         // Update state
         hasFreeMint = true;
-        ownedCharacters.push(0);
+        if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
+        selectedCharacter = 0; // Auto-select after mint
         
         updateCollectionUI();
         updateStartButtonState();
-        
-        if (collectionHint) {
-            collectionHint.textContent = 'Vitalik minted! You can now play!';
-            collectionHint.style.color = 'var(--color-success)';
-        }
     } catch (err) {
         console.error('Mint failed:', err);
         if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
@@ -2531,6 +2563,14 @@ async function handleMintVitalik() {
 }
 
 async function handleMintTrump() {
+    const ownsTrump = ownedCharacters.includes(1);
+    
+    // If already owns, this is a Select action
+    if (ownsTrump) {
+        selectCharacter(1);
+        return;
+    }
+    
     if (collectionLoading || !hasFreeMint || coinCount < 50) return;
     
     collectionLoading = true;
@@ -2562,18 +2602,14 @@ async function handleMintTrump() {
         await tx.wait();
         
         // Update state
-        ownedCharacters.push(1);
+        if (!ownedCharacters.includes(1)) ownedCharacters.push(1);
+        selectedCharacter = 1; // Auto-select after purchase
         
         // Refresh coin balance from chain
         coinCount = await getOnChainCoinBalance();
         
         updateCollectionUI();
         updateStartButtonState();
-        
-        if (collectionHint) {
-            collectionHint.textContent = 'Trump minted! Collection complete!';
-            collectionHint.style.color = 'var(--color-success)';
-        }
     } catch (err) {
         console.error('Purchase failed:', err);
         if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
@@ -2585,6 +2621,55 @@ async function handleMintTrump() {
     } finally {
         collectionLoading = false;
     }
+}
+
+// Select a character to play with
+function selectCharacter(charType) {
+    if (!ownedCharacters.includes(charType) && !(charType === 0 && hasFreeMint)) {
+        return; // Can't select unowned character
+    }
+    
+    selectedCharacter = charType;
+    localStorage.setItem('selectedCharacter', String(charType));
+    
+    // Update player sprite immediately
+    updatePlayerSprite();
+    
+    // Update UI
+    updateCollectionUI();
+    
+    console.log('Selected character:', charType === 0 ? 'Vitalik' : 'Trump');
+}
+
+// Update player sprite based on selected character
+function updatePlayerSprite() {
+    // Character sprites mapping
+    const sprites = {
+        0: 'assets/hum_vit_1.png', // Vitalik
+        1: 'assets/trump.png'      // Trump
+    };
+    
+    const spritePath = sprites[selectedCharacter] || sprites[0];
+    
+    // Update the playerImg if it exists
+    if (typeof playerImg !== 'undefined' && playerImg) {
+        playerImg.src = spritePath;
+    }
+}
+
+// Load selected character from storage
+function loadSelectedCharacter() {
+    const saved = localStorage.getItem('selectedCharacter');
+    if (saved !== null) {
+        const charType = parseInt(saved);
+        // Verify user owns this character
+        if (ownedCharacters.includes(charType) || (charType === 0 && hasFreeMint)) {
+            selectedCharacter = charType;
+        } else {
+            selectedCharacter = 0; // Default to Vitalik
+        }
+    }
+    updatePlayerSprite();
 }
 
 async function startGameFromWelcome() {
