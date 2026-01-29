@@ -2958,6 +2958,12 @@ document.addEventListener("keyup", function(e) {
 
 async function handleTouchStart(e) {
     if (!isMobileLayout) return;
+    
+    // Don't block events when Web3Modal is open
+    if (document.querySelector('w3m-modal')) {
+        return;
+    }
+    
     if (pauseButton && pauseButton.contains(e.target)) {
         return;
     }
@@ -2992,6 +2998,12 @@ async function handleTouchStart(e) {
 
 function handleTouchEnd(e) {
     if (!isMobileLayout) return;
+    
+    // Don't block events when Web3Modal is open
+    if (document.querySelector('w3m-modal')) {
+        return;
+    }
+    
     e.preventDefault();
 
     for (const touch of e.changedTouches) {
