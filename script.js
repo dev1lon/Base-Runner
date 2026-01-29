@@ -291,39 +291,96 @@ function getEthereumProvider() {
     return window.ethereum || null;
 }
 
-// Setup Web3Modal event listeners
-function setupWeb3ModalListeners() {
-    if (!window.web3modal) return;
+// Initialize Web3Modal on demand
+async function initWeb3Modal() {
+    if (window.web3modal) return window.web3modal;
+    if (window.web3modalLoading) {
+        // Wait for loading to complete
+        return new Promise((resolve) => {
+            const check = setInterval(() => {
+                if (window.web3modal) {
+                    clearInterval(check);
+                    resolve(window.web3modal);
+                }
+            }, 100);
+            setTimeout(() => {
+                clearInterval(check);
+                resolve(null);
+            }, 10000);
+        });
+    }
     
-    // Subscribe to provider changes
-    window.web3modal.subscribeProvider(async (state) => {
-        console.log('Web3Modal state:', state);
+    window.web3modalLoading = true;
+    
+    try {
+        const { createWeb3Modal, defaultConfig } = await import('https://esm.sh/@web3modal/ethers@5.1.11?bundle');
         
-        if (state.isConnected && state.address) {
-            console.log('Web3Modal connected:', state.address);
-            walletAddress = state.address;
-            walletChainId = state.chainId ? '0x' + state.chainId.toString(16) : null;
-            activeWalletType = 'walletconnect';
-            
-            if (state.provider) {
-                window.web3modalProvider = state.provider;
+        const projectId = 'fd7ad326d39318ccae064253cf5a1862';
+        
+        const baseSepolia = {
+            chainId: 84532,
+            name: 'Base Sepolia',
+            currency: 'ETH',
+            explorerUrl: 'https://sepolia.basescan.org',
+            rpcUrl: 'https://sepolia.base.org'
+        };
+        
+        const metadata = {
+            name: 'Base Runner',
+            description: 'Run and earn on Base',
+            url: window.location.origin,
+            icons: [window.location.origin + '/assets/eth.png']
+        };
+        
+        const ethersConfig = defaultConfig({
+            metadata,
+            enableEIP6963: true,
+            enableInjected: true,
+            enableCoinbase: true
+        });
+        
+        const modal = createWeb3Modal({
+            ethersConfig,
+            chains: [baseSepolia],
+            projectId,
+            enableAnalytics: false,
+            themeMode: 'dark'
+        });
+        
+        window.web3modal = modal;
+        window.web3modalLoading = false;
+        console.log('Web3Modal loaded successfully');
+        
+        // Setup provider listener
+        modal.subscribeProvider(async (state) => {
+            if (state.isConnected && state.address) {
+                console.log('Web3Modal connected:', state.address);
+                walletAddress = state.address;
+                walletChainId = state.chainId ? '0x' + state.chainId.toString(16) : null;
+                activeWalletType = 'walletconnect';
+                if (state.provider) {
+                    window.web3modalProvider = state.provider;
+                }
+                const restored = await restoreAuthSession();
+                if (!restored) {
+                    await authenticateWallet();
+                }
+                updateWalletUI();
+            } else if (!state.isConnected && activeWalletType === 'walletconnect') {
+                walletAddress = null;
+                activeWalletType = null;
+                window.web3modalProvider = null;
+                resetAuthState();
+                updateWalletUI();
             }
-            
-            // Authenticate
-            const restored = await restoreAuthSession();
-            if (!restored) {
-                await authenticateWallet();
-            }
-            updateWalletUI();
-        } else if (!state.isConnected && activeWalletType === 'walletconnect') {
-            console.log('Web3Modal disconnected');
-            walletAddress = null;
-            activeWalletType = null;
-            window.web3modalProvider = null;
-            resetAuthState();
-            updateWalletUI();
-        }
-    });
+        });
+        
+        return modal;
+    } catch (err) {
+        console.error('Failed to load Web3Modal:', err);
+        window.web3modalLoading = false;
+        return null;
+    }
 }
 // Wait for ethereum provider to be injected (some wallets inject asynchronously)
 function waitForEthereumProvider(maxWaitMs = 3000) {
@@ -578,18 +635,27 @@ function showWalletSelector() {
     const handleOtherWallets = async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        modal.remove();
         
-        // Use Web3Modal if available
-        if (window.web3modal && window.web3modalReady) {
-            try {
-                await window.web3modal.open();
-                return;
-            } catch (err) {
-                console.error('Web3Modal error:', err);
-            }
+        // Show loading state
+        if (otherBtn) {
+            otherBtn.innerHTML = '<span>Loading...</span>';
+            otherBtn.disabled = true;
         }
         
+        try {
+            // Load Web3Modal on demand
+            const web3modal = await initWeb3Modal();
+            modal.remove();
+            
+            if (web3modal) {
+                await web3modal.open();
+                return;
+            }
+        } catch (err) {
+            console.error('Web3Modal error:', err);
+        }
+        
+        modal.remove();
         // Fallback - open MetaMask deeplink
         const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
         window.location.href = link;
@@ -1258,13 +1324,6 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
-    // Setup Web3Modal listeners when ready
-    if (window.web3modalReady) {
-        setupWeb3ModalListeners();
-    } else {
-        window.addEventListener('web3modalReady', setupWeb3ModalListeners, { once: true });
-    }
-    
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();

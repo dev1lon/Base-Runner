@@ -9,52 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
-    <!-- Web3Modal -->
-    <script type="module">
-        import { createWeb3Modal, defaultConfig } from 'https://esm.sh/@web3modal/ethers@5.1.11?bundle';
-
-        const projectId = 'fd7ad326d39318ccae064253cf5a1862';
-
-        const baseSepolia = {
-            chainId: 84532,
-            name: 'Base Sepolia',
-            currency: 'ETH',
-            explorerUrl: 'https://sepolia.basescan.org',
-            rpcUrl: 'https://sepolia.base.org'
-        };
-
-        const metadata = {
-            name: 'Base Runner',
-            description: 'Run and earn on Base',
-            url: window.location.origin,
-            icons: [window.location.origin + '/assets/eth.png']
-        };
-
-        try {
-            const ethersConfig = defaultConfig({
-                metadata,
-                enableEIP6963: true,
-                enableInjected: true,
-                enableCoinbase: true
-            });
-
-            const modal = createWeb3Modal({
-                ethersConfig,
-                chains: [baseSepolia],
-                projectId,
-                enableAnalytics: false,
-                themeMode: 'dark'
-            });
-
-            window.web3modal = modal;
-            window.web3modalReady = true;
-            console.log('Web3Modal initialized');
-            window.dispatchEvent(new Event('web3modalReady'));
-        } catch (err) {
-            console.error('Web3Modal failed:', err);
-            window.web3modalFailed = true;
-        }
-    </script>
     <script src="script.js"></script>
 </head>
 <body>
