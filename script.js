@@ -1043,7 +1043,7 @@ async function getCheckinStats() {
 
 // ============ GameCoin Functions ============
 
-// Get on-chain coin balance
+// Get on-chain coin balance (converted from wei to coins)
 async function getOnChainCoinBalance() {
     if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !walletAddress) {
         return 0;
@@ -1053,7 +1053,8 @@ async function getOnChainCoinBalance() {
         const ethersProvider = new ethers.BrowserProvider(provider);
         const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
         const balance = await contract.balanceOf(walletAddress);
-        return Number(balance);
+        // Convert from wei (18 decimals) to coins
+        return Number(ethers.formatUnits(balance, 18));
     } catch (err) {
         console.warn("Failed to get coin balance:", err);
         return 0;
