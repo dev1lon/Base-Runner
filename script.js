@@ -253,25 +253,36 @@ function getSafeAreaLeftPx() {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-// Coinbase Wallet SDK instance
+// Wallet SDK instances
 let coinbaseWallet = null;
 let coinbaseProvider = null;
-let activeWalletType = null; // 'coinbase' | 'injected'
+let walletConnectProvider = null;
+let activeWalletType = null; // 'coinbase' | 'injected' | 'walletconnect'
+
+// WalletConnect Project ID (get from cloud.walletconnect.com)
+const WALLETCONNECT_PROJECT_ID = '3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e'; // Default test ID
 
 // Initialize Coinbase Wallet SDK (recommended by Base)
 function initCoinbaseWallet() {
-    if (typeof window.CoinbaseWalletSDK !== 'undefined') {
-        coinbaseWallet = new window.CoinbaseWalletSDK({
-            appName: 'Base Runner',
-            appLogoUrl: 'https://base-runner-k9oj.onrender.com/assets/eth.png',
-            appChainIds: [8453, 84532] // Base mainnet, Base Sepolia
-        });
-        console.log("Coinbase Wallet SDK initialized");
+    if (typeof window.CoinbaseWalletSDK !== 'undefined' && !coinbaseWallet) {
+        try {
+            coinbaseWallet = new window.CoinbaseWalletSDK({
+                appName: 'Base Runner',
+                appLogoUrl: 'https://base-runner-k9oj.onrender.com/assets/eth.png',
+                appChainIds: [8453, 84532] // Base mainnet, Base Sepolia
+            });
+            console.log("Coinbase Wallet SDK initialized");
+        } catch (e) {
+            console.error("Failed to init Coinbase SDK:", e);
+        }
     }
 }
 
 function getEthereumProvider() {
     // Return active provider based on selected wallet type
+    if (activeWalletType === 'walletconnect' && walletConnectProvider) {
+        return walletConnectProvider;
+    }
     if (activeWalletType === 'coinbase' && coinbaseProvider) {
         return coinbaseProvider;
     }
@@ -332,21 +343,14 @@ function waitForEthereumProvider(maxWaitMs = 3000) {
 
 // Show wallet selection modal
 function showWalletSelector() {
+    // Remove existing modal if any
+    const existingModal = document.getElementById('wallet-modal');
+    if (existingModal) existingModal.remove();
+    
     // Check what wallets are available
     const hasInjected = !!window.ethereum;
-    const hasCoinbase = typeof window.CoinbaseWalletSDK !== 'undefined';
     
-    // If only one option, connect directly
-    if (hasCoinbase && !hasInjected) {
-        connectWithCoinbase();
-        return;
-    }
-    if (hasInjected && !hasCoinbase) {
-        connectWithInjected();
-        return;
-    }
-    
-    // Create modal for wallet selection
+    // Create modal for wallet selection - always show all universal options
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
     modal.innerHTML = `
@@ -354,13 +358,16 @@ function showWalletSelector() {
         <div class="wallet-modal-content">
             <h3>Connect Wallet</h3>
             <div class="wallet-options">
-                ${hasCoinbase ? `
                 <button class="wallet-option" data-wallet="coinbase">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
                     <span class="wallet-badge">Recommended</span>
                 </button>
-                ` : ''}
+                <button class="wallet-option" data-wallet="walletconnect">
+                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
+                    <span>WalletConnect</span>
+                    <span class="wallet-badge-secondary">QR Code</span>
+                </button>
                 ${hasInjected ? `
                 <button class="wallet-option" data-wallet="injected">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Browser Wallet" width="32" height="32">
@@ -404,7 +411,7 @@ function showWalletSelector() {
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 16px;
                 padding: 24px;
-                min-width: 300px;
+                min-width: 320px;
                 max-width: 90%;
                 box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
             }
@@ -447,6 +454,14 @@ function showWalletSelector() {
                 border-radius: 4px;
                 color: white;
             }
+            .wallet-badge-secondary {
+                margin-left: auto;
+                font-size: 11px;
+                padding: 3px 8px;
+                background: #3396ff;
+                border-radius: 4px;
+                color: white;
+            }
             .wallet-modal-close {
                 width: 100%;
                 margin-top: 16px;
@@ -466,15 +481,27 @@ function showWalletSelector() {
     }
     
     // Handle clicks
-    modal.querySelector('.wallet-modal-backdrop').addEventListener('click', () => modal.remove());
-    modal.querySelector('.wallet-modal-close').addEventListener('click', () => modal.remove());
+    const backdrop = modal.querySelector('.wallet-modal-backdrop');
+    const closeBtn = modal.querySelector('.wallet-modal-close');
+    
+    backdrop.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modal.remove();
+    });
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modal.remove();
+    });
     
     modal.querySelectorAll('.wallet-option').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
             const walletType = btn.dataset.wallet;
             modal.remove();
             if (walletType === 'coinbase') {
                 connectWithCoinbase();
+            } else if (walletType === 'walletconnect') {
+                connectWithWalletConnect();
             } else {
                 connectWithInjected();
             }
@@ -542,6 +569,85 @@ async function connectWithInjected() {
         setWalletError(err.message || "Connection failed");
         isConnectingWallet = false;
         activeWalletType = null;
+        updateWalletUI();
+    }
+}
+
+// Connect with WalletConnect (QR code for mobile wallets)
+async function connectWithWalletConnect() {
+    try {
+        isConnectingWallet = true;
+        setWalletInfo("Opening WalletConnect...");
+        updateWalletUI();
+        
+        // Check if EthereumProvider is available
+        if (typeof window.EthereumProvider === 'undefined') {
+            throw new Error("WalletConnect not loaded");
+        }
+        
+        // Initialize WalletConnect provider
+        walletConnectProvider = await window.EthereumProvider.init({
+            projectId: WALLETCONNECT_PROJECT_ID,
+            chains: [84532], // Base Sepolia
+            optionalChains: [8453], // Base Mainnet
+            showQrModal: true,
+            metadata: {
+                name: 'Base Runner',
+                description: 'Run and earn on Base',
+                url: 'https://base-runner-k9oj.onrender.com',
+                icons: ['https://base-runner-k9oj.onrender.com/assets/eth.png']
+            }
+        });
+        
+        // Enable session (this shows QR modal)
+        await walletConnectProvider.enable();
+        
+        activeWalletType = 'walletconnect';
+        
+        // Get accounts
+        const accounts = walletConnectProvider.accounts;
+        if (accounts && accounts.length > 0) {
+            handleAccountsChanged(accounts);
+        }
+        
+        // Get chain ID
+        const chainId = walletConnectProvider.chainId;
+        if (chainId) {
+            handleChainChanged('0x' + chainId.toString(16));
+        }
+        
+        // Listen for events
+        walletConnectProvider.on('accountsChanged', handleAccountsChanged);
+        walletConnectProvider.on('chainChanged', (chainId) => {
+            handleChainChanged('0x' + chainId.toString(16));
+        });
+        walletConnectProvider.on('disconnect', () => {
+            console.log("WalletConnect disconnected");
+            walletAddress = null;
+            activeWalletType = null;
+            walletConnectProvider = null;
+            updateWalletUI();
+        });
+        
+        isConnectingWallet = false;
+        clearWalletMessages();
+        updateWalletUI();
+        
+        // Authenticate
+        if (walletAddress && normalizeChainId(walletChainId) === BASE_SEPOLIA_CHAIN_ID) {
+            await authenticateWallet();
+        }
+        
+        console.log("Connected with WalletConnect");
+    } catch (err) {
+        console.error("WalletConnect error:", err);
+        if (err.message !== 'User rejected') {
+            setWalletError(err.message || "WalletConnect failed");
+        }
+        isConnectingWallet = false;
+        activeWalletType = null;
+        walletConnectProvider = null;
+        clearWalletMessages();
         updateWalletUI();
     }
 }
@@ -1070,8 +1176,6 @@ function setConnectButtonText(text) {
 
 function updateWalletUI() {
     const provider = getEthereumProvider();
-    const hasCoinbaseSDK = typeof window.CoinbaseWalletSDK !== 'undefined';
-    const hasProvider = !!provider || hasCoinbaseSDK; // Either injected or Coinbase SDK
     const isConnected = !!walletAddress;
     const normalizedChainId = normalizeChainId(walletChainId);
     const isOnBaseSepolia = normalizedChainId === BASE_SEPOLIA_CHAIN_ID;
@@ -1079,13 +1183,11 @@ function updateWalletUI() {
     walletReady = walletConnected && walletAuthenticated;
     const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
 
-    // Update connect button state and text
+    // Update connect button state and text - always enabled (we have universal options)
     if (connectButton) {
-        connectButton.disabled = isDetectingWallet || (!hasProvider) || isConnectingWallet || authInProgress;
+        connectButton.disabled = isDetectingWallet || isConnectingWallet || authInProgress;
         if (isDetectingWallet) {
-            setConnectButtonText("Detecting wallet...");
-        } else if (!hasProvider) {
-            setConnectButtonText("No wallet available");
+            setConnectButtonText("Loading...");
         } else if (isConnectingWallet) {
             setConnectButtonText("Connecting...");
         } else if (authInProgress) {
@@ -1105,9 +1207,9 @@ function updateWalletUI() {
         } else if (isConnectingWallet && walletInfoMessage) {
             walletStatus.textContent = walletInfoMessage;
             walletStatus.classList.remove("error");
-        } else if (!hasProvider) {
-            walletStatus.textContent = "No wallet available. Install a wallet or open in Base App.";
-            walletStatus.classList.add("error");
+        } else if (!isConnected && !isConnectingWallet) {
+            walletStatus.textContent = "";
+            walletStatus.classList.remove("error");
         } else if (!isConnected) {
             walletStatus.textContent = "";
             walletStatus.classList.remove("error");
