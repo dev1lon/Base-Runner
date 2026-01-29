@@ -2435,17 +2435,11 @@ function updateCollectionUI() {
         }
     }
     
-    // Update hint
+    // Update hint - only show before free mint
     if (collectionHint) {
         if (!hasFreeMint) {
             collectionHint.textContent = 'Mint your first character to play!';
             collectionHint.style.color = 'var(--color-warning)';
-        } else if (ownedCharacters.length === 1) {
-            collectionHint.textContent = 'Collect Trump for 50 coins!';
-            collectionHint.style.color = 'var(--color-gray-500)';
-        } else if (ownedCharacters.length >= 2) {
-            collectionHint.textContent = 'Collection complete!';
-            collectionHint.style.color = 'var(--color-success)';
         } else {
             collectionHint.textContent = '';
         }
