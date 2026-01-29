@@ -2425,9 +2425,10 @@ function updateCollectionUI() {
             mintTrumpBtn.classList.add('btn-ghost');
         } else {
             trumpCard.classList.remove('owned');
-            trumpLock.style.display = 'flex';
+            // Show lock only if not enough coins
+            trumpLock.style.display = coinCount >= 50 ? 'none' : 'flex';
             mintTrumpBtn.textContent = '50 Coins';
-            // Enable only if has free mint and enough coins
+            // Enable if has free mint AND enough coins
             mintTrumpBtn.disabled = !hasFreeMint || coinCount < 50;
             mintTrumpBtn.classList.add('btn-secondary');
             mintTrumpBtn.classList.remove('btn-ghost');
