@@ -283,8 +283,43 @@ function isMobile() {
 }
 
 function getEthereumProvider() {
+    // Return Web3Modal provider if connected via WalletConnect
+    if (activeWalletType === 'walletconnect' && window.web3modalProvider) {
+        return window.web3modalProvider;
+    }
     // Return injected provider (MetaMask, Coinbase, Trust, etc.)
     return window.ethereum || null;
+}
+
+// Handle Web3Modal connection
+function setupWeb3ModalListeners() {
+    window.addEventListener('web3modalConnected', async (e) => {
+        const { provider, address, chainId } = e.detail;
+        console.log('Handling Web3Modal connection:', address);
+        
+        walletAddress = address;
+        walletChainId = chainId ? '0x' + chainId.toString(16) : null;
+        activeWalletType = 'walletconnect';
+        window.web3modalProvider = provider;
+        
+        // Try to restore or create auth session
+        const restored = await restoreAuthSession();
+        if (!restored) {
+            await authenticateWallet();
+        }
+        updateWalletUI();
+    });
+    
+    window.addEventListener('web3modalDisconnected', () => {
+        if (activeWalletType === 'walletconnect') {
+            console.log('Handling Web3Modal disconnection');
+            walletAddress = null;
+            activeWalletType = null;
+            window.web3modalProvider = null;
+            resetAuthState();
+            updateWalletUI();
+        }
+    });
 }
 // Wait for ethereum provider to be injected (some wallets inject asynchronously)
 function waitForEthereumProvider(maxWaitMs = 3000) {
@@ -360,8 +395,8 @@ function showWalletSelector() {
                     <span>Coinbase Wallet</span>
                 </button>
                 <button type="button" class="wallet-option" id="btn-walletconnect">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
-                    <span>MetaMask</span>
+                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
+                    <span>Other Wallets</span>
                 </button>
                 ` : `
                 <button type="button" class="wallet-option" id="btn-install-coinbase">
@@ -536,11 +571,22 @@ function showWalletSelector() {
         window.location.href = link;
     };
     
-    const handleWC = (e) => {
+    const handleWC = async (e) => {
         e.preventDefault();
         e.stopPropagation();
         modal.remove();
-        // Open MetaMask via deeplink (works on mobile)
+        
+        // Try Web3Modal first
+        if (window.web3modal && window.web3modalReady) {
+            try {
+                await window.web3modal.open();
+                return;
+            } catch (err) {
+                console.error('Web3Modal error:', err);
+            }
+        }
+        
+        // Fallback to MetaMask deeplink
         const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
         window.location.href = link;
     };
@@ -1208,6 +1254,9 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
+    // Setup Web3Modal listeners
+    setupWeb3ModalListeners();
+    
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();
