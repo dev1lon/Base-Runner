@@ -2441,13 +2441,15 @@ function updateCollectionUI() {
             if (selectedCharacter === 1) {
                 mintTrumpBtn.textContent = 'Selected ✓';
                 mintTrumpBtn.disabled = true;
+                mintTrumpBtn.classList.remove('btn-primary');
                 mintTrumpBtn.classList.remove('btn-secondary');
                 mintTrumpBtn.classList.add('btn-ghost');
                 trumpCard.classList.add('selected');
             } else {
                 mintTrumpBtn.textContent = 'Select';
                 mintTrumpBtn.disabled = false;
-                mintTrumpBtn.classList.add('btn-secondary');
+                mintTrumpBtn.classList.add('btn-primary');
+                mintTrumpBtn.classList.remove('btn-secondary');
                 mintTrumpBtn.classList.remove('btn-ghost');
                 trumpCard.classList.remove('selected');
             }
@@ -2455,12 +2457,20 @@ function updateCollectionUI() {
             trumpCard.classList.remove('owned');
             trumpCard.classList.remove('selected');
             // Show lock only if not enough coins
-            trumpLock.style.display = coinCount >= trumpPrice ? 'none' : 'flex';
+            const canBuy = hasFreeMint && coinCount >= trumpPrice;
+            trumpLock.style.display = canBuy ? 'none' : 'flex';
             mintTrumpBtn.textContent = `${trumpPrice} Coins`;
-            // Enable if has free mint AND enough coins
-            mintTrumpBtn.disabled = !hasFreeMint || coinCount < trumpPrice;
-            mintTrumpBtn.classList.add('btn-secondary');
-            mintTrumpBtn.classList.remove('btn-ghost');
+            mintTrumpBtn.disabled = !canBuy;
+            // Blue button when available, gray when not
+            if (canBuy) {
+                mintTrumpBtn.classList.add('btn-primary');
+                mintTrumpBtn.classList.remove('btn-secondary');
+                mintTrumpBtn.classList.remove('btn-ghost');
+            } else {
+                mintTrumpBtn.classList.remove('btn-primary');
+                mintTrumpBtn.classList.add('btn-secondary');
+                mintTrumpBtn.classList.remove('btn-ghost');
+            }
         }
     }
     
