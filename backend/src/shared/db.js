@@ -36,6 +36,8 @@ async function ensureSchema() {
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS has_claimed_free BOOLEAN DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_characters JSONB DEFAULT '[]';`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS selected_character INTEGER DEFAULT 0;`);
   
   // Remove deprecated columns (streak/checkin now on blockchain)
   try {

@@ -12,31 +12,57 @@ const GAME_COIN_ABI = [
     "function getRemainingDailyMint(address account) external view returns (uint256)"
 ];
 
-// Environment variables
-const RPC_URL = process.env.RPC_URL || "https://sepolia.base.org";
+// RPC URLs with fallbacks
+const RPC_URLS = [
+    process.env.RPC_URL || "https://sepolia.base.org",
+    "https://base-sepolia-rpc.publicnode.com",
+    "https://base-sepolia.blockpi.network/v1/rpc/public",
+    "https://sepolia.base.org"
+];
+
 const GAME_COIN_ADDRESS = process.env.GAME_COIN_ADDRESS || "";
 const MINTER_PRIVATE_KEY = process.env.MINTER_PRIVATE_KEY || "";
 
 let provider = null;
 let minterWallet = null;
 let gameCoinContract = null;
+let currentRpcIndex = 0;
+
+/**
+ * Try to connect to RPC with fallback
+ */
+async function getWorkingProvider() {
+    for (let i = 0; i < RPC_URLS.length; i++) {
+        const rpcUrl = RPC_URLS[(currentRpcIndex + i) % RPC_URLS.length];
+        try {
+            const testProvider = new ethers.JsonRpcProvider(rpcUrl);
+            // Test the connection
+            await testProvider.getBlockNumber();
+            currentRpcIndex = (currentRpcIndex + i) % RPC_URLS.length;
+            return testProvider;
+        } catch (err) {
+            console.warn(`RPC ${rpcUrl} failed, trying next...`);
+        }
+    }
+    throw new Error("All RPC endpoints failed");
+}
 
 /**
  * Initialize blockchain connection
  */
-function initBlockchain() {
+async function initBlockchain() {
     if (!GAME_COIN_ADDRESS || !MINTER_PRIVATE_KEY) {
         console.warn("⚠️ Blockchain not configured - GAME_COIN_ADDRESS or MINTER_PRIVATE_KEY missing");
         return false;
     }
     
     try {
-        provider = new ethers.JsonRpcProvider(RPC_URL);
+        provider = await getWorkingProvider();
         minterWallet = new ethers.Wallet(MINTER_PRIVATE_KEY, provider);
         gameCoinContract = new ethers.Contract(GAME_COIN_ADDRESS, GAME_COIN_ABI, minterWallet);
         
         console.log(`✅ Blockchain initialized`);
-        console.log(`   RPC: ${RPC_URL}`);
+        console.log(`   RPC: ${RPC_URLS[currentRpcIndex]}`);
         console.log(`   GameCoin: ${GAME_COIN_ADDRESS}`);
         console.log(`   Minter: ${minterWallet.address}`);
         
@@ -45,6 +71,14 @@ function initBlockchain() {
         console.error("❌ Failed to initialize blockchain:", err.message);
         return false;
     }
+}
+
+/**
+ * Reconnect to blockchain (try next RPC)
+ */
+async function reconnectBlockchain() {
+    currentRpcIndex = (currentRpcIndex + 1) % RPC_URLS.length;
+    return initBlockchain();
 }
 
 /**
@@ -57,10 +91,11 @@ function isBlockchainReady() {
 /**
  * Mint coins to user
  * @param {string} to - Recipient address
- * @param {number} amount - Amount of coins to mint
+ * @param {number} amount - Amount of coins to mint (in whole coins, not wei)
+ * @param {number} retries - Number of retries on failure
  * @returns {Promise<{success: boolean, txHash?: string, error?: string}>}
  */
-async function mintCoins(to, amount) {
+async function mintCoins(to, amount, retries = 2) {
     if (!isBlockchainReady()) {
         console.warn("Blockchain not ready, skipping on-chain mint");
         return { success: false, error: "Blockchain not configured" };
@@ -70,50 +105,58 @@ async function mintCoins(to, amount) {
         return { success: false, error: "Invalid parameters" };
     }
     
-    try {
-        // Check if contract is paused
-        const isPaused = await gameCoinContract.paused();
-        if (isPaused) {
-            console.warn("GameCoin contract is paused");
-            return { success: false, error: "Contract paused" };
+    // Convert to wei (18 decimals)
+    const amountWei = ethers.parseUnits(String(amount), 18);
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            // Check if contract is paused
+            const isPaused = await gameCoinContract.paused();
+            if (isPaused) {
+                console.warn("GameCoin contract is paused");
+                return { success: false, error: "Contract paused" };
+            }
+            
+            // Check if we're an authorized minter
+            const isMinter = await gameCoinContract.minters(minterWallet.address);
+            if (!isMinter) {
+                console.error("Backend wallet is not an authorized minter!");
+                return { success: false, error: "Not authorized minter" };
+            }
+            
+            // Execute mint
+            console.log(`Minting ${amount} coins (${amountWei} wei) to ${to}... (attempt ${attempt + 1})`);
+            const tx = await gameCoinContract.mint(to, amountWei);
+            console.log(`Transaction sent: ${tx.hash}`);
+            
+            // Wait for confirmation
+            const receipt = await tx.wait();
+            console.log(`✅ Minted ${amount} coins to ${to} in tx ${receipt.hash}`);
+            
+            return { 
+                success: true, 
+                txHash: receipt.hash,
+                blockNumber: receipt.blockNumber,
+                amount: amount
+            };
+        } catch (err) {
+            console.error(`❌ Mint attempt ${attempt + 1} failed:`, err.message);
+            
+            // Try reconnecting on network errors
+            if (attempt < retries && (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT')) {
+                console.log("Trying to reconnect to blockchain...");
+                await reconnectBlockchain();
+            } else if (attempt === retries) {
+                return { success: false, error: err.message };
+            }
         }
-        
-        // Check if we're an authorized minter
-        const isMinter = await gameCoinContract.minters(minterWallet.address);
-        if (!isMinter) {
-            console.error("Backend wallet is not an authorized minter!");
-            return { success: false, error: "Not authorized minter" };
-        }
-        
-        // Check daily limit
-        const remaining = await gameCoinContract.getRemainingDailyMint(to);
-        if (BigInt(amount) > remaining) {
-            console.warn(`Daily limit exceeded for ${to}. Remaining: ${remaining}, Requested: ${amount}`);
-            return { success: false, error: "Daily limit exceeded" };
-        }
-        
-        // Execute mint
-        console.log(`Minting ${amount} coins to ${to}...`);
-        const tx = await gameCoinContract.mint(to, amount);
-        console.log(`Transaction sent: ${tx.hash}`);
-        
-        // Wait for confirmation
-        const receipt = await tx.wait();
-        console.log(`✅ Minted ${amount} coins to ${to} in tx ${receipt.hash}`);
-        
-        return { 
-            success: true, 
-            txHash: receipt.hash,
-            blockNumber: receipt.blockNumber
-        };
-    } catch (err) {
-        console.error(`❌ Failed to mint coins:`, err.message);
-        return { success: false, error: err.message };
     }
+    
+    return { success: false, error: "All retry attempts failed" };
 }
 
 /**
- * Get user's on-chain balance
+ * Get user's on-chain balance (in whole coins, not wei)
  * @param {string} address - User address
  * @returns {Promise<number>}
  */
@@ -124,7 +167,8 @@ async function getOnChainBalance(address) {
     
     try {
         const balance = await gameCoinContract.balanceOf(address);
-        return Number(balance);
+        // Convert from wei to coins
+        return Number(ethers.formatUnits(balance, 18));
     } catch (err) {
         console.error("Failed to get balance:", err.message);
         return 0;
@@ -150,10 +194,13 @@ async function getMinterBalance() {
 }
 
 // Initialize on module load
-initBlockchain();
+initBlockchain().catch(err => {
+    console.error("Failed to init blockchain:", err.message);
+});
 
 module.exports = {
     initBlockchain,
+    reconnectBlockchain,
     isBlockchainReady,
     mintCoins,
     getOnChainBalance,

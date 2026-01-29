@@ -91,8 +91,10 @@ app.post("/auth/verify", async (req, res) => {
     token: result.token,
     address: result.user.address,
     coinBalance: result.user.coins,
-    bestScore: result.user.best_score
-    // streak and lastCheckin now read from blockchain
+    bestScore: result.user.best_score,
+    hasFreeMint: result.user.has_claimed_free || false,
+    ownedCharacters: result.user.owned_characters || [],
+    selectedCharacter: result.user.selected_character || 0
   });
 });
 
@@ -238,8 +240,10 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     ok: true,
     address: user.address,
     coinBalance: user.coins,
-    bestScore: user.best_score
-    // streak and lastCheckin now read from blockchain
+    bestScore: user.best_score,
+    hasFreeMint: user.has_claimed_free || false,
+    ownedCharacters: user.owned_characters || [],
+    selectedCharacter: user.selected_character || 0
   });
 });
 
@@ -341,7 +345,7 @@ app.post("/api/shop/purchase/cancel", requireAuth, async (req, res) => {
 
 // Mark free character as claimed (after successful on-chain claim)
 app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
-  const { txHash } = req.body || {};
+  const { txHash, characterId = 0 } = req.body || {};
   
   try {
     const user = await getOrCreateUser(req.user.address);
@@ -351,13 +355,93 @@ app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
       return;
     }
     
-    const { updateUser } = require("./modules/user/userRepo");
+    const { updateUser, addOwnedCharacter } = require("./modules/user/userRepo");
     await updateUser(req.user.address, { has_claimed_free: true });
+    await addOwnedCharacter(req.user.address, characterId);
     
-    res.json({ ok: true, txHash });
+    const updatedUser = await getOrCreateUser(req.user.address);
+    
+    res.json({ 
+      ok: true, 
+      txHash,
+      hasFreeMint: true,
+      ownedCharacters: updatedUser.owned_characters || [characterId]
+    });
   } catch (err) {
     console.error("Claim free error:", err);
     res.status(500).json({ ok: false, error: "Failed to mark claim" });
+  }
+});
+
+// Record character purchase (after successful on-chain transaction)
+app.post("/api/shop/record-purchase", requireAuth, async (req, res) => {
+  const { txHash, characterId, price } = req.body || {};
+  
+  if (characterId === undefined || !price) {
+    res.status(400).json({ ok: false, error: "Missing characterId or price" });
+    return;
+  }
+  
+  try {
+    const { addOwnedCharacter, deductCoins, addCoins } = require("./modules/user/userRepo");
+    const user = await getOrCreateUser(req.user.address);
+    
+    // Check if already owns
+    if (user.owned_characters && user.owned_characters.includes(characterId)) {
+      res.status(400).json({ ok: false, error: "Already owns this character" });
+      return;
+    }
+    
+    // Deduct coins from DB
+    const deducted = await deductCoins(req.user.address, price);
+    if (!deducted) {
+      res.status(400).json({ ok: false, error: "Insufficient coins" });
+      return;
+    }
+    
+    // Add character to owned
+    await addOwnedCharacter(req.user.address, characterId);
+    
+    const updatedUser = await getOrCreateUser(req.user.address);
+    
+    res.json({
+      ok: true,
+      txHash,
+      coinBalance: updatedUser.coins,
+      ownedCharacters: updatedUser.owned_characters || []
+    });
+  } catch (err) {
+    console.error("Record purchase error:", err);
+    res.status(500).json({ ok: false, error: "Failed to record purchase" });
+  }
+});
+
+// Update selected character
+app.post("/api/user/select-character", requireAuth, async (req, res) => {
+  const { characterId } = req.body || {};
+  
+  if (characterId === undefined) {
+    res.status(400).json({ ok: false, error: "Missing characterId" });
+    return;
+  }
+  
+  try {
+    const { updateUser } = require("./modules/user/userRepo");
+    const user = await getOrCreateUser(req.user.address);
+    
+    // Check if user owns this character
+    const owned = user.owned_characters || [];
+    if (!owned.includes(characterId) && !(characterId === 0 && user.has_claimed_free)) {
+      res.status(400).json({ ok: false, error: "Character not owned" });
+      return;
+    }
+    
+    await updateUser(req.user.address, { selected_character: characterId });
+    
+    res.json({ ok: true, selectedCharacter: characterId });
+  } catch (err) {
+    console.error("Select character error:", err);
+    res.status(500).json({ ok: false, error: "Failed to select character" });
   }
 });
 

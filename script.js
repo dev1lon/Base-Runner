@@ -1208,13 +1208,10 @@ async function submitBackendRun(finalScore) {
         }
         const data = await response.json();
         if (data && data.ok) {
-            // Refresh coin balance from BLOCKCHAIN (not DB)
-            try {
-                const onChainBalance = await getOnChainCoinBalance();
-                coinCount = onChainBalance;
+            // Use coin balance from backend response
+            if (Number.isFinite(data.coinBalance)) {
+                coinCount = data.coinBalance;
                 saveCoins();
-            } catch (e) {
-                console.warn("Failed to get on-chain balance after submit:", e);
             }
             if (Number.isFinite(data.bestScore)) {
                 bestScore = data.bestScore;
@@ -2022,16 +2019,25 @@ async function applyProfileData(data) {
         localStorage.setItem("baseapp_runner_best_score", String(bestScore));
     }
     
-    // Coins from BLOCKCHAIN (not DB)
-    try {
-        const onChainBalance = await getOnChainCoinBalance();
-        coinCount = onChainBalance;
+    // Coins from BACKEND (faster than blockchain)
+    if (Number.isFinite(data.coinBalance)) {
+        coinCount = data.coinBalance;
         saveCoins();
-    } catch (e) {
-        console.warn("Failed to get on-chain balance:", e);
     }
     
-    // Checkin stats from BLOCKCHAIN
+    // Character data from BACKEND (faster than blockchain)
+    if (data.hasFreeMint !== undefined) {
+        hasFreeMint = data.hasFreeMint;
+    }
+    if (Array.isArray(data.ownedCharacters)) {
+        ownedCharacters = data.ownedCharacters;
+    }
+    if (Number.isFinite(data.selectedCharacter)) {
+        selectedCharacter = data.selectedCharacter;
+        localStorage.setItem('selectedCharacter', String(selectedCharacter));
+    }
+    
+    // Checkin stats from BLOCKCHAIN (still needed for streak)
     try {
         const stats = await getCheckinStats();
         if (stats) {
@@ -2042,18 +2048,12 @@ async function applyProfileData(data) {
         console.warn("Failed to get checkin stats:", e);
     }
     
-    // Collection status from BLOCKCHAIN
-    try {
-        await checkCollectionStatus();
-    } catch (e) {
-        console.warn("Failed to check collection status:", e);
-    }
-    
+    // Update UI
+    loadSelectedCharacter();
+    updateCollectionUI();
+    updateStartButtonState();
     checkinState.message = "";
     updateCheckinUI();
-    
-    // Update UI state after all data loaded
-    updateStartButtonState();
     updateUIState();
 }
 
@@ -2381,37 +2381,12 @@ function needsFreeClaim() {
 // ============ Collection Functions ============
 
 async function checkCollectionStatus() {
-    if (!walletReady || !walletAddress || !NFT_CONTRACT_ADDRESS) {
-        hasFreeMint = false;
-        ownedCharacters = [];
-        return;
-    }
-    
-    try {
-        const provider = getEthereumProvider();
-        const ethersProvider = new ethers.BrowserProvider(provider);
-        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, ethersProvider);
-        
-        // Check if has claimed free mint
-        hasFreeMint = await contract.hasClaimedFreeMint(walletAddress);
-        
-        // Get owned characters
-        try {
-            ownedCharacters = await contract.getOwnedCharacterList(walletAddress);
-            ownedCharacters = ownedCharacters.map(n => Number(n));
-        } catch (e) {
-            ownedCharacters = [];
-        }
-        
-        console.log('Collection status:', { hasFreeMint, ownedCharacters });
-        loadSelectedCharacter(); // Load saved selection
-        updateCollectionUI();
-        updateStartButtonState();
-    } catch (err) {
-        console.warn('Failed to check collection status:', err);
-        hasFreeMint = false;
-        ownedCharacters = [];
-    }
+    // Data is now loaded from backend in applyProfileData
+    // This function just updates the UI
+    console.log('Collection status:', { hasFreeMint, ownedCharacters, selectedCharacter });
+    loadSelectedCharacter();
+    updateCollectionUI();
+    updateStartButtonState();
 }
 
 function updateCollectionUI() {
@@ -2586,13 +2561,34 @@ async function handleMintVitalik() {
         const canClaim = await contract.canClaimFreeMint(walletAddress);
         if (!canClaim) {
             alert('Already claimed or not available');
+            collectionLoading = false;
+            updateCollectionUI();
             return;
         }
         
         // Send transaction
         const tx = await contract.mintFreeCharacter();
         if (mintVitalikBtn) mintVitalikBtn.textContent = 'Confirming...';
-        await tx.wait();
+        const receipt = await tx.wait();
+        
+        // Record on backend
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({ txHash: receipt.hash, characterId: 0 })
+            });
+            const data = await response.json();
+            if (data.ok) {
+                hasFreeMint = data.hasFreeMint;
+                ownedCharacters = data.ownedCharacters || [0];
+            }
+        } catch (e) {
+            console.warn('Failed to record mint on backend:', e);
+        }
         
         // Update state
         hasFreeMint = true;
@@ -2664,17 +2660,38 @@ async function handleMintTrump() {
         updateCollectionCoins();
         
         if (mintTrumpBtn) mintTrumpBtn.textContent = 'Confirming...';
-        await tx.wait();
+        const receipt = await tx.wait();
+        
+        // Record on backend
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/shop/record-purchase`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({ 
+                    txHash: receipt.hash, 
+                    characterId: 1, 
+                    price: charPrice 
+                })
+            });
+            const data = await response.json();
+            if (data.ok) {
+                coinCount = data.coinBalance;
+                ownedCharacters = data.ownedCharacters || [];
+            }
+        } catch (e) {
+            console.warn('Failed to record purchase on backend:', e);
+        }
         
         // Update state
         if (!ownedCharacters.includes(1)) ownedCharacters.push(1);
         selectedCharacter = 1; // Auto-select after purchase
         
-        // Refresh coin balance from chain (to sync exact value)
-        coinCount = await getOnChainCoinBalance();
-        
         updateCollectionUI();
         updateStartButtonState();
+        saveCoins();
     } catch (err) {
         console.error('Purchase failed:', err);
         // Rollback coin count on failure
@@ -2693,7 +2710,7 @@ async function handleMintTrump() {
 }
 
 // Select a character to play with
-function selectCharacter(charType) {
+async function selectCharacter(charType) {
     if (!ownedCharacters.includes(charType) && !(charType === 0 && hasFreeMint)) {
         return; // Can't select unowned character
     }
@@ -2706,6 +2723,20 @@ function selectCharacter(charType) {
     
     // Update UI
     updateCollectionUI();
+    
+    // Save to backend
+    try {
+        await fetch(`${BACKEND_URL}/api/user/select-character`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ characterId: charType })
+        });
+    } catch (e) {
+        console.warn('Failed to save character selection:', e);
+    }
     
     console.log('Selected character:', charType === 0 ? 'Vitalik' : 'Trump');
 }

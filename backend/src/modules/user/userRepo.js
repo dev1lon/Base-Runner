@@ -5,6 +5,8 @@ const USER_COLUMNS = `
   coins,
   best_score,
   has_claimed_free,
+  owned_characters,
+  selected_character,
   last_login_at,
   created_at,
   updated_at
@@ -38,8 +40,9 @@ async function updateUser(address, updates) {
   const allowed = {
     coins: "coins",
     best_score: "best_score",
-    // streak, last_checkin now on blockchain (GameCoin contract)
     has_claimed_free: "has_claimed_free",
+    owned_characters: "owned_characters",
+    selected_character: "selected_character",
     last_login_at: "last_login_at"
   };
   const sets = [];
@@ -69,8 +72,62 @@ async function updateUser(address, updates) {
   return result.rows[0];
 }
 
+// Add character to user's owned_characters array
+async function addOwnedCharacter(address, characterId) {
+  const result = await query(
+    `UPDATE users 
+     SET owned_characters = owned_characters || $1::jsonb,
+         updated_at = NOW()
+     WHERE address = $2
+     AND NOT (owned_characters @> $1::jsonb)
+     RETURNING ${USER_COLUMNS}`,
+    [JSON.stringify([characterId]), address]
+  );
+  return result.rows[0];
+}
+
+// Check if user owns a character
+async function ownsCharacter(address, characterId) {
+  const result = await query(
+    `SELECT owned_characters @> $1::jsonb as owns
+     FROM users WHERE address = $2`,
+    [JSON.stringify([characterId]), address]
+  );
+  return result.rows[0]?.owns || false;
+}
+
+// Add coins with transaction safety
+async function addCoins(address, amount) {
+  const result = await query(
+    `UPDATE users 
+     SET coins = coins + $1,
+         updated_at = NOW()
+     WHERE address = $2
+     RETURNING ${USER_COLUMNS}`,
+    [amount, address]
+  );
+  return result.rows[0];
+}
+
+// Deduct coins (returns null if insufficient)
+async function deductCoins(address, amount) {
+  const result = await query(
+    `UPDATE users 
+     SET coins = coins - $1,
+         updated_at = NOW()
+     WHERE address = $2 AND coins >= $1
+     RETURNING ${USER_COLUMNS}`,
+    [amount, address]
+  );
+  return result.rows[0] || null;
+}
+
 module.exports = {
   getUser,
   getOrCreateUser,
-  updateUser
+  updateUser,
+  addOwnedCharacter,
+  ownsCharacter,
+  addCoins,
+  deductCoins
 };
