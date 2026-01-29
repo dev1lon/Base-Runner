@@ -253,56 +253,31 @@ function getSafeAreaLeftPx() {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-// Wallet SDK instances
-let coinbaseWallet = null;
-let coinbaseProvider = null;
-let walletConnectProvider = null;
-let activeWalletType = null; // 'coinbase' | 'injected' | 'walletconnect'
+// Wallet state
+let activeWalletType = null; // 'injected'
 
-// WalletConnect Project ID (get from cloud.walletconnect.com)
-const WALLETCONNECT_PROJECT_ID = '3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e'; // Default test ID
+// App URL for deeplinks
+const APP_URL = 'https://base-runner-k9oj.onrender.com';
 
-// Initialize Coinbase Wallet SDK (recommended by Base)
-function initCoinbaseWallet() {
-    if (typeof window.CoinbaseWalletSDK !== 'undefined' && !coinbaseWallet) {
-        try {
-            coinbaseWallet = new window.CoinbaseWalletSDK({
-                appName: 'Base Runner',
-                appLogoUrl: 'https://base-runner-k9oj.onrender.com/assets/eth.png',
-                appChainIds: [8453, 84532] // Base mainnet, Base Sepolia
-            });
-            console.log("Coinbase Wallet SDK initialized");
-        } catch (e) {
-            console.error("Failed to init Coinbase SDK:", e);
-        }
-    }
+// Check if running inside a wallet browser (Coinbase, MetaMask, Trust, etc.)
+function isWalletBrowser() {
+    const ua = navigator.userAgent.toLowerCase();
+    return ua.includes('coinbase') || 
+           ua.includes('metamask') || 
+           ua.includes('trust') ||
+           ua.includes('rainbow') ||
+           (window.ethereum && window.ethereum.isWalletBrowser);
+}
+
+// Check if mobile device
+function isMobile() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
 function getEthereumProvider() {
-    // Return active provider based on selected wallet type
-    if (activeWalletType === 'walletconnect' && walletConnectProvider) {
-        return walletConnectProvider;
-    }
-    if (activeWalletType === 'coinbase' && coinbaseProvider) {
-        return coinbaseProvider;
-    }
-    if (window.ethereum) {
-        return window.ethereum;
-    }
-    return null;
+    // Return injected provider (MetaMask, Coinbase, Trust, etc.)
+    return window.ethereum || null;
 }
-
-// Get Coinbase Wallet provider
-function getCoinbaseProvider() {
-    if (!coinbaseWallet) {
-        initCoinbaseWallet();
-    }
-    if (coinbaseWallet && !coinbaseProvider) {
-        coinbaseProvider = coinbaseWallet.makeWeb3Provider();
-    }
-    return coinbaseProvider;
-}
-
 // Wait for ethereum provider to be injected (some wallets inject asynchronously)
 function waitForEthereumProvider(maxWaitMs = 3000) {
     return new Promise((resolve) => {
@@ -349,30 +324,64 @@ function showWalletSelector() {
     
     // Check what wallets are available
     const hasInjected = !!window.ethereum;
+    const mobile = isMobile();
     
-    // Create modal for wallet selection - always show all universal options
+    // If we have an injected provider, connect directly
+    if (hasInjected) {
+        connectWithInjected();
+        return;
+    }
+    
+    // No wallet - show options to open in wallet app
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
+    
+    // Deeplinks for wallet apps
+    const encodedUrl = encodeURIComponent(APP_URL);
+    const coinbaseDeeplink = mobile 
+        ? `https://go.cb-w.com/dapp?cb_url=${encodedUrl}`
+        : `https://go.cb-w.com/dapp?cb_url=${encodedUrl}`;
+    const metamaskDeeplink = mobile
+        ? `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`
+        : null;
+    const trustDeeplink = mobile
+        ? `https://link.trustwallet.com/open_url?coin_id=60&url=${encodedUrl}`
+        : null;
+    
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
         <div class="wallet-modal-content">
-            <h3>Connect Wallet</h3>
+            <h3>${mobile ? 'Open in Wallet App' : 'Connect Wallet'}</h3>
+            <p class="wallet-modal-subtitle">${mobile ? 'Choose your wallet to continue' : 'Install a wallet extension or open on mobile'}</p>
             <div class="wallet-options">
-                <button class="wallet-option" data-wallet="coinbase">
+                <a href="${coinbaseDeeplink}" class="wallet-option" target="_blank" rel="noopener">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
                     <span class="wallet-badge">Recommended</span>
-                </button>
-                <button class="wallet-option" data-wallet="walletconnect">
-                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
-                    <span>WalletConnect</span>
-                    <span class="wallet-badge-secondary">QR Code</span>
-                </button>
-                ${hasInjected ? `
-                <button class="wallet-option" data-wallet="injected">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Browser Wallet" width="32" height="32">
-                    <span>Browser Wallet</span>
-                </button>
+                </a>
+                ${mobile && metamaskDeeplink ? `
+                <a href="${metamaskDeeplink}" class="wallet-option" target="_blank" rel="noopener">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
+                    <span>MetaMask</span>
+                </a>
+                ` : ''}
+                ${mobile && trustDeeplink ? `
+                <a href="${trustDeeplink}" class="wallet-option" target="_blank" rel="noopener">
+                    <img src="https://trustwallet.com/assets/images/media/assets/trust_platform.svg" alt="Trust" width="32" height="32">
+                    <span>Trust Wallet</span>
+                </a>
+                ` : ''}
+                ${!mobile ? `
+                <a href="https://www.coinbase.com/wallet" class="wallet-option" target="_blank" rel="noopener">
+                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Install" width="32" height="32">
+                    <span>Install Coinbase Extension</span>
+                    <span class="wallet-badge-secondary">Chrome</span>
+                </a>
+                <a href="https://metamask.io/download/" class="wallet-option" target="_blank" rel="noopener">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Install" width="32" height="32">
+                    <span>Install MetaMask</span>
+                    <span class="wallet-badge-secondary">Chrome</span>
+                </a>
                 ` : ''}
             </div>
             <button class="wallet-modal-close">Cancel</button>
@@ -417,9 +426,15 @@ function showWalletSelector() {
             }
             .wallet-modal-content h3 {
                 color: white;
-                margin: 0 0 20px 0;
+                margin: 0 0 8px 0;
                 text-align: center;
                 font-size: 18px;
+            }
+            .wallet-modal-subtitle {
+                color: rgba(255,255,255,0.6);
+                margin: 0 0 20px 0;
+                text-align: center;
+                font-size: 14px;
             }
             .wallet-options {
                 display: flex;
@@ -438,6 +453,7 @@ function showWalletSelector() {
                 cursor: pointer;
                 transition: all 0.2s;
                 font-size: 15px;
+                text-decoration: none;
             }
             .wallet-option:hover {
                 background: rgba(255, 255, 255, 0.1);
@@ -445,6 +461,8 @@ function showWalletSelector() {
             }
             .wallet-option img {
                 border-radius: 8px;
+                width: 32px;
+                height: 32px;
             }
             .wallet-badge {
                 margin-left: auto;
@@ -458,7 +476,7 @@ function showWalletSelector() {
                 margin-left: auto;
                 font-size: 11px;
                 padding: 3px 8px;
-                background: #3396ff;
+                background: rgba(255,255,255,0.2);
                 border-radius: 4px;
                 color: white;
             }
@@ -480,65 +498,12 @@ function showWalletSelector() {
         document.head.appendChild(styles);
     }
     
-    // Handle clicks
+    // Handle close
     const backdrop = modal.querySelector('.wallet-modal-backdrop');
     const closeBtn = modal.querySelector('.wallet-modal-close');
     
-    backdrop.addEventListener('click', (e) => {
-        e.stopPropagation();
-        modal.remove();
-    });
-    closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        modal.remove();
-    });
-    
-    modal.querySelectorAll('.wallet-option').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const walletType = btn.dataset.wallet;
-            modal.remove();
-            if (walletType === 'coinbase') {
-                connectWithCoinbase();
-            } else if (walletType === 'walletconnect') {
-                connectWithWalletConnect();
-            } else {
-                connectWithInjected();
-            }
-        });
-    });
-}
-
-// Connect with Coinbase Wallet
-async function connectWithCoinbase() {
-    try {
-        const provider = getCoinbaseProvider();
-        if (!provider) {
-            setWalletError("Coinbase Wallet not available");
-            return;
-        }
-        
-        activeWalletType = 'coinbase';
-        isConnectingWallet = true;
-        updateWalletUI();
-        
-        const accounts = await provider.request({ method: "eth_requestAccounts" });
-        handleAccountsChanged(accounts);
-        
-        // Switch to Base Sepolia
-        await switchToBaseSepolia();
-        
-        isConnectingWallet = false;
-        updateWalletUI();
-        
-        console.log("Connected with Coinbase Wallet");
-    } catch (err) {
-        console.error("Coinbase connect error:", err);
-        setWalletError(err.message || "Connection failed");
-        isConnectingWallet = false;
-        activeWalletType = null;
-        updateWalletUI();
-    }
+    backdrop.addEventListener('click', () => modal.remove());
+    closeBtn.addEventListener('click', () => modal.remove());
 }
 
 // Connect with injected wallet (MetaMask, etc.)
@@ -569,85 +534,6 @@ async function connectWithInjected() {
         setWalletError(err.message || "Connection failed");
         isConnectingWallet = false;
         activeWalletType = null;
-        updateWalletUI();
-    }
-}
-
-// Connect with WalletConnect (QR code for mobile wallets)
-async function connectWithWalletConnect() {
-    try {
-        isConnectingWallet = true;
-        setWalletInfo("Opening WalletConnect...");
-        updateWalletUI();
-        
-        // Check if EthereumProvider is available
-        if (typeof window.EthereumProvider === 'undefined') {
-            throw new Error("WalletConnect not loaded");
-        }
-        
-        // Initialize WalletConnect provider
-        walletConnectProvider = await window.EthereumProvider.init({
-            projectId: WALLETCONNECT_PROJECT_ID,
-            chains: [84532], // Base Sepolia
-            optionalChains: [8453], // Base Mainnet
-            showQrModal: true,
-            metadata: {
-                name: 'Base Runner',
-                description: 'Run and earn on Base',
-                url: 'https://base-runner-k9oj.onrender.com',
-                icons: ['https://base-runner-k9oj.onrender.com/assets/eth.png']
-            }
-        });
-        
-        // Enable session (this shows QR modal)
-        await walletConnectProvider.enable();
-        
-        activeWalletType = 'walletconnect';
-        
-        // Get accounts
-        const accounts = walletConnectProvider.accounts;
-        if (accounts && accounts.length > 0) {
-            handleAccountsChanged(accounts);
-        }
-        
-        // Get chain ID
-        const chainId = walletConnectProvider.chainId;
-        if (chainId) {
-            handleChainChanged('0x' + chainId.toString(16));
-        }
-        
-        // Listen for events
-        walletConnectProvider.on('accountsChanged', handleAccountsChanged);
-        walletConnectProvider.on('chainChanged', (chainId) => {
-            handleChainChanged('0x' + chainId.toString(16));
-        });
-        walletConnectProvider.on('disconnect', () => {
-            console.log("WalletConnect disconnected");
-            walletAddress = null;
-            activeWalletType = null;
-            walletConnectProvider = null;
-            updateWalletUI();
-        });
-        
-        isConnectingWallet = false;
-        clearWalletMessages();
-        updateWalletUI();
-        
-        // Authenticate
-        if (walletAddress && normalizeChainId(walletChainId) === BASE_SEPOLIA_CHAIN_ID) {
-            await authenticateWallet();
-        }
-        
-        console.log("Connected with WalletConnect");
-    } catch (err) {
-        console.error("WalletConnect error:", err);
-        if (err.message !== 'User rejected') {
-            setWalletError(err.message || "WalletConnect failed");
-        }
-        isConnectingWallet = false;
-        activeWalletType = null;
-        walletConnectProvider = null;
-        clearWalletMessages();
         updateWalletUI();
     }
 }
@@ -1240,9 +1126,6 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
-    // Initialize Coinbase Wallet SDK
-    initCoinbaseWallet();
-    
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();
@@ -1250,10 +1133,9 @@ async function initWalletState() {
     const provider = await waitForEthereumProvider(3000);
     isDetectingWallet = false;
     
-    // Even without injected provider, we have Coinbase Wallet SDK
-    const hasCoinbase = typeof window.CoinbaseWalletSDK !== 'undefined';
-    
-    if (!provider && !hasCoinbase) {
+    // Update UI regardless of whether provider is available
+    // (we can still show deeplink options for mobile wallets)
+    if (!provider) {
         updateWalletUI();
         return;
     }
