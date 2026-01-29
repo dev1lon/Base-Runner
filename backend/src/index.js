@@ -1,7 +1,23 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
+const fs = require("fs");
 const { simulateRun, DEFAULT_CONFIG } = require("./sim");
+
+// Character sprite files mapping (ID -> filename)
+const CHARACTER_SPRITES = {
+  0: 'vitalik_free.png',
+  1: 'doge_common.png',
+  2: 'hamaha_common.png',
+  3: 'hayes_rare.png',
+  4: 'pepe_rare.png',
+  5: 'mask_epic.png',
+  6: 'sam_epic.png',
+  7: 'vlad_epic.png',
+  8: 'cz_leg.png',
+  9: 'trump_leg.png'
+};
 const {
   createSession,
   getSession,
@@ -500,6 +516,78 @@ app.post("/api/user/select-character", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Select character error:", err);
     res.status(500).json({ ok: false, error: "Failed to select character" });
+  }
+});
+
+// ============ Protected Sprites API ============
+
+// Get sprite for owned character (returns image file)
+app.get("/api/sprites/:characterId", requireAuth, async (req, res) => {
+  const characterId = parseInt(req.params.characterId);
+  
+  if (isNaN(characterId) || !CHARACTER_SPRITES[characterId]) {
+    res.status(404).json({ ok: false, error: "Character not found" });
+    return;
+  }
+  
+  try {
+    const user = await getOrCreateUser(req.user.address);
+    const owned = user.owned_characters || [];
+    
+    // Check ownership (character 0 with free mint, or in owned list)
+    const ownsCharacter = owned.includes(characterId) || 
+                          (characterId === 0 && user.has_claimed_free);
+    
+    if (!ownsCharacter) {
+      res.status(403).json({ ok: false, error: "Character not owned" });
+      return;
+    }
+    
+    // Serve the sprite file
+    const spritePath = path.join(__dirname, 'sprites', CHARACTER_SPRITES[characterId]);
+    
+    if (!fs.existsSync(spritePath)) {
+      console.error("Sprite file not found:", spritePath);
+      res.status(404).json({ ok: false, error: "Sprite file not found" });
+      return;
+    }
+    
+    res.sendFile(spritePath);
+  } catch (err) {
+    console.error("Get sprite error:", err);
+    res.status(500).json({ ok: false, error: "Failed to get sprite" });
+  }
+});
+
+// Get all owned sprites URLs (returns list of sprite URLs)
+app.get("/api/sprites", requireAuth, async (req, res) => {
+  try {
+    const user = await getOrCreateUser(req.user.address);
+    const owned = user.owned_characters || [];
+    
+    // Build sprite URLs for owned characters
+    const sprites = {};
+    
+    for (const charId of owned) {
+      if (CHARACTER_SPRITES[charId]) {
+        sprites[charId] = `/api/sprites/${charId}`;
+      }
+    }
+    
+    // Add character 0 if has free mint
+    if (user.has_claimed_free && CHARACTER_SPRITES[0]) {
+      sprites[0] = `/api/sprites/0`;
+    }
+    
+    res.json({ 
+      ok: true, 
+      sprites,
+      ownedCharacters: owned,
+      selectedCharacter: user.selected_character || 0
+    });
+  } catch (err) {
+    console.error("Get sprites error:", err);
+    res.status(500).json({ ok: false, error: "Failed to get sprites" });
   }
 });
 

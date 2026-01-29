@@ -2397,21 +2397,59 @@ function updateCollectionUI() {
     cards.forEach(card => {
         const charId = parseInt(card.dataset.charId);
         const btn = card.querySelector('.char-select-btn');
+        const img = card.querySelector('.character-image img');
         
         if (!btn) return;
         
-        if (selectedCharacter === charId) {
-            card.classList.add('selected');
-            btn.textContent = 'Selected ✓';
+        // Check if character is owned
+        const isOwned = ownedCharacters.includes(charId) || (charId === 0 && hasFreeMint);
+        
+        // Update image - show real sprite for owned, locked for others
+        if (img) {
+            if (isOwned && loadedSprites[charId]) {
+                // Load real sprite from backend
+                if (authToken) {
+                    fetch(`${BACKEND_URL}/api/sprites/${charId}`, {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    })
+                    .then(r => r.blob())
+                    .then(blob => {
+                        img.src = URL.createObjectURL(blob);
+                    })
+                    .catch(() => {
+                        img.src = 'assets/locked/character_locked.png';
+                    });
+                }
+            } else if (!isOwned) {
+                img.src = 'assets/locked/character_locked.png';
+            }
+        }
+        
+        // Update card state
+        if (isOwned) {
+            card.classList.add('owned');
+            card.classList.remove('locked');
+            
+            if (selectedCharacter === charId) {
+                card.classList.add('selected');
+                btn.textContent = 'Selected ✓';
+                btn.disabled = true;
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-ghost');
+            } else {
+                card.classList.remove('selected');
+                btn.textContent = 'Select';
+                btn.disabled = false;
+                btn.classList.add('btn-primary');
+                btn.classList.remove('btn-ghost');
+            }
+        } else {
+            card.classList.remove('owned', 'selected');
+            card.classList.add('locked');
+            btn.textContent = 'Locked';
             btn.disabled = true;
             btn.classList.remove('btn-primary');
-            btn.classList.add('btn-ghost');
-        } else {
-            card.classList.remove('selected');
-            btn.textContent = 'Select';
-            btn.disabled = false;
-            btn.classList.add('btn-primary');
-            btn.classList.remove('btn-ghost');
+            btn.classList.add('btn-secondary');
         }
     });
     
@@ -2549,24 +2587,74 @@ async function handleMintVitalik() {
     }
 }
 
-// Character data
+// Character data - sprites point to locked versions by default
+// Real sprites are loaded from backend for owned characters
 const CHARACTERS = {
-    0: { name: 'Vitalik', sprite: 'assets/vitalik_free.png', rarity: 'FREE', price: 0 },
-    1: { name: 'Doge', sprite: 'assets/doge_common.png', rarity: 'COMMON', price: 0 },
-    2: { name: 'Hamaha', sprite: 'assets/hamaha_common.png', rarity: 'COMMON', price: 0 },
-    3: { name: 'Hayes', sprite: 'assets/hayes_rare.png', rarity: 'RARE', price: 0 },
-    4: { name: 'Pepe', sprite: 'assets/pepe_rare.png', rarity: 'RARE', price: 0 },
-    5: { name: 'Mask', sprite: 'assets/mask_epic.png', rarity: 'EPIC', price: 0 },
-    6: { name: 'Sam', sprite: 'assets/sam_epic.png', rarity: 'EPIC', price: 0 },
-    7: { name: 'Vlad', sprite: 'assets/vlad_epic.png', rarity: 'EPIC', price: 0 },
-    8: { name: 'CZ', sprite: 'assets/cz_leg.png', rarity: 'LEGENDARY', price: 0 },
-    9: { name: 'Trump', sprite: 'assets/trump_leg.png', rarity: 'LEGENDARY', price: 0 }
+    0: { name: 'Vitalik', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'FREE', price: 0 },
+    1: { name: 'Doge', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'COMMON', price: 0 },
+    2: { name: 'Hamaha', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'COMMON', price: 0 },
+    3: { name: 'Hayes', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'RARE', price: 0 },
+    4: { name: 'Pepe', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'RARE', price: 0 },
+    5: { name: 'Mask', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'EPIC', price: 0 },
+    6: { name: 'Sam', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'EPIC', price: 0 },
+    7: { name: 'Vlad', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'EPIC', price: 0 },
+    8: { name: 'CZ', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'LEGENDARY', price: 0 },
+    9: { name: 'Trump', sprite: 'assets/locked/character_locked.png', lockedSprite: 'assets/locked/character_locked.png', rarity: 'LEGENDARY', price: 0 }
 };
+
+// Cache for loaded real sprites
+const loadedSprites = {};
 
 // For backwards compatibility
 const CHARACTER_PRICES = Object.fromEntries(
     Object.entries(CHARACTERS).map(([id, char]) => [id, char.price])
 );
+
+// Load real sprites from backend for owned characters
+async function loadOwnedSprites() {
+    if (!authToken) return;
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/sprites`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (!data.ok) return;
+        
+        // Update CHARACTERS with real sprite URLs for owned characters
+        for (const [charId, spriteUrl] of Object.entries(data.sprites)) {
+            const id = parseInt(charId);
+            if (CHARACTERS[id]) {
+                // Store real sprite URL (with backend URL prefix)
+                const fullUrl = `${BACKEND_URL}${spriteUrl}`;
+                CHARACTERS[id].sprite = fullUrl;
+                loadedSprites[id] = fullUrl;
+                console.log(`Loaded sprite for character ${id}: ${CHARACTERS[id].name}`);
+            }
+        }
+        
+        // Update selected character from backend
+        if (data.selectedCharacter !== undefined) {
+            selectedCharacter = data.selectedCharacter;
+            localStorage.setItem('selectedCharacter', String(selectedCharacter));
+        }
+        
+        // Update owned characters
+        if (data.ownedCharacters) {
+            ownedCharacters = data.ownedCharacters;
+        }
+        
+        // Update player sprite with real sprite
+        updatePlayerSprite();
+        updateCollectionUI();
+        
+    } catch (e) {
+        console.warn('Failed to load owned sprites:', e);
+    }
+}
 
 async function handleMintTrump() {
     const ownsTrump = ownedCharacters.includes(1);
@@ -2663,9 +2751,15 @@ async function handleMintTrump() {
 
 // Select a character to play with
 async function selectCharacter(charType) {
-    // Testing mode - allow selecting any character
     const char = CHARACTERS[charType];
     if (!char) return;
+    
+    // Check ownership
+    const isOwned = ownedCharacters.includes(charType) || (charType === 0 && hasFreeMint);
+    if (!isOwned) {
+        console.warn('Cannot select unowned character:', charType);
+        return;
+    }
     
     selectedCharacter = charType;
     localStorage.setItem('selectedCharacter', String(charType));
@@ -2698,26 +2792,53 @@ async function selectCharacter(charType) {
 // Update player sprite based on selected character
 function updatePlayerSprite() {
     const char = CHARACTERS[selectedCharacter] || CHARACTERS[0];
-    const spritePath = char.sprite;
+    
+    // Use loaded sprite if available, otherwise locked
+    let spritePath = loadedSprites[selectedCharacter] || char.sprite;
+    
+    // If we have auth token but sprite is locked, try to load from backend
+    if (authToken && spritePath.includes('locked') && ownedCharacters.includes(selectedCharacter)) {
+        spritePath = `${BACKEND_URL}/api/sprites/${selectedCharacter}`;
+    }
     
     // Update the playerImg if it exists
     if (typeof playerImg !== 'undefined' && playerImg) {
-        playerImg.src = spritePath;
+        // Create new image to handle auth header for backend sprites
+        if (spritePath.startsWith(BACKEND_URL)) {
+            fetch(spritePath, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            })
+            .then(r => r.blob())
+            .then(blob => {
+                playerImg.src = URL.createObjectURL(blob);
+            })
+            .catch(e => {
+                console.warn('Failed to load sprite, using locked:', e);
+                playerImg.src = char.lockedSprite || 'assets/locked/character_locked.png';
+            });
+        } else {
+            playerImg.src = spritePath;
+        }
     }
 }
 
-// Load selected character from storage
-function loadSelectedCharacter() {
+// Load selected character from storage (fallback) or backend (primary)
+async function loadSelectedCharacter() {
+    // First, try localStorage as quick fallback
     const saved = localStorage.getItem('selectedCharacter');
     if (saved !== null) {
         const charType = parseInt(saved);
-        // Testing mode - allow any valid character
         if (CHARACTERS[charType]) {
             selectedCharacter = charType;
         } else {
-            selectedCharacter = 0; // Default to Vitalik
+            selectedCharacter = 0;
         }
     }
+    
+    // Load real sprites from backend (this also gets selected character)
+    await loadOwnedSprites();
+    
+    // Update sprite
     updatePlayerSprite();
 }
 
