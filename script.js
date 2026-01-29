@@ -315,8 +315,8 @@ async function initWeb3Modal() {
     try {
         const { createWeb3Modal, defaultConfig } = await import('https://esm.sh/@web3modal/ethers@5.1.11?bundle');
         
-        // WalletConnect Cloud Project ID (public demo ID)
-        const projectId = '2aca272d18deb10ff748260da5f78bfd';
+        // WalletConnect Cloud Project ID
+        const projectId = '2b1bf48533e65943f2d6f749c353b1c9';
         
         const baseSepolia = {
             chainId: 84532,
