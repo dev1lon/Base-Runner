@@ -185,6 +185,7 @@ let hasFreeMint = false; // User has minted free character
 let ownedCharacters = []; // List of owned character types
 let collectionLoading = false;
 let selectedCharacter = 0; // Currently selected character (0=Vitalik, 1=Trump)
+let collectionOpenedFrom = null; // Track where collection was opened from ('menu' or 'pause')
 
 // Overlay elements
 let overlayConnect;
@@ -202,6 +203,7 @@ let checkinStatus;
 let checkinButtonPause;
 let checkinStatusPause;
 let collectionButton;
+let collectionButtonPause;
 let collectionCloseBtn;
 let mintVitalikBtn;
 let mintTrumpBtn;
@@ -1729,6 +1731,7 @@ window.onload = function() {
     // Collection elements
     overlayCollection = document.getElementById("overlay-collection");
     collectionButton = document.getElementById("collection-button");
+    collectionButtonPause = document.getElementById("collection-button-pause");
     collectionCloseBtn = document.getElementById("collection-close-btn");
     mintVitalikBtn = document.getElementById("mint-vitalik-btn");
     mintTrumpBtn = document.getElementById("mint-trump-btn");
@@ -1768,11 +1771,19 @@ window.onload = function() {
     
     // Collection button listeners
     if (collectionButton) {
-        collectionButton.addEventListener("click", openCollection);
+        collectionButton.addEventListener("click", () => openCollection('menu'));
         collectionButton.addEventListener("touchstart", function(e) {
             e.stopPropagation();
             e.preventDefault();
-            openCollection();
+            openCollection('menu');
+        }, { passive: false });
+    }
+    if (collectionButtonPause) {
+        collectionButtonPause.addEventListener("click", () => openCollection('pause'));
+        collectionButtonPause.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            openCollection('pause');
         }, { passive: false });
     }
     if (collectionCloseBtn) {
@@ -2510,8 +2521,9 @@ function updateStartButtonState() {
     }
 }
 
-function openCollection() {
+function openCollection(from = 'menu') {
     if (!overlayCollection) return;
+    collectionOpenedFrom = from;
     currentUIState = UI_STATE.COLLECTION;
     updateUIState();
     updateCollectionCoins(); // Update coins display
@@ -2526,7 +2538,13 @@ function updateCollectionCoins() {
 }
 
 function closeCollection() {
-    currentUIState = UI_STATE.MENU;
+    // Return to where we came from
+    if (collectionOpenedFrom === 'pause') {
+        currentUIState = UI_STATE.PAUSED;
+    } else {
+        currentUIState = UI_STATE.MENU;
+    }
+    collectionOpenedFrom = null;
     updateUIState();
 }
 
