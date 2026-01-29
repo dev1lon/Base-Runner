@@ -203,22 +203,11 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     return;
   }
 
-  // Verify reported score matches simulation (anti-cheat)
-  // Higher tolerance due to timing differences between setInterval spawning and frame-based simulation
-  // TODO: Fix by making frontend spawn frame-based like simulation
-  const scoreTolerance = Math.max(500, Math.floor(gameDurationMs / 10)); // ~10x tolerance for now
-  console.log("📊 Score check:", { reported, simScore, scoreTolerance, diff: reported - simScore, gameDurationMs });
-  
-  if (reported > simScore + scoreTolerance) {
-    console.log("❌ 403: Score mismatch", { reported, simScore, scoreTolerance });
-    res.status(403).json({
-      ok: false,
-      error: "Score mismatch - simulation does not match reported score",
-      simScore,
-      reported
-    });
-    return;
-  }
+  // Simulation check disabled - frontend uses setInterval (real-time) while sim uses frame-time
+  // This causes obstacle positions to differ, making simulation unreliable
+  // Relying on maxScore (time-based) check instead which is above
+  // TODO: Fix by converting frontend to frame-based spawning
+  console.log("📊 Score info:", { reported, simScore, maxScore, gameDurationMs });
 
   // Use reported score directly since simulation check is disabled
   // Still capped by maxScore (time-based limit)
