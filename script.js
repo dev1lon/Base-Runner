@@ -2409,6 +2409,7 @@ async function checkCollectionStatus() {
 function updateCollectionUI() {
     const vitalikCard = document.getElementById('char-vitalik');
     const trumpCard = document.getElementById('char-trump');
+    const vitalikLock = document.getElementById('vitalik-lock');
     const trumpLock = document.getElementById('trump-lock');
     
     const ownsVitalik = hasFreeMint || ownedCharacters.includes(0);
@@ -2418,6 +2419,7 @@ function updateCollectionUI() {
     if (vitalikCard && mintVitalikBtn) {
         if (ownsVitalik) {
             vitalikCard.classList.add('owned');
+            if (vitalikLock) vitalikLock.style.display = 'none';
             // Show Select button if owned
             if (selectedCharacter === 0) {
                 mintVitalikBtn.textContent = 'Selected ✓';
@@ -2435,6 +2437,7 @@ function updateCollectionUI() {
         } else {
             vitalikCard.classList.remove('owned');
             vitalikCard.classList.remove('selected');
+            if (vitalikLock) vitalikLock.style.display = 'flex';
             mintVitalikBtn.textContent = 'Free Mint';
             mintVitalikBtn.disabled = false;
             mintVitalikBtn.classList.add('btn-primary');
