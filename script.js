@@ -315,7 +315,8 @@ async function initWeb3Modal() {
     try {
         const { createWeb3Modal, defaultConfig } = await import('https://esm.sh/@web3modal/ethers@5.1.11?bundle');
         
-        const projectId = 'fd7ad326d39318ccae064253cf5a1862';
+        // WalletConnect Cloud Project ID
+        const projectId = '3fcc6bba6f1de962d911bb5b5c3dba68';
         
         const baseSepolia = {
             chainId: 84532,
@@ -336,7 +337,8 @@ async function initWeb3Modal() {
             metadata,
             enableEIP6963: true,
             enableInjected: true,
-            enableCoinbase: true
+            enableCoinbase: true,
+            rpcUrl: 'https://sepolia.base.org'
         });
         
         const modal = createWeb3Modal({
@@ -344,7 +346,19 @@ async function initWeb3Modal() {
             chains: [baseSepolia],
             projectId,
             enableAnalytics: false,
-            themeMode: 'dark'
+            themeMode: 'dark',
+            featuredWalletIds: [
+                'c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96', // MetaMask
+                'fd20dc426fb37566d803205b19bbc1d4096b248ac04548e3cfb6b3a38bd033aa', // Coinbase
+                '4622a2b2d6af1c9844944291e5e7351a6aa24cd7b23099efac1b2fd875da31a0', // Trust
+                '1ae92b26df02f0abca6304df07debccd18262fdf5fe82daa81593582dac9a369'  // Rainbow
+            ],
+            includeWalletIds: [
+                'c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96',
+                'fd20dc426fb37566d803205b19bbc1d4096b248ac04548e3cfb6b3a38bd033aa',
+                '4622a2b2d6af1c9844944291e5e7351a6aa24cd7b23099efac1b2fd875da31a0',
+                '1ae92b26df02f0abca6304df07debccd18262fdf5fe82daa81593582dac9a369'
+            ]
         });
         
         window.web3modal = modal;
@@ -648,41 +662,11 @@ function showWalletSelector() {
             modal.remove();
             
             if (web3modal) {
-                // Hide game overlays completely
-                document.querySelectorAll('.overlay, .game-container, .card').forEach(el => {
-                    el.style.display = 'none';
-                });
-                document.body.style.overflow = 'hidden';
-                
-                // Subscribe to modal state to restore UI when closed
-                web3modal.subscribeEvents((event) => {
-                    if (event.data.event === 'MODAL_CLOSE') {
-                        document.querySelectorAll('.overlay, .game-container, .card').forEach(el => {
-                            el.style.display = '';
-                        });
-                        document.body.style.overflow = '';
-                        updateUIState();
-                    }
-                });
-                
                 await web3modal.open();
-                
-                // Force w3m-modal to be clickable
-                setTimeout(() => {
-                    const w3mModal = document.querySelector('w3m-modal');
-                    if (w3mModal) {
-                        w3mModal.style.cssText = 'position:fixed!important;z-index:999999!important;pointer-events:auto!important;top:0!important;left:0!important;right:0!important;bottom:0!important;';
-                    }
-                }, 100);
-                
                 return;
             }
         } catch (err) {
             console.error('Web3Modal error:', err);
-            document.querySelectorAll('.overlay, .game-container, .card').forEach(el => {
-                el.style.display = '';
-            });
-            document.body.style.overflow = '';
         }
         
         modal.remove();
