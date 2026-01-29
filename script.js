@@ -253,11 +253,43 @@ function getSafeAreaLeftPx() {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
+// Coinbase Wallet SDK instance
+let coinbaseWallet = null;
+let coinbaseProvider = null;
+let activeWalletType = null; // 'coinbase' | 'injected'
+
+// Initialize Coinbase Wallet SDK (recommended by Base)
+function initCoinbaseWallet() {
+    if (typeof window.CoinbaseWalletSDK !== 'undefined') {
+        coinbaseWallet = new window.CoinbaseWalletSDK({
+            appName: 'Base Runner',
+            appLogoUrl: 'https://base-runner-k9oj.onrender.com/assets/eth.png',
+            appChainIds: [8453, 84532] // Base mainnet, Base Sepolia
+        });
+        console.log("Coinbase Wallet SDK initialized");
+    }
+}
+
 function getEthereumProvider() {
+    // Return active provider based on selected wallet type
+    if (activeWalletType === 'coinbase' && coinbaseProvider) {
+        return coinbaseProvider;
+    }
     if (window.ethereum) {
         return window.ethereum;
     }
     return null;
+}
+
+// Get Coinbase Wallet provider
+function getCoinbaseProvider() {
+    if (!coinbaseWallet) {
+        initCoinbaseWallet();
+    }
+    if (coinbaseWallet && !coinbaseProvider) {
+        coinbaseProvider = coinbaseWallet.makeWeb3Provider();
+    }
+    return coinbaseProvider;
 }
 
 // Wait for ethereum provider to be injected (some wallets inject asynchronously)
@@ -296,6 +328,222 @@ function waitForEthereumProvider(maxWaitMs = 3000) {
             }
         }, 100);
     });
+}
+
+// Show wallet selection modal
+function showWalletSelector() {
+    // Check what wallets are available
+    const hasInjected = !!window.ethereum;
+    const hasCoinbase = typeof window.CoinbaseWalletSDK !== 'undefined';
+    
+    // If only one option, connect directly
+    if (hasCoinbase && !hasInjected) {
+        connectWithCoinbase();
+        return;
+    }
+    if (hasInjected && !hasCoinbase) {
+        connectWithInjected();
+        return;
+    }
+    
+    // Create modal for wallet selection
+    const modal = document.createElement('div');
+    modal.id = 'wallet-modal';
+    modal.innerHTML = `
+        <div class="wallet-modal-backdrop"></div>
+        <div class="wallet-modal-content">
+            <h3>Connect Wallet</h3>
+            <div class="wallet-options">
+                ${hasCoinbase ? `
+                <button class="wallet-option" data-wallet="coinbase">
+                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
+                    <span>Coinbase Wallet</span>
+                    <span class="wallet-badge">Recommended</span>
+                </button>
+                ` : ''}
+                ${hasInjected ? `
+                <button class="wallet-option" data-wallet="injected">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Browser Wallet" width="32" height="32">
+                    <span>Browser Wallet</span>
+                </button>
+                ` : ''}
+            </div>
+            <button class="wallet-modal-close">Cancel</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // Add styles if not already added
+    if (!document.getElementById('wallet-modal-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'wallet-modal-styles';
+        styles.textContent = `
+            #wallet-modal {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 10000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .wallet-modal-backdrop {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.6);
+                backdrop-filter: blur(4px);
+            }
+            .wallet-modal-content {
+                position: relative;
+                background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 16px;
+                padding: 24px;
+                min-width: 300px;
+                max-width: 90%;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            }
+            .wallet-modal-content h3 {
+                color: white;
+                margin: 0 0 20px 0;
+                text-align: center;
+                font-size: 18px;
+            }
+            .wallet-options {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            .wallet-option {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 14px 16px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 12px;
+                color: white;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-size: 15px;
+            }
+            .wallet-option:hover {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: #0052ff;
+            }
+            .wallet-option img {
+                border-radius: 8px;
+            }
+            .wallet-badge {
+                margin-left: auto;
+                font-size: 11px;
+                padding: 3px 8px;
+                background: #0052ff;
+                border-radius: 4px;
+                color: white;
+            }
+            .wallet-modal-close {
+                width: 100%;
+                margin-top: 16px;
+                padding: 12px;
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                color: rgba(255, 255, 255, 0.7);
+                cursor: pointer;
+                font-size: 14px;
+            }
+            .wallet-modal-close:hover {
+                background: rgba(255, 255, 255, 0.05);
+            }
+        `;
+        document.head.appendChild(styles);
+    }
+    
+    // Handle clicks
+    modal.querySelector('.wallet-modal-backdrop').addEventListener('click', () => modal.remove());
+    modal.querySelector('.wallet-modal-close').addEventListener('click', () => modal.remove());
+    
+    modal.querySelectorAll('.wallet-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const walletType = btn.dataset.wallet;
+            modal.remove();
+            if (walletType === 'coinbase') {
+                connectWithCoinbase();
+            } else {
+                connectWithInjected();
+            }
+        });
+    });
+}
+
+// Connect with Coinbase Wallet
+async function connectWithCoinbase() {
+    try {
+        const provider = getCoinbaseProvider();
+        if (!provider) {
+            setWalletError("Coinbase Wallet not available");
+            return;
+        }
+        
+        activeWalletType = 'coinbase';
+        isConnectingWallet = true;
+        updateWalletUI();
+        
+        const accounts = await provider.request({ method: "eth_requestAccounts" });
+        handleAccountsChanged(accounts);
+        
+        // Switch to Base Sepolia
+        await switchToBaseSepolia();
+        
+        isConnectingWallet = false;
+        updateWalletUI();
+        
+        console.log("Connected with Coinbase Wallet");
+    } catch (err) {
+        console.error("Coinbase connect error:", err);
+        setWalletError(err.message || "Connection failed");
+        isConnectingWallet = false;
+        activeWalletType = null;
+        updateWalletUI();
+    }
+}
+
+// Connect with injected wallet (MetaMask, etc.)
+async function connectWithInjected() {
+    const provider = window.ethereum;
+    if (!provider) {
+        setWalletError("No browser wallet found");
+        return;
+    }
+    
+    try {
+        activeWalletType = 'injected';
+        isConnectingWallet = true;
+        updateWalletUI();
+        
+        const accounts = await provider.request({ method: "eth_requestAccounts" });
+        handleAccountsChanged(accounts);
+        
+        // Switch to Base Sepolia
+        await switchToBaseSepolia();
+        
+        isConnectingWallet = false;
+        updateWalletUI();
+        
+        console.log("Connected with browser wallet");
+    } catch (err) {
+        console.error("Injected wallet connect error:", err);
+        setWalletError(err.message || "Connection failed");
+        isConnectingWallet = false;
+        activeWalletType = null;
+        updateWalletUI();
+    }
 }
 
 function formatAddress(address) {
@@ -822,7 +1070,8 @@ function setConnectButtonText(text) {
 
 function updateWalletUI() {
     const provider = getEthereumProvider();
-    const hasProvider = !!provider;
+    const hasCoinbaseSDK = typeof window.CoinbaseWalletSDK !== 'undefined';
+    const hasProvider = !!provider || hasCoinbaseSDK; // Either injected or Coinbase SDK
     const isConnected = !!walletAddress;
     const normalizedChainId = normalizeChainId(walletChainId);
     const isOnBaseSepolia = normalizedChainId === BASE_SEPOLIA_CHAIN_ID;
@@ -836,7 +1085,7 @@ function updateWalletUI() {
         if (isDetectingWallet) {
             setConnectButtonText("Detecting wallet...");
         } else if (!hasProvider) {
-            setConnectButtonText("Wallet not found");
+            setConnectButtonText("No wallet available");
         } else if (isConnectingWallet) {
             setConnectButtonText("Connecting...");
         } else if (authInProgress) {
@@ -857,7 +1106,7 @@ function updateWalletUI() {
             walletStatus.textContent = walletInfoMessage;
             walletStatus.classList.remove("error");
         } else if (!hasProvider) {
-            walletStatus.textContent = "Wallet not found. Open in Base App.";
+            walletStatus.textContent = "No wallet available. Install a wallet or open in Base App.";
             walletStatus.classList.add("error");
         } else if (!isConnected) {
             walletStatus.textContent = "";
@@ -889,6 +1138,9 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
+    // Initialize Coinbase Wallet SDK
+    initCoinbaseWallet();
+    
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();
@@ -896,21 +1148,29 @@ async function initWalletState() {
     const provider = await waitForEthereumProvider(3000);
     isDetectingWallet = false;
     
-    if (!provider) {
+    // Even without injected provider, we have Coinbase Wallet SDK
+    const hasCoinbase = typeof window.CoinbaseWalletSDK !== 'undefined';
+    
+    if (!provider && !hasCoinbase) {
         updateWalletUI();
         return;
     }
 
-    if (provider.on) {
+    if (provider && provider.on) {
         provider.on("accountsChanged", handleAccountsChanged);
         provider.on("chainChanged", handleChainChanged);
     }
 
     try {
-        const accounts = await provider.request({ method: "eth_accounts" });
-        walletAddress = accounts && accounts.length ? accounts[0] : null;
-        const chainId = await provider.request({ method: "eth_chainId" });
-        walletChainId = normalizeChainId(chainId) || chainId;
+        if (provider) {
+            const accounts = await provider.request({ method: "eth_accounts" });
+            if (accounts && accounts.length) {
+                walletAddress = accounts[0];
+                activeWalletType = 'injected';
+            }
+            const chainId = await provider.request({ method: "eth_chainId" });
+            walletChainId = normalizeChainId(chainId) || chainId;
+        }
         resetAuthState();
         await restoreAuthSession();
     } catch (err) {
@@ -921,6 +1181,56 @@ async function initWalletState() {
 }
 
 async function connectWallet() {
+    // If already connected, just handle network switch
+    if (walletAddress && activeWalletType) {
+        await handleNetworkSwitch();
+        return;
+    }
+    
+    // Show wallet selector (Coinbase recommended)
+    if (isConnectingWallet) return;
+    showWalletSelector();
+}
+
+// Handle network switch after wallet is connected
+async function handleNetworkSwitch() {
+    const provider = getEthereumProvider();
+    if (!provider) return;
+    
+    clearWalletMessages();
+    isConnectingWallet = true;
+    setWalletInfo("Переключаю сеть...");
+    updateWalletUI();
+    
+    try {
+        const chainId = await provider.request({ method: "eth_chainId" });
+        const normalizedChainId = normalizeChainId(chainId);
+        
+        if (normalizedChainId !== BASE_SEPOLIA_CHAIN_ID) {
+            await switchToBaseSepolia();
+        }
+        
+        // Authenticate if needed
+        const activeChainId = normalizeChainId(walletChainId);
+        if (walletAddress && activeChainId === BASE_SEPOLIA_CHAIN_ID && !walletAuthenticated) {
+            const restored = await restoreAuthSession();
+            if (!restored) {
+                authAttempted = false;
+                await authenticateWallet();
+            }
+        }
+    } catch (err) {
+        console.error("Network switch error:", err);
+        setWalletError("Ошибка переключения сети");
+    } finally {
+        isConnectingWallet = false;
+        clearWalletMessages();
+        updateWalletUI();
+    }
+}
+
+// Legacy connectWallet logic (now used by connectWithInjected/connectWithCoinbase)
+async function connectWalletLegacy() {
     const provider = getEthereumProvider();
     if (!provider || isConnectingWallet) {
         setWalletError("Wallet не найден.");
