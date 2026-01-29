@@ -1138,11 +1138,18 @@ async function initWalletState() {
             const accounts = await provider.request({ method: "eth_accounts" });
             if (accounts && accounts.length > 0) {
                 // Already connected, just use existing connection
-                handleAccountsChanged(accounts);
+                walletAddress = accounts[0];
+                activeWalletType = 'injected';
                 const chainId = await provider.request({ method: "eth_chainId" });
-                handleChainChanged(chainId);
+                walletChainId = normalizeChainId(chainId) || chainId;
                 await switchToBaseSepolia();
-                await authenticateWallet();
+                
+                // Try to restore existing session first
+                const restored = await restoreAuthSession();
+                if (!restored) {
+                    // Only request new signature if no valid session
+                    await authenticateWallet();
+                }
                 updateWalletUI();
                 return;
             } else {
@@ -1151,8 +1158,16 @@ async function initWalletState() {
                 isConnectingWallet = true;
                 updateWalletUI();
                 const newAccounts = await provider.request({ method: "eth_requestAccounts" });
-                handleAccountsChanged(newAccounts);
+                walletAddress = newAccounts[0];
+                const chainId = await provider.request({ method: "eth_chainId" });
+                walletChainId = normalizeChainId(chainId) || chainId;
                 await switchToBaseSepolia();
+                
+                // Try to restore existing session first
+                const restored = await restoreAuthSession();
+                if (!restored) {
+                    await authenticateWallet();
+                }
                 isConnectingWallet = false;
                 updateWalletUI();
                 return;
@@ -1831,14 +1846,10 @@ async function handleCheckin() {
         coinCount = onChainBalance;
         saveCoins();
         
-        const shortHash = txHash ? `${txHash.slice(0, 8)}...${txHash.slice(-6)}` : "";
         const isBonus = checkinState.streak > 0 && checkinState.streak % 5 === 0;
-        const rewardText = isBonus
-            ? `+${expectedReward} coins (bonus за стрик!)`
+        checkinState.message = isBonus
+            ? `+${expectedReward} coins (bonus!)`
             : `+${expectedReward} coin`;
-        checkinState.message = shortHash
-            ? `${rewardText} Tx: ${shortHash}`
-            : rewardText;
             
     } catch (err) {
         console.warn("Check-in failed", err);
