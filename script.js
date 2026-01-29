@@ -315,8 +315,8 @@ async function initWeb3Modal() {
     try {
         const { createWeb3Modal, defaultConfig } = await import('https://esm.sh/@web3modal/ethers@5.1.11?bundle');
         
-        // WalletConnect Cloud Project ID
-        const projectId = '3fcc6bba6f1de962d911bb5b5c3dba68';
+        // WalletConnect Cloud Project ID (public demo ID)
+        const projectId = '2aca272d18deb10ff748260da5f78bfd';
         
         const baseSepolia = {
             chainId: 84532,
@@ -365,10 +365,13 @@ async function initWeb3Modal() {
         window.web3modalLoading = false;
         console.log('Web3Modal loaded successfully');
         
-        // Setup provider listener
+        // Setup provider listener - only react to actual connections/disconnections
+        let wasConnectedViaModal = false;
         modal.subscribeProvider(async (state) => {
+            console.log('Web3Modal state:', state);
             if (state.isConnected && state.address) {
                 console.log('Web3Modal connected:', state.address);
+                wasConnectedViaModal = true;
                 walletAddress = state.address;
                 walletChainId = state.chainId ? '0x' + state.chainId.toString(16) : null;
                 activeWalletType = 'walletconnect';
@@ -380,7 +383,10 @@ async function initWeb3Modal() {
                     await authenticateWallet();
                 }
                 updateWalletUI();
-            } else if (!state.isConnected && activeWalletType === 'walletconnect') {
+            } else if (!state.isConnected && wasConnectedViaModal && activeWalletType === 'walletconnect') {
+                // Only disconnect if user was actually connected via this modal
+                console.log('Web3Modal disconnected');
+                wasConnectedViaModal = false;
                 walletAddress = null;
                 activeWalletType = null;
                 window.web3modalProvider = null;
