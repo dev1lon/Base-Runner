@@ -175,14 +175,21 @@ const UI_STATE = {
     CONNECT: 'connect',
     MENU: 'menu',
     RUNNING: 'running',
-    PAUSED: 'paused'
+    PAUSED: 'paused',
+    COLLECTION: 'collection'
 };
 let currentUIState = UI_STATE.CONNECT;
+
+// Collection state
+let hasFreeMint = false; // User has minted free character
+let ownedCharacters = []; // List of owned character types
+let collectionLoading = false;
 
 // Overlay elements
 let overlayConnect;
 let overlayMenu;
 let overlayPause;
+let overlayCollection;
 let pauseButton;
 let connectButton;
 let walletStatus;
@@ -193,6 +200,11 @@ let checkinButton;
 let checkinStatus;
 let checkinButtonPause;
 let checkinStatusPause;
+let collectionButton;
+let collectionCloseBtn;
+let mintVitalikBtn;
+let mintTrumpBtn;
+let collectionHint;
 let ethImg;
 // Game UI elements
 let gameCoinsEl;
@@ -1712,6 +1724,14 @@ window.onload = function() {
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
     
+    // Collection elements
+    overlayCollection = document.getElementById("overlay-collection");
+    collectionButton = document.getElementById("collection-button");
+    collectionCloseBtn = document.getElementById("collection-close-btn");
+    mintVitalikBtn = document.getElementById("mint-vitalik-btn");
+    mintTrumpBtn = document.getElementById("mint-trump-btn");
+    collectionHint = document.getElementById("collection-hint");
+    
     // Game UI elements
     gameCoinsEl = document.getElementById("game-coins");
     gameScoreEl = document.getElementById("game-score");
@@ -1741,6 +1761,40 @@ window.onload = function() {
             e.stopPropagation();
             e.preventDefault();
             resumeGame();
+        }, { passive: false });
+    }
+    
+    // Collection button listeners
+    if (collectionButton) {
+        collectionButton.addEventListener("click", openCollection);
+        collectionButton.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            openCollection();
+        }, { passive: false });
+    }
+    if (collectionCloseBtn) {
+        collectionCloseBtn.addEventListener("click", closeCollection);
+        collectionCloseBtn.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            closeCollection();
+        }, { passive: false });
+    }
+    if (mintVitalikBtn) {
+        mintVitalikBtn.addEventListener("click", handleMintVitalik);
+        mintVitalikBtn.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleMintVitalik();
+        }, { passive: false });
+    }
+    if (mintTrumpBtn) {
+        mintTrumpBtn.addEventListener("click", handleMintTrump);
+        mintTrumpBtn.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleMintTrump();
         }, { passive: false });
     }
     if (pauseButton) {
@@ -1848,6 +1902,7 @@ function updateUIState() {
     if (overlayConnect) overlayConnect.classList.add("hidden");
     if (overlayMenu) overlayMenu.classList.add("hidden");
     if (overlayPause) overlayPause.classList.add("hidden");
+    if (overlayCollection) overlayCollection.classList.add("hidden");
     
     // Show the appropriate overlay based on state
     switch (currentUIState) {
@@ -1859,6 +1914,9 @@ function updateUIState() {
             break;
         case UI_STATE.PAUSED:
             if (overlayPause) overlayPause.classList.remove("hidden");
+            break;
+        case UI_STATE.COLLECTION:
+            if (overlayCollection) overlayCollection.classList.remove("hidden");
             break;
         case UI_STATE.RUNNING:
             // No overlay visible during gameplay
@@ -1880,6 +1938,9 @@ function updateUIState() {
     if (startButton) {
         startButton.disabled = !canPlayGame();
     }
+    
+    // Update collection button pulse
+    updateStartButtonState();
     
     // Sync legacy state variables
     showWelcome = currentUIState !== UI_STATE.RUNNING;
@@ -1962,6 +2023,13 @@ async function applyProfileData(data) {
         }
     } catch (e) {
         console.warn("Failed to get checkin stats:", e);
+    }
+    
+    // Collection status from BLOCKCHAIN
+    try {
+        await checkCollectionStatus();
+    } catch (e) {
+        console.warn("Failed to check collection status:", e);
     }
     
     checkinState.message = "";
@@ -2286,10 +2354,242 @@ async function purchaseCharacter(characterId) {
 
 // Check if user needs to claim free character before playing
 function needsFreeClaim() {
-    return walletReady && 
-           NFT_CONTRACT_ADDRESS && 
-           !shopState.hasClaimedFree && 
-           shopState.characters.length > 0;
+    return walletReady && !hasFreeMint;
+}
+
+// ============ Collection Functions ============
+
+async function checkCollectionStatus() {
+    if (!walletReady || !walletAddress || !NFT_CONTRACT_ADDRESS) {
+        hasFreeMint = false;
+        ownedCharacters = [];
+        return;
+    }
+    
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, ethersProvider);
+        
+        // Check if has claimed free mint
+        hasFreeMint = await contract.hasClaimedFreeMint(walletAddress);
+        
+        // Get owned characters
+        try {
+            ownedCharacters = await contract.getOwnedCharacterList(walletAddress);
+            ownedCharacters = ownedCharacters.map(n => Number(n));
+        } catch (e) {
+            ownedCharacters = [];
+        }
+        
+        console.log('Collection status:', { hasFreeMint, ownedCharacters });
+        updateCollectionUI();
+        updateStartButtonState();
+    } catch (err) {
+        console.warn('Failed to check collection status:', err);
+        hasFreeMint = false;
+        ownedCharacters = [];
+    }
+}
+
+function updateCollectionUI() {
+    const vitalikCard = document.getElementById('char-vitalik');
+    const trumpCard = document.getElementById('char-trump');
+    const trumpLock = document.getElementById('trump-lock');
+    
+    // Vitalik card (character type 0)
+    if (vitalikCard && mintVitalikBtn) {
+        if (hasFreeMint || ownedCharacters.includes(0)) {
+            vitalikCard.classList.add('owned');
+            mintVitalikBtn.textContent = 'Owned ✓';
+            mintVitalikBtn.disabled = true;
+            mintVitalikBtn.classList.remove('btn-primary');
+            mintVitalikBtn.classList.add('btn-ghost');
+        } else {
+            vitalikCard.classList.remove('owned');
+            mintVitalikBtn.textContent = 'Free Mint';
+            mintVitalikBtn.disabled = false;
+            mintVitalikBtn.classList.add('btn-primary');
+            mintVitalikBtn.classList.remove('btn-ghost');
+        }
+    }
+    
+    // Trump card (character type 1)
+    if (trumpCard && mintTrumpBtn && trumpLock) {
+        if (ownedCharacters.includes(1)) {
+            trumpCard.classList.add('owned');
+            trumpLock.style.display = 'none';
+            mintTrumpBtn.textContent = 'Owned ✓';
+            mintTrumpBtn.disabled = true;
+            mintTrumpBtn.classList.remove('btn-secondary');
+            mintTrumpBtn.classList.add('btn-ghost');
+        } else {
+            trumpCard.classList.remove('owned');
+            trumpLock.style.display = 'flex';
+            mintTrumpBtn.textContent = '50 Coins';
+            // Enable only if has free mint and enough coins
+            mintTrumpBtn.disabled = !hasFreeMint || coinCount < 50;
+            mintTrumpBtn.classList.add('btn-secondary');
+            mintTrumpBtn.classList.remove('btn-ghost');
+        }
+    }
+    
+    // Update hint
+    if (collectionHint) {
+        if (!hasFreeMint) {
+            collectionHint.textContent = 'Mint your first character to play!';
+            collectionHint.style.color = 'var(--color-warning)';
+        } else if (ownedCharacters.length === 1) {
+            collectionHint.textContent = 'Collect Trump for 50 coins!';
+            collectionHint.style.color = 'var(--color-gray-500)';
+        } else if (ownedCharacters.length >= 2) {
+            collectionHint.textContent = 'Collection complete!';
+            collectionHint.style.color = 'var(--color-success)';
+        } else {
+            collectionHint.textContent = '';
+        }
+    }
+}
+
+function updateStartButtonState() {
+    if (!startButton) return;
+    
+    if (needsFreeClaim()) {
+        startButton.classList.add('btn-locked');
+        startButton.textContent = 'Start Game';
+    } else {
+        startButton.classList.remove('btn-locked');
+        startButton.textContent = 'Start Game';
+    }
+    
+    // Pulse collection button if needs free mint
+    if (collectionButton) {
+        if (needsFreeClaim()) {
+            collectionButton.classList.add('btn-pulse');
+        } else {
+            collectionButton.classList.remove('btn-pulse');
+        }
+    }
+}
+
+function openCollection() {
+    if (!overlayCollection) return;
+    currentUIState = UI_STATE.COLLECTION;
+    updateUIState();
+    checkCollectionStatus(); // Refresh status
+}
+
+function closeCollection() {
+    currentUIState = UI_STATE.MENU;
+    updateUIState();
+}
+
+async function handleMintVitalik() {
+    if (collectionLoading || hasFreeMint) return;
+    
+    collectionLoading = true;
+    if (mintVitalikBtn) {
+        mintVitalikBtn.textContent = 'Minting...';
+        mintVitalikBtn.disabled = true;
+    }
+    
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+        
+        // Check if can claim
+        const canClaim = await contract.canClaimFreeMint(walletAddress);
+        if (!canClaim) {
+            alert('Already claimed or not available');
+            return;
+        }
+        
+        // Send transaction
+        const tx = await contract.mintFreeCharacter();
+        if (mintVitalikBtn) mintVitalikBtn.textContent = 'Confirming...';
+        await tx.wait();
+        
+        // Update state
+        hasFreeMint = true;
+        ownedCharacters.push(0);
+        
+        updateCollectionUI();
+        updateStartButtonState();
+        
+        if (collectionHint) {
+            collectionHint.textContent = 'Vitalik minted! You can now play!';
+            collectionHint.style.color = 'var(--color-success)';
+        }
+    } catch (err) {
+        console.error('Mint failed:', err);
+        if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
+            alert('Transaction cancelled');
+        } else {
+            alert('Mint failed: ' + (err.message || 'Unknown error'));
+        }
+        updateCollectionUI();
+    } finally {
+        collectionLoading = false;
+    }
+}
+
+async function handleMintTrump() {
+    if (collectionLoading || !hasFreeMint || coinCount < 50) return;
+    
+    collectionLoading = true;
+    if (mintTrumpBtn) {
+        mintTrumpBtn.textContent = 'Processing...';
+        mintTrumpBtn.disabled = true;
+    }
+    
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        
+        // Check allowance first
+        const allowance = await getGameCoinAllowance();
+        const priceWei = ethers.parseUnits('50', 18);
+        
+        if (allowance < priceWei) {
+            if (mintTrumpBtn) mintTrumpBtn.textContent = 'Approving...';
+            await approveGameCoinForNFT(priceWei);
+        }
+        
+        // Mint Trump (character type 1)
+        if (mintTrumpBtn) mintTrumpBtn.textContent = 'Minting...';
+        const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+        const tx = await nftContract.mintWithCoins(1);
+        
+        if (mintTrumpBtn) mintTrumpBtn.textContent = 'Confirming...';
+        await tx.wait();
+        
+        // Update state
+        ownedCharacters.push(1);
+        
+        // Refresh coin balance from chain
+        coinCount = await getOnChainCoinBalance();
+        
+        updateCollectionUI();
+        updateStartButtonState();
+        
+        if (collectionHint) {
+            collectionHint.textContent = 'Trump minted! Collection complete!';
+            collectionHint.style.color = 'var(--color-success)';
+        }
+    } catch (err) {
+        console.error('Purchase failed:', err);
+        if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
+            alert('Transaction cancelled');
+        } else {
+            alert('Purchase failed: ' + (err.message || 'Unknown error'));
+        }
+        updateCollectionUI();
+    } finally {
+        collectionLoading = false;
+    }
 }
 
 async function startGameFromWelcome() {
@@ -2297,6 +2597,13 @@ async function startGameFromWelcome() {
         updateWalletUI();
         return;
     }
+    
+    // Check if needs free mint first
+    if (needsFreeClaim()) {
+        openCollection();
+        return;
+    }
+    
     // Transition to running state
     currentUIState = UI_STATE.RUNNING;
     showWelcome = false;

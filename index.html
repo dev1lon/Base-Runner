@@ -136,9 +136,8 @@
                     <span id="checkin-status" class="checkin-badge"></span>
                 </div>
                 <button id="start-button" class="btn btn-primary btn-large">Start Game</button>
-                <button id="collection-button" class="btn btn-ghost btn-large" disabled>
+                <button id="collection-button" class="btn btn-ghost btn-large">
                     Collection
-                    <span class="coming-soon">Coming soon</span>
                 </button>
                 <button id="leaderboard-button" class="btn btn-ghost btn-large" disabled>
                     Leaderboard
@@ -194,6 +193,59 @@
                     <li>Earn 1 coin for every 1,000 points</li>
                 </ul>
             </div>
+            <div class="card-ground"></div>
+        </div>
+    </div>
+
+    <!-- COLLECTION OVERLAY -->
+    <div id="overlay-collection" class="overlay overlay-dimmed hidden">
+        <div class="glass-card collection-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h1 class="card-title">COLLECTION</h1>
+            </div>
+            <div class="card-body collection-body">
+                <div class="collection-grid">
+                    <!-- Vitalik - Free Mint -->
+                    <div class="character-card" id="char-vitalik">
+                        <div class="character-image">
+                            <img src="assets/hum_vit_1.png" alt="Vitalik">
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Vitalik</span>
+                            <span class="character-rarity rarity-common">COMMON</span>
+                        </div>
+                        <button id="mint-vitalik-btn" class="btn btn-primary character-btn">
+                            Free Mint
+                        </button>
+                    </div>
+                    <!-- Trump - 50 Coins -->
+                    <div class="character-card" id="char-trump">
+                        <div class="character-image">
+                            <img src="assets/trump.png" alt="Trump">
+                            <div class="character-lock" id="trump-lock">
+                                <span class="lock-icon">🔒</span>
+                            </div>
+                        </div>
+                        <div class="character-info">
+                            <span class="character-name">Trump</span>
+                            <span class="character-rarity rarity-legendary">LEGENDARY</span>
+                        </div>
+                        <div class="character-price">
+                            <img src="assets/coin.png" class="price-coin-icon" alt="coin">
+                            <span>50</span>
+                        </div>
+                        <button id="mint-trump-btn" class="btn btn-secondary character-btn" disabled>
+                            50 Coins
+                        </button>
+                    </div>
+                </div>
+                <p class="collection-hint" id="collection-hint">Mint your first character to play!</p>
+            </div>
+            <button id="collection-close-btn" class="btn btn-ghost btn-large">Close</button>
             <div class="card-ground"></div>
         </div>
     </div>
