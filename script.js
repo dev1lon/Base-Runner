@@ -283,31 +283,30 @@ function isMobile() {
 }
 
 function getEthereumProvider() {
-    // Return AppKit provider if connected via WalletConnect
-    if (activeWalletType === 'walletconnect' && window.appKitProvider) {
-        return window.appKitProvider;
+    // Return Web3Modal provider if connected via WalletConnect
+    if (activeWalletType === 'walletconnect' && window.web3modalProvider) {
+        return window.web3modalProvider;
     }
     // Return injected provider (MetaMask, Coinbase, Trust, etc.)
     return window.ethereum || null;
 }
 
-// Setup AppKit event listeners
-function setupAppKitListeners() {
-    if (!window.appKit) return;
+// Setup Web3Modal event listeners
+function setupWeb3ModalListeners() {
+    if (!window.web3modal) return;
     
-    // Subscribe to account changes
-    window.appKit.subscribeAccount(async (account) => {
-        if (account.isConnected && account.address) {
-            console.log('AppKit connected:', account.address);
-            walletAddress = account.address;
+    // Subscribe to provider changes
+    window.web3modal.subscribeProvider(async (state) => {
+        console.log('Web3Modal state:', state);
+        
+        if (state.isConnected && state.address) {
+            console.log('Web3Modal connected:', state.address);
+            walletAddress = state.address;
+            walletChainId = state.chainId ? '0x' + state.chainId.toString(16) : null;
             activeWalletType = 'walletconnect';
             
-            // Get provider
-            const provider = window.appKit.getWalletProvider();
-            if (provider) {
-                window.appKitProvider = provider;
-                const chainId = await provider.request({ method: 'eth_chainId' });
-                walletChainId = chainId;
+            if (state.provider) {
+                window.web3modalProvider = state.provider;
             }
             
             // Authenticate
@@ -316,11 +315,11 @@ function setupAppKitListeners() {
                 await authenticateWallet();
             }
             updateWalletUI();
-        } else if (!account.isConnected && activeWalletType === 'walletconnect') {
-            console.log('AppKit disconnected');
+        } else if (!state.isConnected && activeWalletType === 'walletconnect') {
+            console.log('Web3Modal disconnected');
             walletAddress = null;
             activeWalletType = null;
-            window.appKitProvider = null;
+            window.web3modalProvider = null;
             resetAuthState();
             updateWalletUI();
         }
@@ -581,13 +580,13 @@ function showWalletSelector() {
         e.stopPropagation();
         modal.remove();
         
-        // Use AppKit if available
-        if (window.appKit && window.appKitReady) {
+        // Use Web3Modal if available
+        if (window.web3modal && window.web3modalReady) {
             try {
-                await window.appKit.open();
+                await window.web3modal.open();
                 return;
             } catch (err) {
-                console.error('AppKit error:', err);
+                console.error('Web3Modal error:', err);
             }
         }
         
@@ -1259,11 +1258,11 @@ function updateWalletUI() {
 }
 
 async function initWalletState() {
-    // Setup AppKit listeners when ready
-    if (window.appKitReady) {
-        setupAppKitListeners();
+    // Setup Web3Modal listeners when ready
+    if (window.web3modalReady) {
+        setupWeb3ModalListeners();
     } else {
-        window.addEventListener('appKitReady', setupAppKitListeners, { once: true });
+        window.addEventListener('web3modalReady', setupWeb3ModalListeners, { once: true });
     }
     
     // Wait for provider to be injected (some wallets load asynchronously)

@@ -9,13 +9,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
-    <!-- Web3Modal Standalone -->
+    <!-- Web3Modal -->
     <script type="module">
-        import { createAppKit } from 'https://cdn.jsdelivr.net/npm/@reown/appkit@1.6.8/+esm';
-        import { EthersAdapter } from 'https://cdn.jsdelivr.net/npm/@reown/appkit-adapter-ethers@1.6.8/+esm';
-        import { base, baseSepolia } from 'https://cdn.jsdelivr.net/npm/@reown/appkit/networks/+esm';
+        import { createWeb3Modal, defaultConfig } from 'https://esm.sh/@web3modal/ethers@5.1.11?bundle';
 
         const projectId = 'fd7ad326d39318ccae064253cf5a1862';
+
+        const baseSepolia = {
+            chainId: 84532,
+            name: 'Base Sepolia',
+            currency: 'ETH',
+            explorerUrl: 'https://sepolia.basescan.org',
+            rpcUrl: 'https://sepolia.base.org'
+        };
 
         const metadata = {
             name: 'Base Runner',
@@ -25,24 +31,28 @@
         };
 
         try {
-            const appKit = createAppKit({
-                adapters: [new EthersAdapter()],
-                networks: [baseSepolia, base],
+            const ethersConfig = defaultConfig({
                 metadata,
-                projectId,
-                themeMode: 'dark',
-                features: {
-                    analytics: false
-                }
+                enableEIP6963: true,
+                enableInjected: true,
+                enableCoinbase: true
             });
 
-            window.appKit = appKit;
-            window.appKitReady = true;
-            console.log('AppKit initialized');
-            window.dispatchEvent(new Event('appKitReady'));
+            const modal = createWeb3Modal({
+                ethersConfig,
+                chains: [baseSepolia],
+                projectId,
+                enableAnalytics: false,
+                themeMode: 'dark'
+            });
+
+            window.web3modal = modal;
+            window.web3modalReady = true;
+            console.log('Web3Modal initialized');
+            window.dispatchEvent(new Event('web3modalReady'));
         } catch (err) {
-            console.error('AppKit failed:', err);
-            window.appKitFailed = true;
+            console.error('Web3Modal failed:', err);
+            window.web3modalFailed = true;
         }
     </script>
     <script src="script.js"></script>
