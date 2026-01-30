@@ -1041,12 +1041,19 @@ async function getCheckinStats() {
         const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
         
         const stats = await contract.getCheckinStats(walletAddress);
+        // nextReward might be in wei (18 decimals) - convert to coins
+        const nextRewardWei = stats.nextReward;
+        const nextRewardCoins = Number(ethers.formatUnits(nextRewardWei, 18));
+        // If contract returns raw coins (not wei), nextRewardCoins will be very small
+        // In that case, use raw number
+        const nextReward = nextRewardCoins < 1 ? Number(nextRewardWei) : nextRewardCoins;
+        
         return {
             lastCheckin: Number(stats.lastCheckinTime) * 1000, // to ms
             totalCheckins: Number(stats.totalCheckins),
             streak: Number(stats.streak),
             canCheckin: stats.canCheckinNow,
-            nextReward: Number(stats.nextReward)
+            nextReward: nextReward
         };
     } catch (err) {
         console.warn("Failed to get checkin stats:", err);
@@ -1066,8 +1073,9 @@ async function getOnChainCoinBalance() {
         const ethersProvider = new ethers.BrowserProvider(provider);
         const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
         const balance = await contract.balanceOf(walletAddress);
-        // Convert from wei (18 decimals) to coins
-        return Number(ethers.formatUnits(balance, 18));
+        // Convert from wei (18 decimals) to coins, round to avoid decimals
+        const coins = Number(ethers.formatUnits(balance, 18));
+        return Math.floor(coins); // Round down to whole coins
     } catch (err) {
         console.warn("Failed to get coin balance:", err);
         return 0;
@@ -2259,8 +2267,10 @@ async function handleCheckin() {
         
         // Update on-chain coin balance
         const onChainBalance = await getOnChainCoinBalance();
+        console.log('Check-in complete, on-chain balance:', onChainBalance);
         coinCount = onChainBalance;
         saveCoins();
+        updateCollectionCoins(); // Update UI immediately
         
         const isBonus = checkinState.streak > 0 && checkinState.streak % 5 === 0;
         checkinState.message = isBonus
