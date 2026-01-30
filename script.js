@@ -1861,9 +1861,9 @@ window.onload = function() {
         applyGameScale();
     };
 
-    //load player image (human character)
+    //load player image (human character) - sprite loaded from backend cache
     playerImg = new Image();
-    playerImg.src = "./assets/hum_vit_1.png";
+    // Don't set src here - will be loaded from spriteCache after auth
     playerImg.onload = function() {
         spriteBounds.player = getNormalizedSpriteBounds(playerImg);
         applyGameScale();
