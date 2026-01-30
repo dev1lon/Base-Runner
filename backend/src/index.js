@@ -43,8 +43,7 @@ const { issueNonce, verifyNonce } = require("./modules/auth/authService");
 const app = express();
 
 const PORT = Number(process.env.PORT || 8787);
-const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 10 * 60 * 1000);
-const MAX_DURATION_MS = Number(process.env.MAX_DURATION_MS || 5 * 60 * 1000);
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 60 * 60 * 1000); // 1 hour
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
@@ -166,32 +165,14 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     return;
   }
 
-  // Calculate duration - prefer client-reported gameElapsedMs, fallback to server time
-  const serverDurationMs = Math.min(Date.now() - session.issuedAt, MAX_DURATION_MS);
+  // Use client-reported game duration
   const clientElapsedMs = Number.isFinite(Number(gameElapsedMs)) ? Number(gameElapsedMs) : 0;
+  const serverDurationMs = Date.now() - session.issuedAt;
   
-  // Get last input time as sanity check
-  const inputLogArray = Array.isArray(inputLog) ? inputLog : [];
-  const lastInputTime = inputLogArray.reduce((max, ev) => {
-    const t = Number(ev?.t);
-    return Number.isFinite(t) && t > max ? t : max;
-  }, 0);
+  // Use client time, fallback to server time
+  const gameDurationMs = clientElapsedMs > 0 ? clientElapsedMs : serverDurationMs;
   
-  // Use client elapsed time if reasonable, otherwise fallback
-  // Client time must be <= server time (can't play longer than session exists)
-  let gameDurationMs;
-  if (clientElapsedMs > 0 && clientElapsedMs <= serverDurationMs + 5000) {
-    gameDurationMs = Math.min(clientElapsedMs, MAX_DURATION_MS);
-  } else {
-    gameDurationMs = Math.max(lastInputTime + 500, Math.min(serverDurationMs, MAX_DURATION_MS));
-  }
-  
-  console.log("⏱️ Duration:", { clientElapsedMs, serverDurationMs, lastInputTime, gameDurationMs });
-  
-  if (!Number.isFinite(gameDurationMs) || gameDurationMs <= 0) {
-    res.status(400).json({ ok: false, error: "Invalid duration" });
-    return;
-  }
+  console.log("⏱️ Duration:", { clientElapsedMs, serverDurationMs, gameDurationMs });
 
   // SIMULATION DISABLED - uncomment to enable
   // const simResult = simulateRun({
