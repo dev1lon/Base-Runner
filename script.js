@@ -1593,7 +1593,7 @@ async function trySwitchToBaseSepolia() {
 }
 
 function handleAccountsChanged(accounts) {
-    const wasConnected = !!walletAddress;
+    const previousAddress = walletAddress; // Save actual address, not boolean
     if (accounts && accounts.length) {
         walletAddress = accounts[0];
     } else {
@@ -1606,9 +1606,9 @@ function handleAccountsChanged(accounts) {
     clearWalletMessages();
     
     // If wallet was disconnected or changed during game, force exit
-    if (wasConnected && !walletAddress) {
+    if (previousAddress && !walletAddress) {
         forceExitToMenu('Wallet disconnected');
-    } else if (wasConnected && walletAddress && accounts[0] !== wasConnected) {
+    } else if (previousAddress && walletAddress && walletAddress.toLowerCase() !== previousAddress.toLowerCase()) {
         forceExitToMenu('Wallet changed');
     }
     
