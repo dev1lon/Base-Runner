@@ -3008,7 +3008,11 @@ async function backendOnlyFreeMint() {
             if (!ownedCharacters.includes(0)) {
                 ownedCharacters.push(0);
             }
+            selectedCharacter = 0; // Auto-select Vitalik
+            localStorage.setItem('selectedCharacter', '0');
+            
             await loadSpriteForCharacter(0);
+            updatePlayerSprite(); // Set player sprite!
             updateCollectionUI();
             updateStartButtonState();
             console.log('Free mint successful (backend only)!');
@@ -3049,8 +3053,13 @@ async function recordFreeMintOnBackend(txHash) {
         console.warn('Failed to record mint on backend:', e);
     }
     
+    // Auto-select Vitalik
+    selectedCharacter = 0;
+    localStorage.setItem('selectedCharacter', '0');
+    
     // Update UI regardless
     await loadSpriteForCharacter(0);
+    updatePlayerSprite(); // Set player sprite!
     updateCollectionUI();
     updateStartButtonState();
     console.log('Free mint successful!');
@@ -3196,6 +3205,13 @@ async function startGameFromWelcome() {
         openCollection();
         return;
     }
+    
+    // Ensure player sprite is set
+    if (!spriteCache[selectedCharacter]) {
+        console.log('Sprite not cached, loading...');
+        await loadOwnedSprites(true); // Force reload
+    }
+    updatePlayerSprite();
     
     // Transition to running state
     currentUIState = UI_STATE.RUNNING;
