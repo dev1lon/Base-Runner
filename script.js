@@ -2841,30 +2841,42 @@ async function handleMintTrump() {
 
 // Handle character button click - select if owned, purchase if not
 async function handleCharacterAction(charId) {
+    console.log('handleCharacterAction called:', charId);
     const char = CHARACTERS[charId];
-    if (!char) return;
+    if (!char) {
+        console.warn('Character not found:', charId);
+        return;
+    }
     
     const isOwned = ownedCharacters.includes(charId) || (charId === 0 && hasFreeMint);
+    console.log('Character action:', { charId, isOwned, hasFreeMint, ownedCharacters });
     
     if (isOwned) {
         // Already owned - select it
+        console.log('Selecting character:', charId);
         await selectCharacter(charId);
     } else if (charId === 0) {
         // Free mint
+        console.log('Starting free mint for Vitalik');
         await handleFreeMint();
     } else {
         // Purchase
+        console.log('Starting purchase for:', charId);
         await handlePurchase(charId);
     }
 }
 
 // Handle free mint (character 0 - Vitalik)
 async function handleFreeMint() {
-    if (hasFreeMint) return;
+    console.log('handleFreeMint called, hasFreeMint:', hasFreeMint);
+    if (hasFreeMint) {
+        console.log('Already has free mint, skipping');
+        return;
+    }
     
-    // TODO: Integrate with blockchain for actual NFT mint
-    // For now, just mark as owned in backend
+    // Mark as owned in backend
     try {
+        console.log('Calling backend claim-free...');
         const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
             method: 'POST',
             headers: {
@@ -2875,19 +2887,26 @@ async function handleFreeMint() {
         });
         
         const data = await response.json();
+        console.log('Backend response:', data);
+        
         if (data.ok) {
             hasFreeMint = true;
             if (!ownedCharacters.includes(0)) {
                 ownedCharacters.push(0);
             }
             // Load ONLY this character's sprite (not all)
+            console.log('Loading sprite for Vitalik...');
             await loadSpriteForCharacter(0);
             updateCollectionUI();
             updateStartButtonState();
             console.log('Free mint successful!');
+        } else {
+            console.error('Backend returned error:', data.error);
+            alert(data.error || 'Free mint failed');
         }
     } catch (e) {
         console.error('Free mint failed:', e);
+        alert('Free mint failed: ' + e.message);
     }
 }
 
