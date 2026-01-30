@@ -153,10 +153,11 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     res.status(400).json({ ok: false, error: "Session already used" });
     return;
   }
-  if (session.expiresAt <= Date.now()) {
-    res.status(400).json({ ok: false, error: "Session expired" });
-    return;
-  }
+  // Session expiration check disabled
+  // if (session.expiresAt <= Date.now()) {
+  //   res.status(400).json({ ok: false, error: "Session expired" });
+  //   return;
+  // }
 
   const addressNorm = req.user.address;
   if (!addressNorm || addressNorm !== session.address) {
