@@ -1622,13 +1622,42 @@ function handleAccountsChanged(accounts) {
     checkinState.message = "";
     clearWalletMessages();
     
-    // If wallet was disconnected or changed during game, force exit
-    if (previousAddress && !walletAddress) {
-        console.log('Wallet disconnected - forcing exit');
-        forceExitToMenu('Wallet disconnected');
-    } else if (previousAddress && walletAddress && walletAddress.toLowerCase() !== previousAddress.toLowerCase()) {
-        console.log('Wallet changed - forcing exit');
-        forceExitToMenu('Wallet changed');
+    // If wallet was disconnected or changed, clear all cached data
+    if (previousAddress && (!walletAddress || walletAddress.toLowerCase() !== previousAddress.toLowerCase())) {
+        console.log('Wallet disconnected or changed - clearing cached data');
+        
+        // Clear sprite cache
+        Object.values(spriteCache).forEach(url => {
+            if (url && url.startsWith('blob:')) {
+                URL.revokeObjectURL(url);
+            }
+        });
+        Object.keys(spriteCache).forEach(key => delete spriteCache[key]);
+        spritesLoaded = false;
+        
+        // Reset character state
+        ownedCharacters = [];
+        selectedCharacter = 0;
+        hasFreeMint = false;
+        coinCount = 0;
+        
+        // Clear localStorage
+        localStorage.removeItem('selectedCharacter');
+        localStorage.removeItem('coinCount');
+        
+        // Clear player sprite
+        if (typeof playerImg !== 'undefined' && playerImg) {
+            playerImg.src = '';
+        }
+        
+        // Force exit if was playing
+        if (previousAddress && !walletAddress) {
+            console.log('Wallet disconnected - forcing exit');
+            forceExitToMenu('Wallet disconnected');
+        } else {
+            console.log('Wallet changed - forcing exit');
+            forceExitToMenu('Wallet changed');
+        }
     }
     
     openWalletMenu();
@@ -1943,6 +1972,12 @@ function forceExitToMenu(reason) {
     currentSession = null;
     
     // Clear sprite cache (new wallet = need to reload sprites)
+    // Revoke blob URLs to free memory
+    Object.values(spriteCache).forEach(url => {
+        if (url && url.startsWith('blob:')) {
+            URL.revokeObjectURL(url);
+        }
+    });
     Object.keys(spriteCache).forEach(key => delete spriteCache[key]);
     spritesLoaded = false;
     
@@ -1950,6 +1985,16 @@ function forceExitToMenu(reason) {
     ownedCharacters = [];
     selectedCharacter = 0;
     hasFreeMint = false;
+    coinCount = 0;
+    
+    // Clear localStorage for this wallet's data
+    localStorage.removeItem('selectedCharacter');
+    localStorage.removeItem('coinCount');
+    
+    // Clear player sprite
+    if (typeof playerImg !== 'undefined' && playerImg) {
+        playerImg.src = '';
+    }
     
     // Force to connect screen
     currentUIState = UI_STATE.CONNECT;
