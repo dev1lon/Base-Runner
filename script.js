@@ -2874,7 +2874,76 @@ async function handleFreeMint() {
         return;
     }
     
-    // Mark as owned in backend
+    if (collectionLoading) return;
+    collectionLoading = true;
+    
+    // Update button to show loading state
+    const vitalikCard = document.querySelector('.character-card[data-char-id="0"]');
+    const btn = vitalikCard?.querySelector('.char-select-btn');
+    if (btn) {
+        btn.textContent = 'Minting...';
+        btn.disabled = true;
+    }
+    
+    try {
+        // Check if NFT contract is configured
+        if (!isValidAddress(NFT_CONTRACT_ADDRESS)) {
+            console.log('NFT contract not configured, using backend-only mint');
+            // Fallback to backend-only mint
+            await backendOnlyFreeMint();
+            return;
+        }
+        
+        // Blockchain mint
+        console.log('Starting blockchain free mint...');
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+        
+        // Check if can claim
+        console.log('Checking if can claim free mint...');
+        const canClaim = await contract.canClaimFreeMint(walletAddress);
+        if (!canClaim) {
+            alert('Already claimed or not available on-chain');
+            collectionLoading = false;
+            updateCollectionUI();
+            return;
+        }
+        
+        // Send transaction
+        console.log('Sending mint transaction...');
+        if (btn) btn.textContent = 'Confirm in wallet...';
+        const tx = await contract.mintFreeCharacter();
+        
+        console.log('Waiting for confirmation...', tx.hash);
+        if (btn) btn.textContent = 'Confirming...';
+        const receipt = await tx.wait();
+        console.log('Transaction confirmed:', receipt.hash);
+        
+        // Record on backend
+        await recordFreeMintOnBackend(receipt.hash);
+        
+    } catch (e) {
+        console.error('Free mint failed:', e);
+        if (e.code === 4001 || e.code === 'ACTION_REJECTED') {
+            alert('Transaction cancelled');
+        } else if (e.message?.includes('canClaimFreeMint')) {
+            // Contract method doesn't exist, fallback to backend
+            console.log('Contract method not found, using backend-only mint');
+            await backendOnlyFreeMint();
+            return;
+        } else {
+            alert('Mint failed: ' + (e.reason || e.message || 'Unknown error'));
+        }
+        updateCollectionUI();
+    } finally {
+        collectionLoading = false;
+    }
+}
+
+// Fallback: backend-only free mint (no blockchain)
+async function backendOnlyFreeMint() {
     try {
         console.log('Calling backend claim-free...');
         const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
@@ -2894,20 +2963,52 @@ async function handleFreeMint() {
             if (!ownedCharacters.includes(0)) {
                 ownedCharacters.push(0);
             }
-            // Load ONLY this character's sprite (not all)
-            console.log('Loading sprite for Vitalik...');
             await loadSpriteForCharacter(0);
             updateCollectionUI();
             updateStartButtonState();
-            console.log('Free mint successful!');
+            console.log('Free mint successful (backend only)!');
         } else {
             console.error('Backend returned error:', data.error);
             alert(data.error || 'Free mint failed');
         }
     } catch (e) {
-        console.error('Free mint failed:', e);
+        console.error('Backend free mint failed:', e);
         alert('Free mint failed: ' + e.message);
+    } finally {
+        collectionLoading = false;
+        updateCollectionUI();
     }
+}
+
+// Record successful blockchain mint on backend
+async function recordFreeMintOnBackend(txHash) {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ txHash, characterId: 0 })
+        });
+        const data = await response.json();
+        console.log('Backend recorded mint:', data);
+        
+        if (data.ok) {
+            hasFreeMint = true;
+            if (!ownedCharacters.includes(0)) {
+                ownedCharacters.push(0);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to record mint on backend:', e);
+    }
+    
+    // Update UI regardless
+    await loadSpriteForCharacter(0);
+    updateCollectionUI();
+    updateStartButtonState();
+    console.log('Free mint successful!');
 }
 
 // Handle character purchase
