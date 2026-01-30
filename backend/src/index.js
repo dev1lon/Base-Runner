@@ -193,13 +193,14 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     return;
   }
 
-  const simResult = simulateRun({
-    seed: session.seed,
-    durationMs: gameDurationMs,
-    inputEvents: inputLog
-  });
+  // SIMULATION DISABLED - uncomment to enable
+  // const simResult = simulateRun({
+  //   seed: session.seed,
+  //   durationMs: gameDurationMs,
+  //   inputEvents: inputLog
+  // });
+  // const simScore = simResult.score;
 
-  const simScore = simResult.score;
   const reported = Number.isFinite(Number(reportedScore))
     ? Number(reportedScore)
     : null;
@@ -221,14 +222,9 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     return;
   }
 
-  // Simulation check disabled - frontend uses setInterval (real-time) while sim uses frame-time
-  // This causes obstacle positions to differ, making simulation unreliable
-  // Relying on maxScore (time-based) check instead which is above
-  // TODO: Fix by converting frontend to frame-based spawning
-  console.log("📊 Score info:", { reported, simScore, maxScore, gameDurationMs });
+  // Anti-cheat: maxScore check (time-based limit)
+  console.log("📊 Score info:", { reported, maxScore, gameDurationMs });
 
-  // Use reported score directly since simulation check is disabled
-  // Still capped by maxScore (time-based limit)
   const finalScore = Math.min(reported, maxScore);
   const coinsAwarded = Math.floor(finalScore / 1000);
   console.log("💰 Awarding:", { finalScore, coinsAwarded, address: addressNorm });
@@ -237,13 +233,11 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
 
   res.json({
     ok: true,
-    simScore,
     finalScore,
     maxScore,
     coinsAwarded,
     coinBalance: result ? result.coins : 0,
     bestScore: result ? result.best_score : finalScore,
-    collidedAtMs: simResult.collidedAtMs,
     // On-chain mint info
     onChainMinted: result?.onChainMinted || 0,
     mintTxHash: result?.mintResult?.txHash || null
