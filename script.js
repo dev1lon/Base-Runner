@@ -2426,9 +2426,7 @@ async function purchaseCharacter(characterId) {
 
 // Check if user needs to claim free character before playing
 function needsFreeClaim() {
-    // Testing mode - no free claim required
-    return false;
-    // Original: return walletReady && !hasFreeMint;
+    return walletReady && !hasFreeMint;
 }
 
 // ============ Collection Functions ============
