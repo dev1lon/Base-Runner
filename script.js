@@ -1640,10 +1640,12 @@ function handleAccountsChanged(accounts) {
         selectedCharacter = 0;
         hasFreeMint = false;
         coinCount = 0;
+        bestScore = 0;
         
         // Clear localStorage
         localStorage.removeItem('selectedCharacter');
         localStorage.removeItem('coinCount');
+        localStorage.removeItem('baseapp_runner_best_score');
         
         // Clear player sprite
         if (typeof playerImg !== 'undefined' && playerImg) {
@@ -1986,15 +1988,21 @@ function forceExitToMenu(reason) {
     selectedCharacter = 0;
     hasFreeMint = false;
     coinCount = 0;
+    bestScore = 0;
+    score = 0;
     
     // Clear localStorage for this wallet's data
     localStorage.removeItem('selectedCharacter');
     localStorage.removeItem('coinCount');
+    localStorage.removeItem('baseapp_runner_best_score');
     
     // Clear player sprite
     if (typeof playerImg !== 'undefined' && playerImg) {
         playerImg.src = '';
     }
+    
+    // Update UI to show reset values
+    updateGameUI();
     
     // Force to connect screen
     currentUIState = UI_STATE.CONNECT;
