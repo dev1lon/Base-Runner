@@ -374,12 +374,22 @@ async function initWeb3Modal() {
             console.log('Web3Modal state:', state);
             if (state.isConnected && state.address) {
                 console.log('Web3Modal connected:', state.address);
+                const previousAddress = walletAddress;
                 wasConnectedViaModal = true;
                 walletAddress = state.address;
                 walletChainId = state.chainId ? '0x' + state.chainId.toString(16) : null;
                 activeWalletType = 'walletconnect';
                 if (state.provider) {
                     window.web3modalProvider = state.provider;
+                    // Set up listeners on the provider too
+                    if (state.provider.on) {
+                        state.provider.on("accountsChanged", handleAccountsChanged);
+                        state.provider.on("chainChanged", handleChainChanged);
+                    }
+                }
+                // Check if wallet changed (not first connect)
+                if (previousAddress && previousAddress.toLowerCase() !== state.address.toLowerCase()) {
+                    forceExitToMenu('Wallet changed');
                 }
                 const restored = await restoreAuthSession();
                 if (!restored) {
@@ -1363,6 +1373,13 @@ async function initWalletState() {
         return;
     }
     
+    // ALWAYS set up event listeners first
+    if (provider && provider.on) {
+        provider.on("accountsChanged", handleAccountsChanged);
+        provider.on("chainChanged", handleChainChanged);
+        console.log("Wallet event listeners registered");
+    }
+    
     // Auto-connect if inside wallet browser (Coinbase Wallet, MetaMask app, etc.)
     if (isWalletBrowser() || isMobile()) {
         console.log("Wallet browser detected, auto-connecting...");
@@ -1411,10 +1428,7 @@ async function initWalletState() {
         }
     }
 
-    if (provider && provider.on) {
-        provider.on("accountsChanged", handleAccountsChanged);
-        provider.on("chainChanged", handleChainChanged);
-    }
+    // Event listeners already set up above
 
     try {
         if (provider) {
@@ -1593,12 +1607,15 @@ async function trySwitchToBaseSepolia() {
 }
 
 function handleAccountsChanged(accounts) {
-    const previousAddress = walletAddress; // Save actual address, not boolean
+    console.log('handleAccountsChanged called:', accounts);
+    const previousAddress = walletAddress; // Save actual address
     if (accounts && accounts.length) {
         walletAddress = accounts[0];
     } else {
         walletAddress = null;
     }
+    console.log('Wallet change:', { previousAddress, newAddress: walletAddress, gameActive });
+    
     resetAuthState();
     checkinState.lastCheckin = null;
     checkinState.streak = 0;
@@ -1607,8 +1624,10 @@ function handleAccountsChanged(accounts) {
     
     // If wallet was disconnected or changed during game, force exit
     if (previousAddress && !walletAddress) {
+        console.log('Wallet disconnected - forcing exit');
         forceExitToMenu('Wallet disconnected');
     } else if (previousAddress && walletAddress && walletAddress.toLowerCase() !== previousAddress.toLowerCase()) {
+        console.log('Wallet changed - forcing exit');
         forceExitToMenu('Wallet changed');
     }
     
@@ -1913,7 +1932,7 @@ function canPlayGame() {
 
 // Force exit to menu when wallet disconnects or changes
 function forceExitToMenu(reason) {
-    console.log('Force exit to menu:', reason);
+    console.log('🚨 Force exit to menu:', reason, { gameActive, currentUIState });
     
     // Stop game immediately
     gameActive = false;
