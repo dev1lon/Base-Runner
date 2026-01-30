@@ -2391,7 +2391,7 @@ async function checkCollectionStatus() {
 }
 
 function updateCollectionUI() {
-    // Update all character cards - NO API requests here, use cache only
+    // Update all character cards - NO API requests, use cache only
     const cards = document.querySelectorAll('.character-card[data-char-id]');
     
     cards.forEach(card => {
@@ -2407,20 +2407,20 @@ function updateCollectionUI() {
         const canAfford = coinCount >= price;
         const isFreeChar = charId === 0;
         
-        // Update image from cache - NO API requests
+        // Update image - ONLY from cache, no loading
         if (img) {
             if (isOwned && spriteCache[charId]) {
-                // Use cached blob URL
                 img.src = spriteCache[charId];
+                img.style.display = 'block';
             } else {
-                // Show locked placeholder
-                img.src = char.lockedSprite;
+                // Hide image for locked - CSS will show placeholder
+                img.src = '';
+                img.style.display = 'none';
             }
         }
         
         // Update card state
         if (isOwned) {
-            // OWNED - can select
             card.classList.add('owned');
             card.classList.remove('locked');
             
@@ -2438,24 +2438,20 @@ function updateCollectionUI() {
                 btn.classList.add('btn-primary');
             }
         } else {
-            // NOT OWNED - show price
             card.classList.remove('owned', 'selected');
             card.classList.add('locked');
             
             if (isFreeChar) {
-                // Free mint - always blue, always available
                 btn.textContent = 'Free Mint';
                 btn.disabled = false;
                 btn.classList.remove('btn-secondary', 'btn-ghost');
                 btn.classList.add('btn-primary');
             } else if (canAfford) {
-                // Can afford - blue button
                 btn.textContent = `${price} Coins`;
                 btn.disabled = false;
                 btn.classList.remove('btn-secondary', 'btn-ghost');
                 btn.classList.add('btn-primary');
             } else {
-                // Can't afford - grey button
                 btn.textContent = `${price} Coins`;
                 btn.disabled = true;
                 btn.classList.remove('btn-primary', 'btn-ghost');
@@ -2464,7 +2460,7 @@ function updateCollectionUI() {
         }
     });
     
-    // Update hint - show only for free mint
+    // Update hint
     if (collectionHint) {
         if (!hasFreeMint) {
             collectionHint.textContent = 'Mint your first character to play!';
@@ -2474,7 +2470,6 @@ function updateCollectionUI() {
         }
     }
     
-    // Update coins display
     updateCollectionCoins();
 }
 
@@ -2603,22 +2598,19 @@ async function handleMintVitalik() {
     }
 }
 
-// Character data - NO local sprites for non-owned characters
-// Real sprites loaded from backend only for owned characters
+// Character data - NO local sprites, all loaded from backend
 // Prices: FREE=0, COMMON=10, RARE=25, EPIC=50, LEGENDARY=100
-const LOCKED_PLACEHOLDER = 'assets/locked/placeholder.png';
-
 const CHARACTERS = {
-    0: { name: 'Vitalik', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'FREE', price: 0 },
-    1: { name: 'Doge', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'COMMON', price: 10 },
-    2: { name: 'Hamaha', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'COMMON', price: 10 },
-    3: { name: 'Hayes', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'RARE', price: 25 },
-    4: { name: 'Pepe', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'RARE', price: 25 },
-    5: { name: 'Mask', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'EPIC', price: 50 },
-    6: { name: 'Sam', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'EPIC', price: 50 },
-    7: { name: 'Vlad', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'EPIC', price: 50 },
-    8: { name: 'CZ', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'LEGENDARY', price: 100 },
-    9: { name: 'Trump', lockedSprite: LOCKED_PLACEHOLDER, rarity: 'LEGENDARY', price: 100 }
+    0: { name: 'Vitalik', rarity: 'FREE', price: 0 },
+    1: { name: 'Doge', rarity: 'COMMON', price: 10 },
+    2: { name: 'Hamaha', rarity: 'COMMON', price: 10 },
+    3: { name: 'Hayes', rarity: 'RARE', price: 25 },
+    4: { name: 'Pepe', rarity: 'RARE', price: 25 },
+    5: { name: 'Mask', rarity: 'EPIC', price: 50 },
+    6: { name: 'Sam', rarity: 'EPIC', price: 50 },
+    7: { name: 'Vlad', rarity: 'EPIC', price: 50 },
+    8: { name: 'CZ', rarity: 'LEGENDARY', price: 100 },
+    9: { name: 'Trump', rarity: 'LEGENDARY', price: 100 }
 };
 
 // Cache for loaded real sprites (blob URLs)
@@ -2948,21 +2940,14 @@ async function selectCharacter(charType) {
 
 // Update player sprite based on selected character
 function updatePlayerSprite() {
-    const char = CHARACTERS[selectedCharacter] || CHARACTERS[0];
-    
     // Use cached sprite if available
     const cachedSprite = spriteCache[selectedCharacter];
     
     // Update the playerImg if it exists
-    if (typeof playerImg !== 'undefined' && playerImg) {
-        if (cachedSprite) {
-            // Use cached blob URL
-            playerImg.src = cachedSprite;
-        } else {
-            // Fallback to locked sprite
-            playerImg.src = char.lockedSprite;
-        }
+    if (typeof playerImg !== 'undefined' && playerImg && cachedSprite) {
+        playerImg.src = cachedSprite;
     }
+    // If no cached sprite, playerImg keeps its current src (or default)
 }
 
 // Load selected character from storage (fallback) or backend (primary)

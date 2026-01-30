@@ -1022,6 +1022,10 @@ body.w3m-modal-open w3m-modal {
 
 .character-card.locked .character-image {
     position: relative;
+    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .character-card.locked .character-image::after {
@@ -1030,13 +1034,9 @@ body.w3m-modal-open w3m-modal {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 2.5rem;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    font-size: 3rem;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
     z-index: 10;
-}
-
-.character-card.locked .character-image img {
-    filter: brightness(0.6);
 }
 
 .character-image {
