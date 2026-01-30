@@ -394,6 +394,7 @@ async function initWeb3Modal() {
                 activeWalletType = null;
                 window.web3modalProvider = null;
                 resetAuthState();
+                forceExitToMenu('Wallet disconnected');
                 updateWalletUI();
             }
         });
@@ -1604,11 +1605,11 @@ function handleAccountsChanged(accounts) {
     checkinState.message = "";
     clearWalletMessages();
     
-    // If wallet was disconnected during game, stop game
+    // If wallet was disconnected or changed during game, force exit
     if (wasConnected && !walletAddress) {
-        gameActive = false;
-        isPaused = false;
-        gameState = GAME_STATE.GAME_OVER;
+        forceExitToMenu('Wallet disconnected');
+    } else if (wasConnected && walletAddress && accounts[0] !== wasConnected) {
+        forceExitToMenu('Wallet changed');
     }
     
     openWalletMenu();
@@ -1908,6 +1909,38 @@ function updateWelcomeVisibility() {
 
 function canPlayGame() {
     return walletReady || ALLOW_GUEST_PLAY;
+}
+
+// Force exit to menu when wallet disconnects or changes
+function forceExitToMenu(reason) {
+    console.log('Force exit to menu:', reason);
+    
+    // Stop game immediately
+    gameActive = false;
+    isPaused = false;
+    gameState = GAME_STATE.GAME_OVER;
+    
+    // Clear session
+    currentSession = null;
+    
+    // Clear sprite cache (new wallet = need to reload sprites)
+    Object.keys(spriteCache).forEach(key => delete spriteCache[key]);
+    spritesLoaded = false;
+    
+    // Reset character state
+    ownedCharacters = [];
+    selectedCharacter = 0;
+    hasFreeMint = false;
+    
+    // Force to connect screen
+    currentUIState = UI_STATE.CONNECT;
+    updateUIState();
+    
+    // Show message
+    if (walletStatus) {
+        walletStatus.textContent = reason;
+        walletStatus.classList.add('error');
+    }
 }
 
 function updateUIState() {
@@ -3182,7 +3215,7 @@ function update(timestamp) {
     
     // Check if wallet disconnected during gameplay
     if (gameActive && !canPlayGame()) {
-        openWalletMenu();
+        forceExitToMenu('Session ended');
         return;
     }
     
