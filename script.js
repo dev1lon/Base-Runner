@@ -820,8 +820,12 @@ function getDateKey(date = new Date()) {
     return `${year}-${month}-${day}`;
 }
 
-function isToday(dateKey) {
-    return !!dateKey && dateKey === getDateKey();
+function isToday(dateKeyOrTimestamp) {
+    if (!dateKeyOrTimestamp) return false;
+    if (typeof dateKeyOrTimestamp === 'number') {
+        return getDateKey(new Date(dateKeyOrTimestamp)) === getDateKey();
+    }
+    return dateKeyOrTimestamp === getDateKey();
 }
 
 function getWalletDisplayName() {
@@ -2131,10 +2135,21 @@ async function applyProfileData(data) {
         localStorage.setItem("baseapp_runner_best_score", String(bestScore));
     }
     
-    // Coins from BACKEND (faster than blockchain)
+    // Coins: use backend value as initial, then sync from blockchain
     if (Number.isFinite(data.coinBalance)) {
         coinCount = data.coinBalance;
         saveCoins();
+    }
+    if (isValidAddress(GAMECOIN_CONTRACT_ADDRESS) && walletAddress) {
+        try {
+            const onChain = await getOnChainCoinBalance();
+            if (onChain > 0 || coinCount === 0) {
+                coinCount = onChain;
+                saveCoins();
+            }
+        } catch (e) {
+            console.warn("Failed to sync on-chain balance at login:", e);
+        }
     }
     
     // Character data from BACKEND (faster than blockchain)
@@ -2182,8 +2197,12 @@ function setCheckinButtonDisabled(disabled) {
 function setCheckinStatusText(text, isSuccess) {
     const updateStatus = (el) => {
         if (!el) return;
+        _checkinAnimTimers.forEach(clearTimeout);
+        _checkinAnimTimers = [];
+        el.style.transition = '';
+        el.style.opacity = '';
+        el.style.transform = '';
         el.textContent = text;
-        el.classList.remove("reward-in", "reward-out");
         if (isSuccess !== undefined) {
             el.classList.toggle("success", isSuccess);
         }
@@ -2199,32 +2218,49 @@ function showCheckinRewardAnimation(rewardText) {
     _checkinAnimTimers = [];
 
     const els = [checkinStatus, checkinStatusPause].filter(Boolean);
+    if (els.length === 0) return;
+
     const streakText = `Streak: ${checkinState.streak}`;
 
     els.forEach(el => {
+        el.classList.remove("reward-in", "reward-out");
         el.textContent = rewardText;
         el.classList.add("success");
-        el.classList.remove("reward-out");
-        el.classList.add("reward-in");
+        el.style.transition = 'none';
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(4px)';
+        void el.offsetHeight;
+        el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        el.style.opacity = '1';
+        el.style.transform = 'translateY(0)';
     });
 
     _checkinAnimTimers.push(setTimeout(() => {
         els.forEach(el => {
-            el.classList.remove("reward-in");
-            el.classList.add("reward-out");
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(-4px)';
         });
 
         _checkinAnimTimers.push(setTimeout(() => {
             els.forEach(el => {
+                el.style.transition = 'none';
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(4px)';
                 el.textContent = streakText;
-                el.classList.remove("reward-out");
-                el.classList.add("reward-in");
+                void el.offsetHeight;
+                el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                el.style.opacity = '1';
+                el.style.transform = 'translateY(0)';
             });
 
             _checkinAnimTimers.push(setTimeout(() => {
-                els.forEach(el => el.classList.remove("reward-in"));
-            }, 300));
-        }, 300));
+                els.forEach(el => {
+                    el.style.transition = '';
+                    el.style.opacity = '';
+                    el.style.transform = '';
+                });
+            }, 400));
+        }, 350));
     }, 1700));
 }
 
