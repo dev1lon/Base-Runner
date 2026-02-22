@@ -1231,7 +1231,6 @@ async function submitBackendRun(finalScore) {
         }
         const data = await response.json();
         if (data && data.ok) {
-            // Use coin balance from backend response
             if (Number.isFinite(data.coinBalance)) {
                 coinCount = data.coinBalance;
                 saveCoins();
@@ -1239,6 +1238,16 @@ async function submitBackendRun(finalScore) {
             if (Number.isFinite(data.bestScore)) {
                 bestScore = data.bestScore;
                 localStorage.setItem("baseapp_runner_best_score", String(bestScore));
+            }
+            // Sync from blockchain (DB may be behind due to check-in coins)
+            try {
+                const onChain = await getOnChainCoinBalance();
+                if (onChain > coinCount) {
+                    coinCount = onChain;
+                    saveCoins();
+                }
+            } catch (e) {
+                console.warn("Failed to sync on-chain balance after submit:", e);
             }
         }
     } catch (err) {

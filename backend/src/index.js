@@ -240,11 +240,27 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
       console.warn("Failed to sync from blockchain:", e.message);
     }
   }
+
+  // Sync coin balance from blockchain (check-ins add on-chain only)
+  let coinBalance = user.coins;
+  try {
+    const { getOnChainBalance, isBlockchainReady } = require("./shared/blockchain");
+    if (isBlockchainReady()) {
+      const onChain = Math.floor(await getOnChainBalance(req.user.address));
+      if (onChain > coinBalance) {
+        coinBalance = onChain;
+        const { updateUser } = require("./modules/user/userRepo");
+        await updateUser(req.user.address, { coins: onChain });
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to sync coin balance from chain:", e.message);
+  }
   
   res.json({
     ok: true,
     address: user.address,
-    coinBalance: user.coins,
+    coinBalance,
     bestScore: user.best_score,
     hasFreeMint: user.has_claimed_free || false,
     ownedCharacters: user.owned_characters || [],
@@ -433,13 +449,26 @@ app.post("/api/shop/record-purchase", requireAuth, async (req, res) => {
   }
   
   try {
-    const { addOwnedCharacter, deductCoins, addCoins } = require("./modules/user/userRepo");
+    const { addOwnedCharacter, deductCoins, addCoins, updateUser } = require("./modules/user/userRepo");
+    const { getOnChainBalance, isBlockchainReady } = require("./shared/blockchain");
     const user = await getOrCreateUser(req.user.address);
     
     // Check if already owns
     if (user.owned_characters && user.owned_characters.includes(characterId)) {
       res.status(400).json({ ok: false, error: "Already owns this character" });
       return;
+    }
+    
+    // Sync DB coins from chain before deducting
+    if (isBlockchainReady()) {
+      try {
+        const onChain = Math.floor(await getOnChainBalance(req.user.address));
+        if (onChain > user.coins) {
+          await updateUser(req.user.address, { coins: onChain });
+        }
+      } catch (e) {
+        console.warn("Failed to sync coins before purchase:", e.message);
+      }
     }
     
     // Deduct coins from DB
