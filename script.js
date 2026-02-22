@@ -2183,12 +2183,49 @@ function setCheckinStatusText(text, isSuccess) {
     const updateStatus = (el) => {
         if (!el) return;
         el.textContent = text;
+        el.classList.remove("reward-in", "reward-out");
         if (isSuccess !== undefined) {
             el.classList.toggle("success", isSuccess);
         }
     };
     updateStatus(checkinStatus);
     updateStatus(checkinStatusPause);
+}
+
+let _checkinAnimTimers = [];
+
+function showCheckinRewardAnimation(rewardText) {
+    _checkinAnimTimers.forEach(clearTimeout);
+    _checkinAnimTimers = [];
+
+    const els = [checkinStatus, checkinStatusPause].filter(Boolean);
+    const streakText = `Streak: ${checkinState.streak}`;
+
+    els.forEach(el => {
+        el.textContent = rewardText;
+        el.classList.add("success");
+        el.classList.remove("reward-out");
+        el.classList.add("reward-in");
+    });
+
+    _checkinAnimTimers.push(setTimeout(() => {
+        els.forEach(el => {
+            el.classList.remove("reward-in");
+            el.classList.add("reward-out");
+        });
+
+        _checkinAnimTimers.push(setTimeout(() => {
+            els.forEach(el => {
+                el.textContent = streakText;
+                el.classList.remove("reward-out");
+                el.classList.add("reward-in");
+            });
+
+            _checkinAnimTimers.push(setTimeout(() => {
+                els.forEach(el => el.classList.remove("reward-in"));
+            }, 300));
+        }, 300));
+    }, 1700));
 }
 
 function updateCheckinUI() {
@@ -2273,9 +2310,10 @@ async function handleCheckin() {
         updateCollectionCoins(); // Update UI immediately
         
         const isBonus = checkinState.streak > 0 && checkinState.streak % 5 === 0;
-        checkinState.message = isBonus
+        checkinState._rewardAnim = isBonus
             ? `+${expectedReward} coins (bonus!)`
             : `+${expectedReward} coin`;
+        checkinState.message = "";
             
     } catch (err) {
         console.warn("Check-in failed", err);
@@ -2288,7 +2326,12 @@ async function handleCheckin() {
         }
     } finally {
         checkinState.loading = false;
+        const pendingReward = checkinState._rewardAnim;
+        checkinState._rewardAnim = null;
         updateCheckinUI();
+        if (pendingReward) {
+            showCheckinRewardAnimation(pendingReward);
+        }
     }
 }
 
@@ -2414,76 +2457,6 @@ async function getGameCoinAllowance() {
     } catch (err) {
         console.warn("Failed to get allowance:", err);
         return 0;
-    }
-}
-
-// Purchase character with on-chain GameCoins
-async function purchaseCharacter(characterId) {
-    if (!walletReady || !isValidAddress(NFT_CONTRACT_ADDRESS) || !isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
-        return { ok: false, error: "Contracts not configured" };
-    }
-    
-    shopState.loading = true;
-    
-    try {
-        const provider = getEthereumProvider();
-        const ethersProvider = new ethers.BrowserProvider(provider);
-        const signer = await ethersProvider.getSigner();
-        const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-        
-        // Get character price from contract
-        const charInfo = await nftContract.characterTypes(characterId);
-        const price = Number(charInfo.price);
-        
-        if (price === 0) {
-            return { ok: false, error: "Use free mint for this character" };
-        }
-        
-        // Check on-chain balance
-        const balance = await getOnChainCoinBalance();
-        if (balance < price) {
-            return { ok: false, error: `Недостаточно coins (нужно ${price}, есть ${balance})` };
-        }
-        
-        // Check allowance
-        const allowance = await getGameCoinAllowance();
-        if (allowance < price) {
-            // Need to approve first
-            shopState.message = "Подтвердите разрешение на трату coins...";
-            await approveGameCoinForNFT(price);
-        }
-        
-        // Mint NFT (contract will transfer and burn coins)
-        shopState.message = "Подтвердите покупку NFT...";
-        const tx = await nftContract.mintWithCoins(characterId);
-        const receipt = await tx.wait();
-        const txHash = receipt.hash;
-        
-        // Update balance
-        coinCount = await getOnChainCoinBalance();
-        saveCoins();
-        
-        // Reload inventory
-        await loadUserInventory();
-        
-        return { ok: true, txHash, coinsDeducted: price };
-    } catch (err) {
-        console.warn("Purchase failed", err);
-        
-        if (err.message && err.message.includes("InsufficientCoins")) {
-            return { ok: false, error: "Недостаточно coins" };
-        }
-        if (err.message && err.message.includes("AlreadyOwnsCharacterType")) {
-            return { ok: false, error: "У вас уже есть этот персонаж" };
-        }
-        if (err.message && err.message.includes("user rejected")) {
-            return { ok: false, error: "Транзакция отменена" };
-        }
-        
-        return { ok: false, error: err.message || "Purchase failed" };
-    } finally {
-        shopState.loading = false;
-        shopState.message = "";
     }
 }
 
@@ -2809,99 +2782,6 @@ async function loadSpriteForCharacter(charId) {
     }
 }
 
-async function handleMintTrump() {
-    const ownsTrump = ownedCharacters.includes(1);
-    const charPrice = CHARACTER_PRICES[1] || 50;
-    
-    // If already owns, this is a Select action
-    if (ownsTrump) {
-        selectCharacter(1);
-        return;
-    }
-    
-    if (collectionLoading || !hasFreeMint || coinCount < charPrice) return;
-    
-    collectionLoading = true;
-    const previousCoinCount = coinCount; // Save for rollback on error
-    
-    if (mintTrumpBtn) {
-        mintTrumpBtn.textContent = 'Processing...';
-        mintTrumpBtn.disabled = true;
-    }
-    
-    try {
-        const provider = getEthereumProvider();
-        const ethersProvider = new ethers.BrowserProvider(provider);
-        const signer = await ethersProvider.getSigner();
-        
-        // Check allowance first
-        const allowance = await getGameCoinAllowance();
-        const priceWei = ethers.parseUnits(String(charPrice), 18);
-        
-        if (allowance < priceWei) {
-            if (mintTrumpBtn) mintTrumpBtn.textContent = 'Approving...';
-            await approveGameCoinForNFT(priceWei);
-        }
-        
-        // Mint Trump (character type 1)
-        if (mintTrumpBtn) mintTrumpBtn.textContent = 'Minting...';
-        const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-        const tx = await nftContract.mintWithCoins(1);
-        
-        // Immediately deduct coins visually
-        coinCount -= charPrice;
-        updateCollectionCoins();
-        
-        if (mintTrumpBtn) mintTrumpBtn.textContent = 'Confirming...';
-        const receipt = await tx.wait();
-        
-        // Record on backend
-        try {
-            const response = await fetch(`${BACKEND_URL}/api/shop/record-purchase`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: JSON.stringify({ 
-                    txHash: receipt.hash, 
-                    characterId: 1, 
-                    price: charPrice 
-                })
-            });
-            const data = await response.json();
-            if (data.ok) {
-                coinCount = data.coinBalance;
-                ownedCharacters = data.ownedCharacters || [];
-            }
-        } catch (e) {
-            console.warn('Failed to record purchase on backend:', e);
-        }
-        
-        // Update state
-        if (!ownedCharacters.includes(1)) ownedCharacters.push(1);
-        selectedCharacter = 1; // Auto-select after purchase
-        
-        updateCollectionUI();
-        updateStartButtonState();
-        saveCoins();
-    } catch (err) {
-        console.error('Purchase failed:', err);
-        // Rollback coin count on failure
-        coinCount = previousCoinCount;
-        updateCollectionCoins();
-        
-        if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
-            alert('Transaction cancelled');
-        } else {
-            alert('Purchase failed: ' + (err.message || 'Unknown error'));
-        }
-        updateCollectionUI();
-    } finally {
-        collectionLoading = false;
-    }
-}
-
 // Handle character button click - select if owned, purchase if not
 async function handleCharacterAction(charId) {
     console.log('handleCharacterAction called:', charId);
@@ -3087,56 +2967,106 @@ async function recordFreeMintOnBackend(txHash) {
 async function handlePurchase(charId) {
     const char = CHARACTERS[charId];
     if (!char) return;
-    
+
     const price = char.price;
-    if (coinCount < price) {
-        console.warn('Not enough coins for purchase');
+    if (price === 0) return;
+
+    if (!walletReady || !isValidAddress(NFT_CONTRACT_ADDRESS) || !isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
+        alert('Wallet or contracts not configured');
         return;
     }
-    
-    // Optimistic UI update
-    const previousCoins = coinCount;
-    coinCount -= price;
-    updateCollectionCoins();
-    
+
+    if (collectionLoading) return;
+
+    if (coinCount < price) {
+        alert(`Недостаточно coins (нужно ${price}, есть ${coinCount})`);
+        return;
+    }
+
+    collectionLoading = true;
+    const previousCoinCount = coinCount;
+
+    const card = document.querySelector(`.character-card[data-char-id="${charId}"]`);
+    const btn = card ? card.querySelector('.char-select-btn') : null;
+    const originalBtnText = btn ? btn.textContent : '';
+
+    if (btn) {
+        btn.textContent = 'Approving...';
+        btn.disabled = true;
+    }
+
     try {
-        // TODO: Integrate with blockchain for actual NFT purchase
-        // For now, just record in backend
-        const response = await fetch(`${BACKEND_URL}/api/shop/record-purchase`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ 
-                characterId: charId, 
-                price: price,
-                txHash: 'test-' + Date.now() // Placeholder
-            })
-        });
-        
-        const data = await response.json();
-        if (data.ok) {
-            // Update from backend response
-            coinCount = data.coinBalance;
-            ownedCharacters = data.ownedCharacters;
-            saveCoins();
-            
-            // Load ONLY this character's sprite (not all)
-            await loadSpriteForCharacter(charId);
-            updateCollectionUI();
-            console.log(`Purchased ${char.name} for ${price} coins!`);
-        } else {
-            // Rollback on failure
-            coinCount = previousCoins;
-            updateCollectionCoins();
-            console.error('Purchase failed:', data.error);
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+
+        const priceWei = ethers.parseUnits(String(price), 18);
+        const allowance = await getGameCoinAllowance();
+
+        if (allowance < priceWei) {
+            await approveGameCoinForNFT(priceWei);
         }
-    } catch (e) {
-        // Rollback on error
-        coinCount = previousCoins;
+
+        if (btn) btn.textContent = 'Confirm tx...';
+
+        const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+        const tx = await nftContract.mintWithCoins(charId);
+
+        coinCount -= price;
         updateCollectionCoins();
-        console.error('Purchase error:', e);
+
+        if (btn) btn.textContent = 'Minting...';
+        const receipt = await tx.wait();
+
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/shop/record-purchase`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({
+                    txHash: receipt.hash,
+                    characterId: charId,
+                    price: price
+                })
+            });
+            const data = await response.json();
+            if (data.ok) {
+                coinCount = data.coinBalance;
+                ownedCharacters = data.ownedCharacters || [];
+            }
+        } catch (e) {
+            console.warn('Failed to record purchase on backend:', e);
+        }
+
+        if (!ownedCharacters.includes(charId)) ownedCharacters.push(charId);
+        selectedCharacter = charId;
+
+        coinCount = await getOnChainCoinBalance();
+        saveCoins();
+        await loadSpriteForCharacter(charId);
+        updateCollectionUI();
+        updateStartButtonState();
+        console.log(`Purchased ${char.name} for ${price} coins on-chain!`);
+    } catch (err) {
+        console.error('Purchase failed:', err);
+        coinCount = previousCoinCount;
+        updateCollectionCoins();
+
+        if (err.code === 4001 || err.code === 'ACTION_REJECTED'
+            || (err.message && err.message.includes('user rejected'))) {
+            alert('Транзакция отменена');
+        } else if (err.message && err.message.includes('InsufficientCoins')) {
+            alert('Недостаточно coins');
+        } else if (err.message && err.message.includes('AlreadyOwnsCharacterType')) {
+            alert('У вас уже есть этот персонаж');
+        } else {
+            alert('Покупка не удалась: ' + (err.shortMessage || err.message || 'Unknown error'));
+        }
+        updateCollectionUI();
+    } finally {
+        collectionLoading = false;
     }
 }
 

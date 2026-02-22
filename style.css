@@ -805,10 +805,29 @@ body {
 .checkin-badge {
     font-size: var(--font-size-sm);
     color: var(--color-gray-500);
+    display: inline-block;
 }
 
 .checkin-badge.success {
     color: var(--color-success);
+}
+
+.checkin-badge.reward-in {
+    animation: checkinFadeIn 0.3s ease forwards;
+}
+
+.checkin-badge.reward-out {
+    animation: checkinFadeOut 0.3s ease forwards;
+}
+
+@keyframes checkinFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes checkinFadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-4px); }
 }
 
 /* ============================================
