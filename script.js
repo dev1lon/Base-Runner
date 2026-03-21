@@ -766,7 +766,10 @@ function formatAddress(address) {
 }
 
 function isValidAddress(address) {
-    return typeof address === "string" && address.startsWith("0x") && address.length === 42;
+    return typeof address === "string"
+        && address.startsWith("0x")
+        && address.length === 42
+        && address !== "0x0000000000000000000000000000000000000000";
 }
 
 function normalizeChainId(chainId) {
@@ -1686,7 +1689,7 @@ function handleAccountsChanged(accounts) {
     openWalletMenu();
     updateWalletUI();
     if (walletAddress) {
-        void restoreAuthSession().then(updateWalletUI);
+        void restoreAuthSession().then(updateWalletUI).catch(err => console.warn('Auth restore failed:', err));
     }
 }
 
@@ -1698,7 +1701,7 @@ function handleChainChanged(chainId) {
     openWalletMenu();
     updateWalletUI();
     if (walletAddress) {
-        void restoreAuthSession().then(updateWalletUI);
+        void restoreAuthSession().then(updateWalletUI).catch(err => console.warn('Auth restore failed:', err));
     }
 }
 
@@ -1706,7 +1709,7 @@ function getBirdFlyY() {
     // Bird flies at head level - hits standing player but misses ducking player
     // Bird bottom must be ABOVE ducking player's head for duck to work
     // duckHeight/playerHeight ≈ 0.69, so we need multiplier > 0.69
-    const birdBottom = groundY - playerHeight * 0.68; // 75% up from feet
+    const birdBottom = groundY - playerHeight * 0.68; // ~68% up from feet (below duck height ~0.69)
     return Math.round(birdBottom - birdHeight);
 }
 
@@ -2151,7 +2154,10 @@ async function applyProfileData(data) {
     }
     if (isValidAddress(GAMECOIN_CONTRACT_ADDRESS) && walletAddress) {
         try {
-            const onChain = await getOnChainCoinBalance();
+            const onChain = await Promise.race([
+                getOnChainCoinBalance(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+            ]);
             if (onChain > 0 || coinCount === 0) {
                 coinCount = onChain;
                 saveCoins();
@@ -2781,7 +2787,7 @@ async function loadOwnedSprites(forceReload = false) {
         
         // Load sprites as blob URLs (cached in memory)
         for (const [charId, spriteUrl] of Object.entries(data.sprites)) {
-            const id = parseInt(charId);
+            const id = String(parseInt(charId));
             if (!spriteCache[id]) {
                 // Fetch and cache as blob URL
                 try {
@@ -3057,11 +3063,11 @@ async function handlePurchase(charId) {
         const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
         const tx = await nftContract.mintWithCoins(charId);
 
-        coinCount -= price;
-        updateCollectionCoins();
-
         if (btn) btn.textContent = 'Minting...';
         const receipt = await tx.wait();
+
+        coinCount -= price;
+        updateCollectionCoins();
 
         try {
             const response = await fetch(`${BACKEND_URL}/api/shop/record-purchase`, {

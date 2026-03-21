@@ -153,11 +153,10 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     res.status(400).json({ ok: false, error: "Session already used" });
     return;
   }
-  // Session expiration check disabled
-  // if (session.expiresAt <= Date.now()) {
-  //   res.status(400).json({ ok: false, error: "Session expired" });
-  //   return;
-  // }
+  if (session.expiresAt <= Date.now()) {
+    res.status(400).json({ ok: false, error: "Session expired" });
+    return;
+  }
 
   const addressNorm = req.user.address;
   if (!addressNorm || addressNorm !== session.address) {
@@ -186,7 +185,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   const reported = Number.isFinite(Number(reportedScore))
     ? Number(reportedScore)
     : null;
-  const tolerance = 2;
+  const tolerance = 5;
   const maxScore = Math.floor(gameDurationMs / DEFAULT_CONFIG.frameMs) + tolerance;
 
   if (reported === null) {
@@ -210,8 +209,8 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   const finalScore = Math.min(reported, maxScore);
   const coinsAwarded = Math.floor(finalScore / 1000);
   console.log("💰 Awarding:", { finalScore, coinsAwarded, address: addressNorm });
-  const result = await applyScore(addressNorm, finalScore, coinsAwarded);
   markSessionUsed(sessionId);
+  const result = await applyScore(addressNorm, finalScore, coinsAwarded);
 
   res.json({
     ok: true,
@@ -412,7 +411,11 @@ app.post("/api/shop/purchase/cancel", requireAuth, async (req, res) => {
 // Mark free character as claimed (after successful on-chain claim)
 app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
   const { txHash, characterId = 0 } = req.body || {};
-  
+
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ ok: false, error: "Invalid txHash" });
+  }
+
   try {
     const user = await getOrCreateUser(req.user.address);
     
