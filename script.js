@@ -1080,9 +1080,8 @@ async function getOnChainCoinBalance() {
         const ethersProvider = new ethers.BrowserProvider(provider);
         const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
         const balance = await contract.balanceOf(walletAddress);
-        // Convert from wei (18 decimals) to coins, round to avoid decimals
-        const coins = Number(ethers.formatUnits(balance, 18));
-        return Math.floor(coins); // Round down to whole coins
+        // GameCoin has decimals()=0, so balance is already a whole number
+        return Number(balance);
     } catch (err) {
         console.warn("Failed to get coin balance:", err);
         return 0;
@@ -2504,7 +2503,8 @@ async function getGameCoinAllowance() {
         const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
         
         const allowance = await contract.allowance(walletAddress, NFT_CONTRACT_ADDRESS);
-        return Number(allowance);
+        // GameCoin has decimals()=0, return raw BigInt for accurate comparison
+        return allowance;
     } catch (err) {
         console.warn("Failed to get allowance:", err);
         return 0;
@@ -3051,11 +3051,12 @@ async function handlePurchase(charId) {
         const ethersProvider = new ethers.BrowserProvider(provider);
         const signer = await ethersProvider.getSigner();
 
-        const priceWei = ethers.parseUnits(String(price), 18);
+        // GameCoin has decimals()=0: price is already a whole number
+        const priceRaw = BigInt(price);
         const allowance = await getGameCoinAllowance();
 
-        if (allowance < priceWei) {
-            await approveGameCoinForNFT(priceWei);
+        if (allowance < priceRaw) {
+            await approveGameCoinForNFT(priceRaw);
         }
 
         if (btn) btn.textContent = 'Confirm tx...';
