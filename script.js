@@ -3055,8 +3055,10 @@ async function handlePurchase(charId) {
         const priceRaw = BigInt(price);
         const allowance = await getGameCoinAllowance();
 
+        // Approve infinite once so user doesn't re-approve on every purchase
+        const MAX_UINT256 = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         if (allowance < priceRaw) {
-            await approveGameCoinForNFT(priceRaw);
+            await approveGameCoinForNFT(MAX_UINT256);
         }
 
         if (btn) btn.textContent = 'Confirm tx...';
