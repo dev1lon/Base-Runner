@@ -39,6 +39,7 @@ const {
 const { ensureSchema } = require("./shared/db");
 const { normalizeAddress, verifyJwt } = require("./shared/auth");
 const { issueNonce, verifyNonce } = require("./modules/auth/authService");
+const { getCheckinStatus, doCheckin } = require("./modules/checkin/checkinService");
 
 const app = express();
 
@@ -218,10 +219,7 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     maxScore,
     coinsAwarded,
     coinBalance: result ? result.coins : 0,
-    bestScore: result ? result.best_score : finalScore,
-    // On-chain mint info
-    onChainMinted: result?.onChainMinted || 0,
-    mintTxHash: result?.mintResult?.txHash || null
+    bestScore: result ? result.best_score : finalScore
   });
 });
 
@@ -240,26 +238,13 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     }
   }
 
-  // Sync coin balance from blockchain (check-ins add on-chain only)
-  let coinBalance = user.coins;
-  try {
-    const { getOnChainBalance, isBlockchainReady } = require("./shared/blockchain");
-    if (isBlockchainReady()) {
-      const onChain = Math.floor(await getOnChainBalance(req.user.address));
-      if (onChain > coinBalance) {
-        coinBalance = onChain;
-        const { updateUser } = require("./modules/user/userRepo");
-        await updateUser(req.user.address, { coins: onChain });
-      }
-    }
-  } catch (e) {
-    console.warn("Failed to sync coin balance from chain:", e.message);
-  }
-  
+  const checkin = await getCheckinStatus(req.user.address);
+
   res.json({
     ok: true,
     address: user.address,
-    coinBalance,
+    coinBalance: user.coins,
+    checkin,
     bestScore: user.best_score,
     hasFreeMint: user.has_claimed_free || false,
     ownedCharacters: user.owned_characters || [],
@@ -312,8 +297,29 @@ async function syncUserFromBlockchain(address) {
   }
 }
 
+// ============ Check-in API ============
+
+app.get("/api/checkin/status", requireAuth, async (req, res) => {
+  try {
+    const status = await getCheckinStatus(req.user.address);
+    res.json({ ok: true, ...status });
+  } catch (err) {
+    console.error("Checkin status error:", err);
+    res.status(500).json({ ok: false, error: "Failed to get checkin status" });
+  }
+});
+
+app.post("/api/checkin", requireAuth, async (req, res) => {
+  try {
+    const result = await doCheckin(req.user.address);
+    res.json(result);
+  } catch (err) {
+    console.error("Checkin error:", err);
+    res.status(500).json({ ok: false, error: "Check-in failed" });
+  }
+});
+
 // ============ Shop API ============
-// Note: Check-in is now fully on-chain via GameCoin.checkin()
 
 // Get all available characters
 app.get("/api/shop/characters", async (req, res) => {
@@ -452,28 +458,15 @@ app.post("/api/shop/record-purchase", requireAuth, async (req, res) => {
   }
   
   try {
-    const { addOwnedCharacter, deductCoins, addCoins, updateUser } = require("./modules/user/userRepo");
-    const { getOnChainBalance, isBlockchainReady } = require("./shared/blockchain");
+    const { addOwnedCharacter, deductCoins } = require("./modules/user/userRepo");
     const user = await getOrCreateUser(req.user.address);
-    
+
     // Check if already owns
     if (user.owned_characters && user.owned_characters.includes(characterId)) {
       res.status(400).json({ ok: false, error: "Already owns this character" });
       return;
     }
-    
-    // Sync DB coins from chain before deducting
-    if (isBlockchainReady()) {
-      try {
-        const onChain = Math.floor(await getOnChainBalance(req.user.address));
-        if (onChain > user.coins) {
-          await updateUser(req.user.address, { coins: onChain });
-        }
-      } catch (e) {
-        console.warn("Failed to sync coins before purchase:", e.message);
-      }
-    }
-    
+
     // Deduct coins from DB
     const deducted = await deductCoins(req.user.address, price);
     if (!deducted) {

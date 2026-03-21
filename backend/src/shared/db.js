@@ -39,16 +39,10 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_characters JSONB DEFAULT '[]';`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS selected_character INTEGER DEFAULT 0;`);
   
-  // Remove deprecated columns (streak/checkin now on blockchain)
-  try {
-    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS streak;`);
-    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS last_checkin;`);
-    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS last_checkin_at;`);
-    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS last_checkin_tx;`);
-    await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS checkin_nonce;`);
-  } catch (e) {
-    // Columns may not exist, ignore
-  }
+  // Check-in tracking (backend-only, no blockchain)
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS checkin_count INTEGER NOT NULL DEFAULT 0;`);
   
   // Shop characters table
   await pool.query(`
