@@ -1,5 +1,5 @@
 const { query } = require("../../shared/db");
-const { getOrCreateUser, updateUser } = require("../user/userRepo");
+const { getOrCreateUser, updateUser, addOwnedCharacter, buildOwnedMap } = require("../user/userRepo");
 const crypto = require("crypto");
 const { ethers } = require("ethers");
 
@@ -147,18 +147,24 @@ async function confirmPurchase(address, nonce, txHash) {
     [txHash, pending.id]
   );
   
+  // Add character to owned_characters
+  await addOwnedCharacter(address, pending.character_id);
+
   // Add to user inventory
   await query(
     `INSERT INTO user_inventory (address, token_id, character_id, tx_hash)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (address, token_id) DO NOTHING`,
-    [address.toLowerCase(), 0, pending.character_id, txHash] // token_id 0 = will be updated when synced
+    [address.toLowerCase(), 0, pending.character_id, txHash]
   );
-  
+
+  const updatedUser = await getOrCreateUser(address);
+
   return {
     ok: true,
     coinsDeducted: pending.coins_reserved,
-    newBalance: newCoins
+    newBalance: newCoins,
+    charactersOwned: buildOwnedMap(updatedUser.owned_characters, updatedUser.has_claimed_free)
   };
 }
 

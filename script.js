@@ -157,8 +157,19 @@ const UI_STATE = {
 let currentUIState = UI_STATE.CONNECT;
 
 // Collection state
-let hasFreeMint = false; // User has minted free character
-let ownedCharacters = []; // List of owned character types
+let hasFreeMint = false;       // User has minted free character (char 0)
+let ownedCharacters = [];      // Array of owned character IDs (derived from map)
+let charactersOwned = {};      // Full map: { 0: true, 1: false, ... } for all 10 chars
+
+// Apply charactersOwned map from API — single source of truth for ownership
+function applyCharactersOwned(map) {
+    if (!map || typeof map !== 'object') return;
+    charactersOwned = map;
+    ownedCharacters = Object.entries(map)
+        .filter(([, owned]) => owned)
+        .map(([id]) => Number(id));
+    hasFreeMint = map[0] === true;
+}
 let collectionLoading = false;
 let selectedCharacter = 0; // Currently selected character (0=Vitalik, 1=Trump)
 let collectionOpenedFrom = null; // Track where collection was opened from ('menu' or 'pause')
@@ -450,10 +461,9 @@ function showWalletSelector() {
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
     
-    // Deeplinks
-    const coinbaseDeeplink = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
-    // WalletConnect universal link - opens QR modal on their site
-    const walletConnectLink = `https://explorer.walletconnect.com/?type=wallet&chains=eip155%3A84532`;
+    // Deeplinks (reserved for future use)
+    // const coinbaseDeeplink = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
+    // const walletConnectLink = `https://explorer.walletconnect.com/?type=wallet&chains=eip155%3A84532`;
     
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
@@ -1175,7 +1185,6 @@ function setConnectButtonText(text) {
 }
 
 function updateWalletUI() {
-    const provider = getEthereumProvider();
     const isConnected = !!walletAddress;
     const normalizedChainId = normalizeChainId(walletChainId);
     const isOnBaseSepolia = normalizedChainId === BASE_SEPOLIA_CHAIN_ID;
@@ -2021,11 +2030,8 @@ async function applyProfileData(data) {
     // Coins are backend-only, already set from data.coinBalance above
     
     // Character data from BACKEND (faster than blockchain)
-    if (data.hasFreeMint !== undefined) {
-        hasFreeMint = data.hasFreeMint;
-    }
-    if (Array.isArray(data.ownedCharacters)) {
-        ownedCharacters = data.ownedCharacters;
+    if (data.charactersOwned) {
+        applyCharactersOwned(data.charactersOwned);
     }
     if (Number.isFinite(data.selectedCharacter)) {
         selectedCharacter = data.selectedCharacter;
@@ -2561,17 +2567,17 @@ async function handleMintVitalik() {
                 body: JSON.stringify({ txHash: receipt.hash, characterId: 0 })
             });
             const data = await response.json();
-            if (data.ok) {
-                hasFreeMint = data.hasFreeMint;
-                ownedCharacters = data.ownedCharacters || [0];
+            if (data.ok && data.charactersOwned) {
+                applyCharactersOwned(data.charactersOwned);
             }
         } catch (e) {
             console.warn('Failed to record mint on backend:', e);
         }
-        
-        // Update state
-        hasFreeMint = true;
-        if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
+
+        // Fallback state update if backend call failed
+        if (!hasFreeMint) {
+            applyCharactersOwned({ ...charactersOwned, 0: true });
+        }
         selectedCharacter = 0; // Auto-select after mint
         
         updateCollectionUI();
@@ -2635,8 +2641,8 @@ async function loadOwnedSprites(forceReload = false) {
         }
         
         // Update owned characters
-        if (data.ownedCharacters) {
-            ownedCharacters = data.ownedCharacters;
+        if (data.charactersOwned) {
+            applyCharactersOwned(data.charactersOwned);
         }
         
         // Load sprites as blob URLs (cached in memory)
@@ -2807,9 +2813,10 @@ async function backendOnlyFreeMint() {
         console.log('Backend response:', data);
         
         if (data.ok) {
-            hasFreeMint = true;
-            if (!ownedCharacters.includes(0)) {
-                ownedCharacters.push(0);
+            if (data.charactersOwned) {
+                applyCharactersOwned(data.charactersOwned);
+            } else {
+                applyCharactersOwned({ ...charactersOwned, 0: true });
             }
             selectedCharacter = 0; // Auto-select Vitalik
             localStorage.setItem('selectedCharacter', '0');
@@ -2846,16 +2853,15 @@ async function recordFreeMintOnBackend(txHash) {
         const data = await response.json();
         console.log('Backend recorded mint:', data);
         
-        if (data.ok) {
-            hasFreeMint = true;
-            if (!ownedCharacters.includes(0)) {
-                ownedCharacters.push(0);
-            }
+        if (data.ok && data.charactersOwned) {
+            applyCharactersOwned(data.charactersOwned);
+        } else if (data.ok) {
+            applyCharactersOwned({ ...charactersOwned, 0: true });
         }
     } catch (e) {
         console.warn('Failed to record mint on backend:', e);
     }
-    
+
     // Auto-select Vitalik
     selectedCharacter = 0;
     localStorage.setItem('selectedCharacter', '0');
@@ -2918,9 +2924,14 @@ async function handlePurchase(charId) {
         if (confirmed.ok) {
             coinCount = confirmed.newBalance;
             saveCoins();
+            if (confirmed.charactersOwned) {
+                applyCharactersOwned(confirmed.charactersOwned);
+            } else {
+                applyCharactersOwned({ ...charactersOwned, [charId]: true });
+            }
+        } else {
+            applyCharactersOwned({ ...charactersOwned, [charId]: true });
         }
-
-        if (!ownedCharacters.includes(charId)) ownedCharacters.push(charId);
         selectedCharacter = charId;
         localStorage.setItem('selectedCharacter', String(charId));
 

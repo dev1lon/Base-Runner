@@ -24,7 +24,7 @@ const {
   markSessionUsed,
   cleanupSessions
 } = require("./modules/session/sessionStore");
-const { getOrCreateUser } = require("./modules/user/userRepo");
+const { getOrCreateUser, buildOwnedMap } = require("./modules/user/userRepo");
 const { applyScore } = require("./modules/user/userService");
 const {
   getCharacters,
@@ -110,6 +110,7 @@ app.post("/auth/verify", async (req, res) => {
     bestScore: result.user.best_score,
     hasFreeMint: result.user.has_claimed_free || false,
     ownedCharacters: result.user.owned_characters || [],
+    charactersOwned: buildOwnedMap(result.user.owned_characters, result.user.has_claimed_free),
     selectedCharacter: result.user.selected_character || 0
   });
 });
@@ -248,6 +249,7 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     bestScore: user.best_score,
     hasFreeMint: user.has_claimed_free || false,
     ownedCharacters: user.owned_characters || [],
+    charactersOwned: buildOwnedMap(user.owned_characters, user.has_claimed_free),
     selectedCharacter: user.selected_character || 0
   });
 });
@@ -436,11 +438,12 @@ app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
     
     const updatedUser = await getOrCreateUser(req.user.address);
     
-    res.json({ 
-      ok: true, 
+    res.json({
+      ok: true,
       txHash,
       hasFreeMint: true,
-      ownedCharacters: updatedUser.owned_characters || [characterId]
+      ownedCharacters: updatedUser.owned_characters || [characterId],
+      charactersOwned: buildOwnedMap(updatedUser.owned_characters, true)
     });
   } catch (err) {
     console.error("Claim free error:", err);
@@ -483,7 +486,8 @@ app.post("/api/shop/record-purchase", requireAuth, async (req, res) => {
       ok: true,
       txHash,
       coinBalance: updatedUser.coins,
-      ownedCharacters: updatedUser.owned_characters || []
+      ownedCharacters: updatedUser.owned_characters || [],
+      charactersOwned: buildOwnedMap(updatedUser.owned_characters, updatedUser.has_claimed_free)
     });
   } catch (err) {
     console.error("Record purchase error:", err);
@@ -580,10 +584,11 @@ app.get("/api/sprites", requireAuth, async (req, res) => {
       sprites[0] = `/api/sprites/0`;
     }
     
-    res.json({ 
-      ok: true, 
+    res.json({
+      ok: true,
       sprites,
       ownedCharacters: owned,
+      charactersOwned: buildOwnedMap(owned, user.has_claimed_free),
       selectedCharacter: user.selected_character || 0
     });
   } catch (err) {
