@@ -157,10 +157,10 @@ const GAMECOIN_ABI = [
     "function allowance(address owner, address spender) external view returns (uint256)"
 ];
 
-// NFT Contract ABI (buy with GameCoins)
+// NFT Contract ABI
 const NFT_ABI = [
     "function mintFreeCharacter() external",
-    "function mintWithCoins(uint8 characterType) external",
+    "function mintWithSignature(uint8 characterType, bytes32 nonce, uint256 expiry, bytes calldata signature) external",
     "function canClaimFreeMint(address wallet) external view returns (bool)",
     "function hasClaimedFreeMint(address) external view returns (bool)",
     "function ownsCharacterType(address, uint8) external view returns (bool)",
@@ -2476,38 +2476,47 @@ async function claimFreeCharacter() {
     }
 }
 
-// Approve GameCoin spending for NFT contract
-async function approveGameCoinForNFT(amount) {
-    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !isValidAddress(NFT_CONTRACT_ADDRESS)) {
-        throw new Error("Contracts not set");
-    }
-    
-    const provider = getEthereumProvider();
-    const ethersProvider = new ethers.BrowserProvider(provider);
-    const signer = await ethersProvider.getSigner();
-    const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, signer);
-    
-    const tx = await contract.approve(NFT_CONTRACT_ADDRESS, amount);
-    await tx.wait();
+// Request purchase signature from backend
+async function requestPurchaseSignature(charId) {
+    const response = await fetch(`${BACKEND_URL}/api/shop/purchase/start`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ characterId: charId })
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to start purchase');
+    return data; // { nonce, expiry, signature, price }
 }
 
-// Check GameCoin allowance for NFT contract
-async function getGameCoinAllowance() {
-    if (!isValidAddress(GAMECOIN_CONTRACT_ADDRESS) || !isValidAddress(NFT_CONTRACT_ADDRESS) || !walletAddress) {
-        return 0;
-    }
-    
+// Confirm purchase with backend after tx confirmed
+async function confirmPurchaseOnBackend(nonce, txHash) {
+    const response = await fetch(`${BACKEND_URL}/api/shop/purchase/confirm`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ nonce, txHash })
+    });
+    return response.json();
+}
+
+// Cancel pending purchase on backend (on tx failure)
+async function cancelPurchaseOnBackend(nonce) {
     try {
-        const provider = getEthereumProvider();
-        const ethersProvider = new ethers.BrowserProvider(provider);
-        const contract = new ethers.Contract(GAMECOIN_CONTRACT_ADDRESS, GAMECOIN_ABI, ethersProvider);
-        
-        const allowance = await contract.allowance(walletAddress, NFT_CONTRACT_ADDRESS);
-        // GameCoin has decimals()=0, return raw BigInt for accurate comparison
-        return allowance;
-    } catch (err) {
-        console.warn("Failed to get allowance:", err);
-        return 0;
+        await fetch(`${BACKEND_URL}/api/shop/purchase/cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ nonce })
+        });
+    } catch (e) {
+        console.warn('Failed to cancel purchase on backend:', e);
     }
 }
 
@@ -3017,102 +3026,74 @@ async function recordFreeMintOnBackend(txHash) {
 // Handle character purchase
 async function handlePurchase(charId) {
     const char = CHARACTERS[charId];
-    if (!char) return;
+    if (!char || char.price === 0) return;
 
-    const price = char.price;
-    if (price === 0) return;
-
-    if (!walletReady || !isValidAddress(NFT_CONTRACT_ADDRESS) || !isValidAddress(GAMECOIN_CONTRACT_ADDRESS)) {
-        alert('Wallet or contracts not configured');
+    if (!walletReady || !isValidAddress(NFT_CONTRACT_ADDRESS) || !authToken) {
+        alert('Wallet not connected or not logged in');
         return;
     }
 
     if (collectionLoading) return;
 
-    if (coinCount < price) {
-        alert(`Недостаточно coins (нужно ${price}, есть ${coinCount})`);
-        return;
-    }
-
     collectionLoading = true;
-    const previousCoinCount = coinCount;
-
     const card = document.querySelector(`.character-card[data-char-id="${charId}"]`);
     const btn = card ? card.querySelector('.char-select-btn') : null;
-    const originalBtnText = btn ? btn.textContent : '';
+    let purchaseNonce = null;
 
     if (btn) {
-        btn.textContent = 'Approving...';
+        btn.textContent = 'Checking...';
         btn.disabled = true;
     }
 
     try {
+        // Step 1: Get backend signature (verifies coins, reserves them)
+        if (btn) btn.textContent = 'Reserving...';
+        const voucher = await requestPurchaseSignature(charId);
+        purchaseNonce = voucher.nonce;
+
+        // Step 2: User signs one transaction — mint NFT with backend signature
+        if (btn) btn.textContent = 'Confirm tx...';
         const provider = getEthereumProvider();
         const ethersProvider = new ethers.BrowserProvider(provider);
         const signer = await ethersProvider.getSigner();
-
-        // GameCoin has decimals()=0: price is already a whole number
-        const priceRaw = BigInt(price);
-        const allowance = await getGameCoinAllowance();
-
-        // Approve infinite once so user doesn't re-approve on every purchase
-        const MAX_UINT256 = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        if (allowance < priceRaw) {
-            await approveGameCoinForNFT(MAX_UINT256);
-        }
-
-        if (btn) btn.textContent = 'Confirm tx...';
-
         const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-        const tx = await nftContract.mintWithCoins(charId);
+
+        const tx = await nftContract.mintWithSignature(
+            charId,
+            voucher.nonce,
+            voucher.expiry,
+            voucher.signature
+        );
 
         if (btn) btn.textContent = 'Minting...';
         const receipt = await tx.wait();
 
-        coinCount -= price;
-        updateCollectionCoins();
-
-        try {
-            const response = await fetch(`${BACKEND_URL}/api/shop/record-purchase`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: JSON.stringify({
-                    txHash: receipt.hash,
-                    characterId: charId,
-                    price: price
-                })
-            });
-            const data = await response.json();
-            if (data.ok) {
-                coinCount = data.coinBalance;
-                ownedCharacters = data.ownedCharacters || [];
-            }
-        } catch (e) {
-            console.warn('Failed to record purchase on backend:', e);
+        // Step 3: Confirm with backend — deducts coins, marks character owned
+        const confirmed = await confirmPurchaseOnBackend(voucher.nonce, receipt.hash);
+        if (confirmed.ok) {
+            coinCount = confirmed.newBalance;
+            saveCoins();
         }
 
         if (!ownedCharacters.includes(charId)) ownedCharacters.push(charId);
         selectedCharacter = charId;
+        localStorage.setItem('selectedCharacter', String(charId));
 
-        coinCount = await getOnChainCoinBalance();
-        saveCoins();
         await loadSpriteForCharacter(charId);
         updateCollectionUI();
+        updateCollectionCoins();
         updateStartButtonState();
-        console.log(`Purchased ${char.name} for ${price} coins on-chain!`);
     } catch (err) {
         console.error('Purchase failed:', err);
-        coinCount = previousCoinCount;
-        updateCollectionCoins();
+
+        // Cancel reservation so coins are freed
+        if (purchaseNonce) await cancelPurchaseOnBackend(purchaseNonce);
 
         if (err.code === 4001 || err.code === 'ACTION_REJECTED'
             || (err.message && err.message.includes('user rejected'))) {
             alert('Транзакция отменена');
-        } else if (err.message && err.message.includes('InsufficientCoins')) {
-            alert('Недостаточно coins');
+        } else if (err.message && err.message.includes('SignatureExpired')) {
+            alert('Время покупки истекло, попробуйте снова');
         } else if (err.message && err.message.includes('AlreadyOwnsCharacterType')) {
             alert('У вас уже есть этот персонаж');
         } else {
