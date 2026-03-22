@@ -2586,7 +2586,7 @@ async function handleMintVitalik() {
 // Character data - NO local sprites, all loaded from backend
 // Prices: FREE=0, COMMON=10, RARE=25, EPIC=50, LEGENDARY=100
 const CHARACTERS = {
-    0: { name: 'Vitalik', rarity: 'FREE', price: 0 },
+    0: { name: 'Vitalik', rarity: 'COMMON', price: 0 },
     1: { name: 'Doge', rarity: 'COMMON', price: 10 },
     2: { name: 'Hamaha', rarity: 'COMMON', price: 10 },
     3: { name: 'Hayes', rarity: 'RARE', price: 25 },
