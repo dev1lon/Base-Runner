@@ -1151,7 +1151,8 @@ body.w3m-modal-open w3m-modal {
 
 .btn-pulse {
     animation: pulse-glow 2s ease-in-out infinite;
-    border-color: var(--color-base-blue) !important;
+    border-color: var(--color-warning) !important;
+    color: var(--color-warning) !important;
 }
 
 /* Start button disabled state */
