@@ -2622,9 +2622,31 @@ const CHARACTERS = {
     9: { name: 'Trump', rarity: 'LEGENDARY', price: 100 }
 };
 
-// Cache for loaded real sprites (blob URLs)
+// Cache for loaded real sprites (blob URLs, in-memory)
 const spriteCache = {};
 let spritesLoaded = false;
+
+// localStorage sprite cache — keyed by wallet address so wallets don't share sprites
+function lsSpritKey(address, charId) {
+    return `sprite_${address.toLowerCase()}_${charId}`;
+}
+function lsSelectedKey(address) {
+    return `selected_character_${address.toLowerCase()}`;
+}
+function getSpriteFromLS(address, charId) {
+    try { return localStorage.getItem(lsSpritKey(address, charId)); } catch { return null; }
+}
+function saveSpriteToLS(address, charId, dataUrl) {
+    try { localStorage.setItem(lsSpritKey(address, charId), dataUrl); } catch (e) {
+        console.warn('localStorage sprite save failed:', e);
+    }
+}
+function getSelectedFromLS(address) {
+    try { return localStorage.getItem(lsSelectedKey(address)); } catch { return null; }
+}
+function saveSelectedToLS(address, charId) {
+    try { localStorage.setItem(lsSelectedKey(address), String(charId)); } catch {}
+}
 
 // For backwards compatibility
 const CHARACTER_PRICES = Object.fromEntries(
@@ -2658,23 +2680,33 @@ async function loadOwnedSprites(forceReload = false) {
             hasFreeMint = ownedCharacters.includes(0);
         }
         
-        // Load sprites as blob URLs (cached in memory)
+        // Load sprites — check localStorage first, then fetch from backend
         for (const [charId, spriteUrl] of Object.entries(data.sprites)) {
             const id = String(parseInt(charId));
-            if (!spriteCache[id]) {
-                // Fetch and cache as blob URL
-                try {
-                    const spriteResponse = await fetch(`${BACKEND_URL}${spriteUrl}`, {
-                        headers: { 'Authorization': `Bearer ${authToken}` }
-                    });
-                    if (spriteResponse.ok) {
-                        const blob = await spriteResponse.blob();
-                        spriteCache[id] = URL.createObjectURL(blob);
-                        console.log(`Cached sprite for character ${id}`);
-                    }
-                } catch (e) {
-                    console.warn(`Failed to cache sprite ${id}:`, e);
+            if (spriteCache[id]) continue;
+            // Try localStorage cache first
+            const cached = getSpriteFromLS(walletAddress, id);
+            if (cached) {
+                spriteCache[id] = cached;
+                continue;
+            }
+            // Fetch from backend and save to localStorage
+            try {
+                const spriteResponse = await fetch(`${BACKEND_URL}${spriteUrl}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (spriteResponse.ok) {
+                    const blob = await spriteResponse.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const dataUrl = reader.result;
+                        spriteCache[id] = dataUrl;
+                        saveSpriteToLS(walletAddress, id, dataUrl);
+                    };
+                    reader.readAsDataURL(blob);
                 }
+            } catch (e) {
+                console.warn(`Failed to cache sprite ${id}:`, e);
             }
         }
         
@@ -2994,7 +3026,8 @@ async function selectCharacter(charType) {
     
     selectedCharacter = charType;
     localStorage.setItem('selectedCharacter', String(charType));
-    
+    if (walletAddress) saveSelectedToLS(walletAddress, charType);
+
     // Update player sprite immediately
     updatePlayerSprite();
     
@@ -3034,8 +3067,10 @@ function updatePlayerSprite() {
 
 // Load selected character from storage (fallback) or backend (primary)
 async function loadSelectedCharacter() {
-    // First, try localStorage as quick fallback
-    const saved = localStorage.getItem('selectedCharacter');
+    // Try wallet-specific localStorage first, fallback to generic key
+    const saved = walletAddress
+        ? (getSelectedFromLS(walletAddress) || localStorage.getItem('selectedCharacter'))
+        : localStorage.getItem('selectedCharacter');
     if (saved !== null) {
         const charType = parseInt(saved);
         if (CHARACTERS[charType]) {
