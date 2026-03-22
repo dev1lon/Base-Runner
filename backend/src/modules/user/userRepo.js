@@ -8,6 +8,9 @@ const USER_COLUMNS = `
   owned_characters,
   selected_character,
   last_login_at,
+  last_checkin_at,
+  streak,
+  checkin_count,
   created_at,
   updated_at
 `;
