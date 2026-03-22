@@ -2915,6 +2915,7 @@ async function handlePurchase(charId) {
         if (btn) btn.textContent = 'Reserving...';
         const voucher = await requestPurchaseSignature(charId);
         purchaseNonce = voucher.nonce;
+        if (!voucher.signature) throw new Error('Backend signer not configured');
 
         // Step 2: User signs one transaction — mint NFT with backend signature
         if (btn) btn.textContent = 'Confirm tx...';
