@@ -2447,33 +2447,29 @@ function updateCollectionUI() {
         }
     });
     
-    // Update hint
+    // Update hint (hidden — moved to collection button text)
     if (collectionHint) {
-        if (!hasFreeMint) {
-            collectionHint.textContent = 'Mint your first character to play!';
-            collectionHint.style.color = 'var(--color-warning)';
-        } else {
-            collectionHint.textContent = '';
-        }
+        collectionHint.textContent = '';
     }
-    
+
     updateCollectionCoins();
 }
 
 function updateStartButtonState() {
     if (!startButton) return;
-    
+
     const needsMint = needsFreeClaim();
-    
+
     if (needsMint) {
         startButton.classList.add('btn-locked');
     } else {
         startButton.classList.remove('btn-locked');
     }
     startButton.textContent = 'Start Game';
-    
-    // Pulse collection button only if needs free mint
+
+    // Collection button: show prompt before free mint, normal text after
     if (collectionButton) {
+        collectionButton.textContent = needsMint ? 'Mint your first character to play!' : 'Collection';
         if (needsMint) {
             collectionButton.classList.add('btn-pulse');
         } else {
