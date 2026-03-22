@@ -127,7 +127,7 @@ const BASE_SEPOLIA_PARAMS = {
     blockExplorerUrls: ["https://sepolia.basescan.org"]
 };
 // Contract addresses (Base Sepolia)
-const NFT_CONTRACT_ADDRESS = "0xA8b93d3371BCbe1277133aea8BF5EfF9612a5faA";
+const NFT_CONTRACT_ADDRESS = "0x1FBdCBb4b139de2c4CC2dc2A677CC9a4f3BDC1B1";
 
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
