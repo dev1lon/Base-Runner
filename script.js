@@ -215,6 +215,7 @@ let authToken = "";
 let checkinState = {
     lastCheckin: null,
     streak: 0,
+    canCheckin: true,
     loading: false,
     message: ""
 };
@@ -2048,6 +2049,7 @@ async function applyProfileData(data) {
         if (stats) {
             checkinState.lastCheckin = stats.lastCheckin;
             checkinState.streak = stats.streak;
+            checkinState.canCheckin = stats.canCheckin;
         }
     } catch (e) {
         console.warn("Failed to get checkin stats:", e);
@@ -2163,10 +2165,10 @@ function updateCheckinUI() {
         setCheckinStatusText("", false);
         return;
     }
-    const checkedIn = isToday(checkinState.lastCheckin);
+    const checkedIn = !checkinState.canCheckin;
     setCheckinButtonDisabled(checkedIn);
     setCheckinButtonText(checkedIn ? "Done" : "Check-in");
-    
+
     if (checkinState.message) {
         setCheckinStatusText(checkinState.message, checkedIn);
     } else if (checkedIn) {
@@ -2210,6 +2212,7 @@ async function handleCheckin() {
 
         checkinState.lastCheckin = Date.now();
         checkinState.streak = result.streak;
+        checkinState.canCheckin = false;
         coinCount = result.newBalance;
         saveCoins();
         updateCollectionCoins();
