@@ -137,13 +137,14 @@ const ALLOW_GUEST_PLAY = false;
 const NFT_ABI = [
     "function mintFreeCharacter() external",
     "function mintWithSignature(uint8 characterType, bytes32 nonce, uint256 expiry, bytes calldata signature) external",
+    "function checkIn() external",
+    "function canCheckIn(address wallet) external view returns (bool)",
+    "function lastCheckin(address) external view returns (uint256)",
     "function canClaimFreeMint(address wallet) external view returns (bool)",
     "function hasClaimedFreeMint(address) external view returns (bool)",
     "function ownsCharacterType(address, uint8) external view returns (bool)",
     "function getOwnedCharacterList(address wallet) external view returns (uint8[])",
-    "function getOwnedTokenIds(address owner) external view returns (uint256[])",
-    "function balanceOf(address owner) external view returns (uint256)",
-    "function characterTypes(uint8) external view returns (string name, uint8 rarity, uint256 price, bool exists)"
+    "function balanceOf(address owner) external view returns (uint256)"
 ];
 
 // UI State Machine
@@ -993,7 +994,7 @@ async function authenticateWallet() {
     }
 }
 
-// ============ Check-in (backend-only) ============
+// ============ Check-in (on-chain TX + backend streak) ============
 
 async function getCheckinStats() {
     if (!authToken) return null;
@@ -1017,9 +1018,22 @@ async function getCheckinStats() {
 
 async function sendCheckinTransaction() {
     if (!authToken) throw new Error("Not authenticated");
+    if (!walletReady) throw new Error("Wallet not connected");
+
+    // 1. Send on-chain TX
+    const provider = getEthereumProvider();
+    const ethersProvider = new ethers.BrowserProvider(provider);
+    const signer = await ethersProvider.getSigner();
+    const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
+
+    const tx = await contract.checkIn();
+    const receipt = await tx.wait();
+
+    // 2. Notify backend with txHash
     const res = await fetch(`${BACKEND_URL}/api/checkin`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHash: receipt.hash })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Check-in failed');

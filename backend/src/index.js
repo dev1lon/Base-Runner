@@ -253,7 +253,8 @@ app.get("/api/checkin/status", requireAuth, async (req, res) => {
 
 app.post("/api/checkin", requireAuth, async (req, res) => {
   try {
-    const result = await doCheckin(req.user.address);
+    const { txHash } = req.body || {};
+    const result = await doCheckin(req.user.address, txHash);
     res.json(result);
   } catch (err) {
     console.error("Checkin error:", err);

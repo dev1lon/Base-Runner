@@ -12,6 +12,7 @@ import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5
  * @title Base Runner Character NFT (Soulbound)
  * @notice ERC-721 NFT collection for Base Runner game characters
  * @dev Soulbound (non-transferable). Purchases verified via backend signature.
+ *      Check-in enforced on-chain (24h cooldown). Streak tracked on backend.
  */
 contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     using Strings for uint256;
@@ -51,6 +52,10 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     mapping(uint8 => CharacterType) public characterTypes;
     mapping(bytes32 => bool) public usedNonces;
 
+    // Check-in
+    uint256 public constant CHECKIN_COOLDOWN = 24 hours;
+    mapping(address => uint256) public lastCheckin;
+
     uint8 public maxCharacterType;
     uint8 public freeCharacterId;
 
@@ -61,6 +66,7 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     event CharacterMinted(address indexed owner, uint256 indexed tokenId, uint8 characterType, Rarity rarity);
     event CharacterTypeAdded(uint8 indexed characterType, string name, Rarity rarity);
     event TrustedSignerUpdated(address indexed newSigner);
+    event CheckedIn(address indexed user, uint256 timestamp);
 
     // ============================================
     // Errors
@@ -74,6 +80,7 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     error InvalidSignature();
     error SignatureExpired();
     error NonceAlreadyUsed();
+    error CheckinTooEarly(uint256 nextCheckinAt);
 
     // ============================================
     // Constructor
@@ -85,6 +92,21 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     ) ERC721("Base Runner Characters", "BRCHAR") Ownable(msg.sender) {
         trustedSigner = _trustedSigner;
         _baseTokenURI = baseURI;
+    }
+
+    // ============================================
+    // Check-in
+    // ============================================
+
+    function checkIn() external {
+        uint256 nextAllowed = lastCheckin[msg.sender] + CHECKIN_COOLDOWN;
+        if (block.timestamp < nextAllowed) revert CheckinTooEarly(nextAllowed);
+        lastCheckin[msg.sender] = block.timestamp;
+        emit CheckedIn(msg.sender, block.timestamp);
+    }
+
+    function canCheckIn(address wallet) external view returns (bool) {
+        return block.timestamp >= lastCheckin[wallet] + CHECKIN_COOLDOWN;
     }
 
     // ============================================
@@ -153,15 +175,6 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
             if (ownsCharacterType[wallet][i]) owned[index++] = i;
         }
         return owned;
-    }
-
-    function getOwnedTokenIds(address wallet) external view returns (uint256[] memory) {
-        uint256 balance = balanceOf(wallet);
-        uint256[] memory tokenIds = new uint256[](balance);
-        for (uint256 i = 0; i < balance; i++) {
-            tokenIds[i] = tokenOfOwnerByIndex(wallet, i);
-        }
-        return tokenIds;
     }
 
     function getCharacter(uint256 tokenId) external view returns (
@@ -235,10 +248,6 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
         _mintCharacter(to, characterType);
     }
 
-    function adminTransfer(address from, address to, uint256 tokenId) external onlyOwner {
-        _transfer(from, to, tokenId);
-    }
-
     // ============================================
     // Internal
     // ============================================
@@ -280,7 +289,7 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
         internal virtual override(ERC721, ERC721Enumerable) returns (address)
     {
         address from = _ownerOf(tokenId);
-        if (from != address(0) && to != address(0) && msg.sender != owner()) {
+        if (from != address(0) && to != address(0)) {
             revert SoulboundToken();
         }
         return super._update(to, tokenId, auth);
