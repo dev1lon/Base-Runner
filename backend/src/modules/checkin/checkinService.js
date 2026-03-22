@@ -2,13 +2,11 @@ const { ethers } = require("ethers");
 const { query } = require("../../shared/db");
 const { getOrCreateUser } = require("../user/userRepo");
 
-const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;    // 24 hours (same as contract)
-// Streak continues if next check-in within 24h + 12h of next day = 36h
+const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_TIMEOUT_MS   = 36 * 60 * 60 * 1000;
 const BASE_REWARD         = 1;
 const STREAK_BONUS_EVERY  = 5;
 const STREAK_BONUS_AMOUNT = 1;
-const VERIFY_WINDOW_MS    = 10 * 60 * 1000;          // on-chain tx must be within 10 min
 
 const NFT_ABI = [
   "function lastCheckin(address) view returns (uint256)",
@@ -24,11 +22,29 @@ function calcReward(streak) {
   return streak % STREAK_BONUS_EVERY === 0 ? BASE_REWARD + STREAK_BONUS_AMOUNT : BASE_REWARD;
 }
 
+/**
+ * Read on-chain lastCheckin timestamp (ms). Returns 0 on failure.
+ */
+async function getOnChainLastCheckin(address) {
+  try {
+    const contract = getContract();
+    const ts = await contract.lastCheckin(address);
+    return Number(ts) * 1000;
+  } catch (e) {
+    console.warn("Failed to read lastCheckin from contract:", e.message);
+    return 0;
+  }
+}
+
 async function getCheckinStatus(address) {
   const user = await getOrCreateUser(address);
-  const lastCheckinAt = user.last_checkin_at ? new Date(user.last_checkin_at).getTime() : 0;
-  const now = Date.now();
+  const dbLastCheckinAt = user.last_checkin_at ? new Date(user.last_checkin_at).getTime() : 0;
 
+  // Contract is source of truth for cooldown
+  const onChainLastCheckinMs = await getOnChainLastCheckin(address);
+  const lastCheckinAt = Math.max(onChainLastCheckinMs, dbLastCheckinAt);
+
+  const now = Date.now();
   const canCheckin = lastCheckinAt === 0 || now >= lastCheckinAt + CHECKIN_COOLDOWN_MS;
 
   let nextStreak;
@@ -49,38 +65,33 @@ async function getCheckinStatus(address) {
 
 /**
  * Verify on-chain check-in and update streak/coins on backend.
- * @param {string} address - user wallet
- * @param {string} txHash  - TX hash from contract.checkIn()
+ * Uses on-chain lastCheckin as source of truth — no time window restriction.
  */
 async function doCheckin(address, txHash) {
   if (!txHash) return { ok: false, error: "txHash required" };
 
-  // Verify on-chain: lastCheckin must be updated within last 10 min
-  try {
-    const contract = getContract();
-    const onChainTs = await contract.lastCheckin(address);
-    const onChainMs = Number(onChainTs) * 1000;
-    const now = Date.now();
-
-    if (onChainMs === 0 || now - onChainMs > VERIFY_WINDOW_MS) {
-      return { ok: false, error: "On-chain check-in not found or too old" };
-    }
-  } catch (e) {
-    console.error("Contract verify failed:", e.message);
-    return { ok: false, error: "Failed to verify on-chain check-in" };
+  const onChainMs = await getOnChainLastCheckin(address);
+  if (onChainMs === 0) {
+    return { ok: false, error: "On-chain check-in not found" };
   }
 
   const user = await getOrCreateUser(address);
-  const lastCheckinAt = user.last_checkin_at ? new Date(user.last_checkin_at).getTime() : 0;
+  const dbLastCheckinAt = user.last_checkin_at ? new Date(user.last_checkin_at).getTime() : 0;
   const now = Date.now();
 
-  if (lastCheckinAt > 0 && now < lastCheckinAt + CHECKIN_COOLDOWN_MS) {
-    const msLeft = lastCheckinAt + CHECKIN_COOLDOWN_MS - now;
+  // Don't reward twice for the same on-chain check-in
+  if (dbLastCheckinAt > 0 && onChainMs <= dbLastCheckinAt) {
+    return { ok: false, error: "Already recorded this check-in" };
+  }
+
+  // Cooldown check against DB (prevents re-submitting old on-chain TX)
+  if (dbLastCheckinAt > 0 && now < dbLastCheckinAt + CHECKIN_COOLDOWN_MS) {
+    const msLeft = dbLastCheckinAt + CHECKIN_COOLDOWN_MS - now;
     return { ok: false, error: "Too early", msUntilNext: msLeft };
   }
 
   let newStreak;
-  if (lastCheckinAt === 0 || now > lastCheckinAt + STREAK_TIMEOUT_MS) {
+  if (dbLastCheckinAt === 0 || now > dbLastCheckinAt + STREAK_TIMEOUT_MS) {
     newStreak = 1;
   } else {
     newStreak = (user.streak || 0) + 1;
