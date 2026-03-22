@@ -1013,8 +1013,8 @@ body.w3m-modal-open w3m-modal {
 }
 
 .character-card.selected {
-    border-color: var(--color-base-blue);
-    box-shadow: 0 0 15px rgba(74, 144, 217, 0.4);
+    border-color: var(--color-success);
+    background: #ffffff;
 }
 
 .character-card.locked {
