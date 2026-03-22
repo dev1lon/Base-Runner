@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC721/ERC721.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/access/Ownable.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/utils/Strings.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/utils/cryptography/ECDSA.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/utils/cryptography/MessageHashUtils.sol";
+import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.2.0/contracts/token/ERC721/ERC721.sol";
+import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.2.0/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.2.0/contracts/access/Ownable.sol";
+import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.2.0/contracts/utils/Strings.sol";
+import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.2.0/contracts/utils/cryptography/ECDSA.sol";
+import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.2.0/contracts/utils/cryptography/MessageHashUtils.sol";
 
 /**
  * @title Base Runner Character NFT (Soulbound)
  * @notice ERC-721 NFT collection for Base Runner game characters
  * @dev Soulbound (non-transferable). Purchases verified via backend signature.
- *      Coins are managed off-chain by the backend.
  */
 contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     using Strings for uint256;
@@ -44,25 +43,16 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     uint256 private _nextTokenId;
     string private _baseTokenURI;
 
-    // Backend signer address — signs purchase vouchers
     address public trustedSigner;
 
-    // Character data for each token
     mapping(uint256 => CharacterData) public characters;
-
-    // Free mint tracking
     mapping(address => bool) public hasClaimedFreeMint;
-
-    // Ownership by character type
     mapping(address => mapping(uint8 => bool)) public ownsCharacterType;
-
-    // Character types registry
     mapping(uint8 => CharacterType) public characterTypes;
+    mapping(bytes32 => bool) public usedNonces;
+
     uint8 public maxCharacterType;
     uint8 public freeCharacterId;
-
-    // Used nonces — prevent signature replay
-    mapping(bytes32 => bool) public usedNonces;
 
     // ============================================
     // Events
@@ -95,56 +85,32 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     ) ERC721("Base Runner Characters", "BRCHAR") Ownable(msg.sender) {
         trustedSigner = _trustedSigner;
         _baseTokenURI = baseURI;
-
-        _addCharacterType(0, "Vitalik", Rarity.COMMON, "");
-        _addCharacterType(1, "Trump",   Rarity.LEGENDARY, "");
-
-        freeCharacterId = 0;
     }
 
     // ============================================
     // Mint Functions
     // ============================================
 
-    /**
-     * @notice Mint free starter character
-     */
     function mintFreeCharacter() external {
-        if (freeCharacterId > maxCharacterType) revert FreeCharacterNotSet();
+        if (!characterTypes[freeCharacterId].exists) revert FreeCharacterNotSet();
         if (hasClaimedFreeMint[msg.sender]) revert AlreadyClaimedFreeMint();
+        if (ownsCharacterType[msg.sender][freeCharacterId]) revert AlreadyOwnsCharacterType();
 
         hasClaimedFreeMint[msg.sender] = true;
         _mintCharacter(msg.sender, freeCharacterId);
     }
 
-    /**
-     * @notice Mint paid character using backend-signed voucher.
-     * @dev Backend verifies coin balance and signs the voucher off-chain.
-     *      User calls this function — one transaction per purchase.
-     * @param characterType  Character to mint
-     * @param nonce          Unique random bytes32 from backend (prevents replay)
-     * @param expiry         Unix timestamp — signature valid until
-     * @param signature      ECDSA signature from trustedSigner
-     */
     function mintWithSignature(
         uint8 characterType,
         bytes32 nonce,
         uint256 expiry,
         bytes calldata signature
     ) external {
-        // 1. Check expiry
         if (block.timestamp > expiry) revert SignatureExpired();
-
-        // 2. Check nonce not already used
         if (usedNonces[nonce]) revert NonceAlreadyUsed();
-
-        // 3. Check character type valid
         if (!characterTypes[characterType].exists) revert InvalidCharacterType();
-
-        // 4. Check not already owned
         if (ownsCharacterType[msg.sender][characterType]) revert AlreadyOwnsCharacterType();
 
-        // 5. Verify backend signature
         bytes32 messageHash = keccak256(abi.encodePacked(
             msg.sender,
             uint256(characterType),
@@ -157,10 +123,7 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
         address recovered = ECDSA.recover(ethHash, signature);
         if (recovered != trustedSigner) revert InvalidSignature();
 
-        // 6. Mark nonce used
         usedNonces[nonce] = true;
-
-        // 7. Mint
         _mintCharacter(msg.sender, characterType);
     }
 
@@ -169,7 +132,9 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     // ============================================
 
     function canClaimFreeMint(address wallet) external view returns (bool) {
-        return !hasClaimedFreeMint[wallet] && freeCharacterId <= maxCharacterType;
+        return !hasClaimedFreeMint[wallet]
+            && characterTypes[freeCharacterId].exists
+            && !ownsCharacterType[wallet][freeCharacterId];
     }
 
     function ownsCharacter(address wallet, uint8 characterType) external view returns (bool) {
@@ -190,17 +155,20 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
         return owned;
     }
 
-    function getOwnedTokenIds(address owner) external view returns (uint256[] memory) {
-        uint256 balance = balanceOf(owner);
+    function getOwnedTokenIds(address wallet) external view returns (uint256[] memory) {
+        uint256 balance = balanceOf(wallet);
         uint256[] memory tokenIds = new uint256[](balance);
         for (uint256 i = 0; i < balance; i++) {
-            tokenIds[i] = tokenOfOwnerByIndex(owner, i);
+            tokenIds[i] = tokenOfOwnerByIndex(wallet, i);
         }
         return tokenIds;
     }
 
     function getCharacter(uint256 tokenId) external view returns (
-        uint8 characterType, string memory name, Rarity rarity, uint256 mintedAt
+        uint8 characterType,
+        string memory name,
+        Rarity rarity,
+        uint256 mintedAt
     ) {
         CharacterData memory data = characters[tokenId];
         CharacterType memory charType = characterTypes[data.characterType];
@@ -208,7 +176,9 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     }
 
     function getCharacterTypes() external view returns (
-        uint8[] memory ids, string[] memory names, Rarity[] memory rarities
+        uint8[] memory ids,
+        string[] memory names,
+        Rarity[] memory rarities
     ) {
         uint8 count = maxCharacterType + 1;
         ids = new uint8[](count);
@@ -230,9 +200,14 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
         emit TrustedSignerUpdated(_signer);
     }
 
-    function addCharacterType(string memory name, Rarity rarity, string memory metadataURI) external onlyOwner {
-        uint8 newId = maxCharacterType + 1;
-        _addCharacterType(newId, name, rarity, metadataURI);
+    function addCharacterType(
+        uint8 id,
+        string memory name,
+        Rarity rarity,
+        string memory metadataURI
+    ) external onlyOwner {
+        require(!characterTypes[id].exists, "Character type already exists");
+        _addCharacterType(id, name, rarity, metadataURI);
     }
 
     function setCharacterMetadataURI(uint8 characterType, string memory metadataURI) external onlyOwner {
@@ -268,8 +243,18 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     // Internal
     // ============================================
 
-    function _addCharacterType(uint8 id, string memory name, Rarity rarity, string memory metadataURI) internal {
-        characterTypes[id] = CharacterType({ name: name, rarity: rarity, metadataURI: metadataURI, exists: true });
+    function _addCharacterType(
+        uint8 id,
+        string memory name,
+        Rarity rarity,
+        string memory metadataURI
+    ) internal {
+        characterTypes[id] = CharacterType({
+            name: name,
+            rarity: rarity,
+            metadataURI: metadataURI,
+            exists: true
+        });
         if (id > maxCharacterType) maxCharacterType = id;
         emit CharacterTypeAdded(id, name, rarity);
     }
@@ -288,7 +273,7 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     }
 
     // ============================================
-    // Soulbound Override
+    // Soulbound Overrides
     // ============================================
 
     function _update(address to, uint256 tokenId, address auth)

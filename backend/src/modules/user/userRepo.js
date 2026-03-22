@@ -122,22 +122,6 @@ async function deductCoins(address, amount) {
   return result.rows[0] || null;
 }
 
-const ALL_CHARACTER_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-/**
- * Convert owned_characters array + has_claimed_free into a full true/false map.
- * Character 0 (free) is owned when has_claimed_free = true.
- */
-function buildOwnedMap(ownedArray, hasClaimedFree) {
-  const owned = new Set(Array.isArray(ownedArray) ? ownedArray.map(Number) : []);
-  if (hasClaimedFree) owned.add(0);
-  const map = {};
-  for (const id of ALL_CHARACTER_IDS) {
-    map[id] = owned.has(id);
-  }
-  return map;
-}
-
 module.exports = {
   getUser,
   getOrCreateUser,
@@ -145,6 +129,5 @@ module.exports = {
   addOwnedCharacter,
   ownsCharacter,
   addCoins,
-  deductCoins,
-  buildOwnedMap
+  deductCoins
 };

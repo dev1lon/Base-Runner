@@ -1,5 +1,5 @@
 const { query } = require("../../shared/db");
-const { getOrCreateUser, updateUser, addOwnedCharacter, buildOwnedMap } = require("../user/userRepo");
+const { getOrCreateUser, updateUser, addOwnedCharacter } = require("../user/userRepo");
 const crypto = require("crypto");
 const { ethers } = require("ethers");
 
@@ -164,7 +164,7 @@ async function confirmPurchase(address, nonce, txHash) {
     ok: true,
     coinsDeducted: pending.coins_reserved,
     newBalance: newCoins,
-    charactersOwned: buildOwnedMap(updatedUser.owned_characters, updatedUser.has_claimed_free)
+    ownedCharacters: updatedUser.owned_characters || []
   };
 }
 

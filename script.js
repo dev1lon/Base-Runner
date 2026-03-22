@@ -158,18 +158,7 @@ let currentUIState = UI_STATE.CONNECT;
 
 // Collection state
 let hasFreeMint = false;       // User has minted free character (char 0)
-let ownedCharacters = [];      // Array of owned character IDs (derived from map)
-let charactersOwned = {};      // Full map: { 0: true, 1: false, ... } for all 10 chars
-
-// Apply charactersOwned map from API — single source of truth for ownership
-function applyCharactersOwned(map) {
-    if (!map || typeof map !== 'object') return;
-    charactersOwned = map;
-    ownedCharacters = Object.entries(map)
-        .filter(([, owned]) => owned)
-        .map(([id]) => Number(id));
-    hasFreeMint = map[0] === true;
-}
+let ownedCharacters = [];      // Array of owned character IDs
 let collectionLoading = false;
 let selectedCharacter = 0; // Currently selected character (0=Vitalik, 1=Trump)
 let collectionOpenedFrom = null; // Track where collection was opened from ('menu' or 'pause')
@@ -2030,8 +2019,9 @@ async function applyProfileData(data) {
     // Coins are backend-only, already set from data.coinBalance above
     
     // Character data from BACKEND (faster than blockchain)
-    if (data.charactersOwned) {
-        applyCharactersOwned(data.charactersOwned);
+    if (Array.isArray(data.ownedCharacters)) {
+        ownedCharacters = data.ownedCharacters;
+        hasFreeMint = ownedCharacters.includes(0);
     }
     if (Number.isFinite(data.selectedCharacter)) {
         selectedCharacter = data.selectedCharacter;
@@ -2567,8 +2557,9 @@ async function handleMintVitalik() {
                 body: JSON.stringify({ txHash: receipt.hash, characterId: 0 })
             });
             const data = await response.json();
-            if (data.ok && data.charactersOwned) {
-                applyCharactersOwned(data.charactersOwned);
+            if (data.ok && Array.isArray(data.ownedCharacters)) {
+                ownedCharacters = data.ownedCharacters;
+                hasFreeMint = ownedCharacters.includes(0);
             }
         } catch (e) {
             console.warn('Failed to record mint on backend:', e);
@@ -2576,7 +2567,8 @@ async function handleMintVitalik() {
 
         // Fallback state update if backend call failed
         if (!hasFreeMint) {
-            applyCharactersOwned({ ...charactersOwned, 0: true });
+            hasFreeMint = true;
+            if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
         }
         selectedCharacter = 0; // Auto-select after mint
         
@@ -2641,8 +2633,9 @@ async function loadOwnedSprites(forceReload = false) {
         }
         
         // Update owned characters
-        if (data.charactersOwned) {
-            applyCharactersOwned(data.charactersOwned);
+        if (Array.isArray(data.ownedCharacters)) {
+            ownedCharacters = data.ownedCharacters;
+            hasFreeMint = ownedCharacters.includes(0);
         }
         
         // Load sprites as blob URLs (cached in memory)
@@ -2813,11 +2806,12 @@ async function backendOnlyFreeMint() {
         console.log('Backend response:', data);
         
         if (data.ok) {
-            if (data.charactersOwned) {
-                applyCharactersOwned(data.charactersOwned);
+            if (Array.isArray(data.ownedCharacters)) {
+                ownedCharacters = data.ownedCharacters;
             } else {
-                applyCharactersOwned({ ...charactersOwned, 0: true });
+                if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
             }
+            hasFreeMint = true;
             selectedCharacter = 0; // Auto-select Vitalik
             localStorage.setItem('selectedCharacter', '0');
             
@@ -2853,10 +2847,13 @@ async function recordFreeMintOnBackend(txHash) {
         const data = await response.json();
         console.log('Backend recorded mint:', data);
         
-        if (data.ok && data.charactersOwned) {
-            applyCharactersOwned(data.charactersOwned);
-        } else if (data.ok) {
-            applyCharactersOwned({ ...charactersOwned, 0: true });
+        if (data.ok) {
+            if (Array.isArray(data.ownedCharacters)) {
+                ownedCharacters = data.ownedCharacters;
+            } else {
+                if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
+            }
+            hasFreeMint = true;
         }
     } catch (e) {
         console.warn('Failed to record mint on backend:', e);
@@ -2924,13 +2921,14 @@ async function handlePurchase(charId) {
         if (confirmed.ok) {
             coinCount = confirmed.newBalance;
             saveCoins();
-            if (confirmed.charactersOwned) {
-                applyCharactersOwned(confirmed.charactersOwned);
+            if (Array.isArray(confirmed.ownedCharacters)) {
+                ownedCharacters = confirmed.ownedCharacters;
+                hasFreeMint = ownedCharacters.includes(0);
             } else {
-                applyCharactersOwned({ ...charactersOwned, [charId]: true });
+                if (!ownedCharacters.includes(charId)) ownedCharacters.push(charId);
             }
         } else {
-            applyCharactersOwned({ ...charactersOwned, [charId]: true });
+            if (!ownedCharacters.includes(charId)) ownedCharacters.push(charId);
         }
         selectedCharacter = charId;
         localStorage.setItem('selectedCharacter', String(charId));
