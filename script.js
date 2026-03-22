@@ -1950,9 +1950,12 @@ function updateUIState() {
     // Update game UI visibility
     updateGameUIVisibility();
     
-    // Update wallet address display in menu
+    // Update wallet address display in menu and pause screen
     if (walletAddressDisplay && walletAddress) {
-        walletAddressDisplay.textContent = formatAddress(walletAddress);
+        const formatted = formatAddress(walletAddress);
+        walletAddressDisplay.textContent = formatted;
+        const pauseDisplay = document.getElementById("wallet-address-pause");
+        if (pauseDisplay) pauseDisplay.textContent = formatted;
     }
     
     // Update start button state
