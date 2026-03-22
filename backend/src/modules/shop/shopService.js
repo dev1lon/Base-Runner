@@ -7,7 +7,7 @@ const { ethers } = require("ethers");
 const SIGNATURE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 const NFT_CONTRACT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS || "";
 const CHAIN_ID = process.env.CHAIN_ID || "84532"; // Base Sepolia
-const SIGNER_PRIVATE_KEY = process.env.SIGNER_PRIVATE_KEY || "";
+const SIGNER_PRIVATE_KEY = process.env.SIGNER_PRIVATE_KEY || process.env.MINTER_PRIVATE_KEY || "";
 
 /**
  * Get all available characters
