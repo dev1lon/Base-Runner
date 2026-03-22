@@ -2432,7 +2432,7 @@ function updateCollectionUI() {
                 btn.textContent = 'Free Mint';
                 btn.disabled = false;
                 btn.classList.remove('btn-secondary', 'btn-ghost');
-                btn.classList.add('btn-primary');
+                btn.classList.add('btn-primary', 'btn-pulse');
             } else if (canAfford) {
                 btn.textContent = `${price} Coins`;
                 btn.disabled = false;
