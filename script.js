@@ -2043,17 +2043,21 @@ async function applyProfileData(data) {
         localStorage.setItem('selectedCharacter', String(selectedCharacter));
     }
     
-    // Checkin stats from BLOCKCHAIN (still needed for streak)
-    try {
-        const stats = await getCheckinStats();
+    // Checkin stats — use data from verify response first, then refresh from backend
+    if (data.checkin) {
+        checkinState.lastCheckin = data.checkin.lastCheckin || 0;
+        checkinState.streak = data.checkin.streak || 0;
+        checkinState.canCheckin = data.checkin.canCheckin ?? true;
+    }
+    // Refresh in background for accuracy (contract-verified canCheckin)
+    getCheckinStats().then(stats => {
         if (stats) {
             checkinState.lastCheckin = stats.lastCheckin;
             checkinState.streak = stats.streak;
             checkinState.canCheckin = stats.canCheckin;
+            updateCheckinUI();
         }
-    } catch (e) {
-        console.warn("Failed to get checkin stats:", e);
-    }
+    }).catch(() => {});
     
     // Update UI
     loadSelectedCharacter();
