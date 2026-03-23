@@ -260,11 +260,13 @@ body {
 }
 
 #new-record-label {
-    font-weight: 700;
-    font-size: 0.7rem;
+    font-weight: 800;
+    font-size: 0.65rem;
     color: #f59e0b;
+    text-shadow: 0 0 6px rgba(245,158,11,0.6);
     animation: newRecordPulse 0.6s ease-in-out infinite alternate;
     white-space: nowrap;
+    letter-spacing: 0.03em;
 }
 
 @keyframes newRecordPulse {

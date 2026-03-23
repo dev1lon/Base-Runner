@@ -2001,13 +2001,12 @@ function updateGameUIVisibility() {
 function updateGameUI() {
     if (gameCoinsEl) gameCoinsEl.textContent = String(coinCount);
     if (gameScoreEl) gameScoreEl.textContent = String(score);
-    if (gameBestEl)  gameBestEl.textContent  = String(bestScore);
+
+    const isNewRecord = score > 0 && score >= bestScore;
+    if (gameBestEl)  gameBestEl.textContent = isNewRecord ? String(score) : String(bestScore);
 
     const newRecordEl = document.getElementById('new-record-label');
-    if (newRecordEl) {
-        const isNewRecord = score > 0 && score >= bestScore;
-        newRecordEl.style.display = isNewRecord ? '' : 'none';
-    }
+    if (newRecordEl) newRecordEl.style.display = isNewRecord ? '' : 'none';
 }
 
 function updateMenuState() {
