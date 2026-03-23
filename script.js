@@ -2410,14 +2410,33 @@ async function checkCollectionStatus() {
 (function initLockedCardSpotlight() {
     document.addEventListener('pointermove', (e) => {
         document.querySelectorAll('.character-card.locked').forEach(card => {
-            const rect = card.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            card.style.setProperty('--card-x', `${x}px`);
-            card.style.setProperty('--card-y', `${y}px`);
+            const cardRect = card.getBoundingClientRect();
+            card.style.setProperty('--card-x', `${e.clientX - cardRect.left}px`);
+            card.style.setProperty('--card-y', `${e.clientY - cardRect.top}px`);
+
+            // Also track cursor relative to the character-image area for silhouette glow
+            const img = card.querySelector('.character-image');
+            if (img) {
+                const imgRect = img.getBoundingClientRect();
+                const ix = ((e.clientX - imgRect.left) / imgRect.width * 100).toFixed(1);
+                const iy = ((e.clientY - imgRect.top) / imgRect.height * 100).toFixed(1);
+                img.style.setProperty('--img-x', `${ix}%`);
+                img.style.setProperty('--img-y', `${iy}%`);
+            }
         });
     });
 })();
+
+// Load silhouette previews for locked character cards
+function loadSilhouettes() {
+    document.querySelectorAll('.character-card.locked[data-char-id]').forEach(card => {
+        const charId = card.getAttribute('data-char-id');
+        const silImg = card.querySelector('.char-silhouette');
+        if (silImg && !silImg.src.includes('preview')) {
+            silImg.src = `${BACKEND_URL}/api/sprites/preview/${charId}`;
+        }
+    });
+}
 
 function updateCollectionUI() {
     // Update all character cards - NO API requests, use cache only
@@ -2525,8 +2544,9 @@ function openCollection(from = 'menu') {
     collectionOpenedFrom = from;
     currentUIState = UI_STATE.COLLECTION;
     updateUIState();
-    updateCollectionCoins(); // Update coins display
-    checkCollectionStatus(); // Refresh status
+    updateCollectionCoins();
+    checkCollectionStatus();
+    loadSilhouettes();
 }
 
 function updateCollectionCoins() {
@@ -2633,9 +2653,9 @@ const CHARACTERS = {
     2: { name: 'Hamaha', rarity: 'COMMON', price: 10 },
     3: { name: 'Hayes', rarity: 'RARE', price: 25 },
     4: { name: 'Pepe', rarity: 'RARE', price: 25 },
-    5: { name: 'Mask', rarity: 'EPIC', price: 50 },
-    6: { name: 'Sam', rarity: 'EPIC', price: 50 },
-    7: { name: 'Vlad', rarity: 'EPIC', price: 50 },
+    5: { name: 'Ilon Mask', rarity: 'EPIC', price: 50 },
+    6: { name: 'Sam Bankman', rarity: 'EPIC', price: 50 },
+    7: { name: 'Vladimir Novakovski', rarity: 'EPIC', price: 50 },
     8: { name: 'CZ', rarity: 'LEGENDARY', price: 100 },
     9: { name: 'Trump', rarity: 'LEGENDARY', price: 100 }
 };

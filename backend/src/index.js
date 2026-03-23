@@ -465,6 +465,17 @@ app.post("/api/user/select-character", requireAuth, async (req, res) => {
 
 // ============ Protected Sprites API ============
 
+// Public silhouette preview — returns sprite without auth (for locked card silhouettes)
+app.get("/api/sprites/preview/:characterId", async (req, res) => {
+  const characterId = parseInt(req.params.characterId);
+  if (isNaN(characterId) || !CHARACTER_SPRITES[characterId]) {
+    res.status(404).end();
+    return;
+  }
+  const spritePath = path.join(__dirname, "sprites", CHARACTER_SPRITES[characterId]);
+  res.sendFile(spritePath);
+});
+
 // Get sprite for owned character (returns image file)
 app.get("/api/sprites/:characterId", requireAuth, async (req, res) => {
   const characterId = parseInt(req.params.characterId);
