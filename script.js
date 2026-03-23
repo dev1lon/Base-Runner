@@ -938,7 +938,7 @@ async function authenticateWallet() {
     authInProgress = true;
     authAttempted = true;
     clearWalletMessages();
-    setWalletInfo("Подтвердите авторизацию.");
+    setWalletInfo("Confirm authorization in wallet.");
     updateWalletUI();
     try {
         const chainId = normalizeChainId(walletChainId) || walletChainId;
@@ -988,7 +988,7 @@ async function authenticateWallet() {
         walletAuthenticated = false;
         authToken = "";
         clearAuthTokenForAddress(walletAddress);
-        setWalletError("Авторизация не удалась. Повторите попытку.");
+        setWalletError("Authorization failed. Please try again.");
     } finally {
         authInProgress = false;
         updateWalletUI();
@@ -1371,7 +1371,7 @@ async function handleNetworkSwitch() {
     
     clearWalletMessages();
     isConnectingWallet = true;
-    setWalletInfo("Переключаю сеть...");
+    setWalletInfo("Switching network...");
     updateWalletUI();
     
     try {
@@ -1393,7 +1393,7 @@ async function handleNetworkSwitch() {
         }
     } catch (err) {
         console.error("Network switch error:", err);
-        setWalletError("Ошибка переключения сети");
+        setWalletError("Network switch error.");
     } finally {
         isConnectingWallet = false;
         clearWalletMessages();
@@ -1405,14 +1405,14 @@ async function handleNetworkSwitch() {
 async function connectWalletLegacy() {
     const provider = getEthereumProvider();
     if (!provider || isConnectingWallet) {
-        setWalletError("Wallet не найден.");
+        setWalletError("Wallet not found.");
         updateWalletUI();
         return;
     }
 
     clearWalletMessages();
     isConnectingWallet = true;
-    setWalletInfo(walletAddress ? "Открываю переключение сети..." : "Открываю кошелёк...");
+    setWalletInfo(walletAddress ? "Opening network switch..." : "Opening wallet...");
     updateWalletUI();
     try {
         if (!walletAddress) {
@@ -1431,15 +1431,15 @@ async function connectWalletLegacy() {
             const switchResult = await trySwitchToBaseSepolia();
             if (!switchResult.ok) {
                 if (switchResult.error && switchResult.error.code === 4001) {
-                    setWalletError("Отменено в кошельке.");
+                    setWalletError("Cancelled in wallet.");
                 } else if (switchResult.error && switchResult.error.code === -32002) {
-                    setWalletError("Ожидается подтверждение в кошельке.");
+                    setWalletError("Waiting for wallet confirmation.");
                 } else if (switchResult.error && switchResult.error.code === 4200) {
-                    setWalletError("Кошелёк не поддерживает переключение сети. Переключите вручную.");
+                    setWalletError("Wallet does not support network switching. Switch manually.");
                 } else if (switchResult.error && switchResult.error.code === -32601) {
-                    setWalletError("Кошелёк не поддерживает переключение сети. Переключите вручную.");
+                    setWalletError("Wallet does not support network switching. Switch manually.");
                 } else {
-                    setWalletError("Не удалось переключить сеть. Попробуйте вручную.");
+                    setWalletError("Failed to switch network. Try manually.");
                 }
             } else {
                 const nextChainId = await provider.request({ method: "eth_chainId" });
@@ -1456,13 +1456,13 @@ async function connectWalletLegacy() {
         }
     } catch (err) {
         if (err && err.code === 4001) {
-            setWalletError("Отменено в кошельке.");
+            setWalletError("Cancelled in wallet.");
         } else if (err && err.code === -32002) {
-            setWalletError("Ожидается подтверждение в кошельке.");
+            setWalletError("Waiting for wallet confirmation.");
         } else if (err && err.code === 4200) {
-            setWalletError("Кошелёк не поддерживает переключение сети. Переключите вручную.");
+            setWalletError("Wallet does not support network switching. Switch manually.");
         } else {
-            setWalletError("Не удалось подключить кошелёк. Проверьте разрешения.");
+            setWalletError("Failed to connect wallet. Check permissions.");
         }
     } finally {
         isConnectingWallet = false;
@@ -2192,7 +2192,7 @@ async function handleCheckin() {
     }
     
     if (!authToken) {
-        checkinState.message = "Не авторизован";
+        checkinState.message = "Not authorized";
         updateCheckinUI();
         return;
     }
@@ -2207,13 +2207,13 @@ async function handleCheckin() {
         if (stats && !stats.canCheckin) {
             checkinState.lastCheckin = stats.lastCheckin;
             checkinState.streak = stats.streak;
-            checkinState.message = "Уже сделан check-in сегодня";
+            checkinState.message = "Already checked in today";
             return;
         }
-        
+
         const expectedReward = stats ? stats.nextReward : 1;
-        
-        setCheckinStatusText(`Ждите... (+${expectedReward} coins)`, false);
+
+        setCheckinStatusText(`Please wait... (+${expectedReward} coins)`, false);
 
         const result = await sendCheckinTransaction();
 
@@ -2233,12 +2233,17 @@ async function handleCheckin() {
     } catch (err) {
         console.warn("Check-in failed", err);
         if (err.message && err.message.includes("TooEarlyToCheckin")) {
-            checkinState.message = "Уже сделан check-in сегодня";
+            checkinState.message = "Already checked in today";
         } else if (err.message && err.message.includes("user rejected")) {
-            checkinState.message = "Транзакция отменена";
+            checkinState.message = "Transaction cancelled";
         } else {
-            checkinState.message = "Check-in не удался. Попробуйте ещё раз.";
+            checkinState.message = "Check-in failed. Try again.";
         }
+        // Clear error message after 3s so streak shows again
+        setTimeout(() => {
+            checkinState.message = "";
+            updateCheckinUI();
+        }, 3000);
     } finally {
         checkinState.loading = false;
         const pendingReward = checkinState._rewardAnim;
@@ -2998,13 +3003,13 @@ async function handlePurchase(charId) {
 
         if (err.code === 4001 || err.code === 'ACTION_REJECTED'
             || (err.message && err.message.includes('user rejected'))) {
-            alert('Транзакция отменена');
+            alert('Transaction cancelled');
         } else if (err.message && err.message.includes('SignatureExpired')) {
-            alert('Время покупки истекло, попробуйте снова');
+            alert('Purchase time expired, try again');
         } else if (err.message && err.message.includes('AlreadyOwnsCharacterType')) {
-            alert('У вас уже есть этот персонаж');
+            alert('You already own this character');
         } else {
-            alert('Покупка не удалась: ' + (err.shortMessage || err.message || 'Unknown error'));
+            alert('Purchase failed: ' + (err.shortMessage || err.message || 'Unknown error'));
         }
         updateCollectionUI();
     } finally {
@@ -3511,7 +3516,7 @@ function update(timestamp) {
 
     // Arrays are already cleaned in the loops above
 
-    //score (правый верхний угол)
+    //score (top right corner)
     const scoreFontSize = Math.round(20 * uiScale);
     const padding = Math.round(scorePadding * uiScale);
     const scoreY = Math.round(scoreTop * uiScale);
