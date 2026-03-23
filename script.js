@@ -1999,15 +1999,14 @@ function updateGameUIVisibility() {
 }
 
 function updateGameUI() {
-    // Update HTML UI elements with current game values
-    if (gameCoinsEl) {
-        gameCoinsEl.textContent = String(coinCount);
-    }
-    if (gameScoreEl) {
-        gameScoreEl.textContent = String(score);
-    }
-    if (gameBestEl) {
-        gameBestEl.textContent = String(bestScore);
+    if (gameCoinsEl) gameCoinsEl.textContent = String(coinCount);
+    if (gameScoreEl) gameScoreEl.textContent = String(score);
+    if (gameBestEl)  gameBestEl.textContent  = String(bestScore);
+
+    const newRecordEl = document.getElementById('new-record-label');
+    if (newRecordEl) {
+        const isNewRecord = score > 0 && score >= bestScore;
+        newRecordEl.style.display = isNewRecord ? '' : 'none';
     }
 }
 
@@ -4000,6 +3999,8 @@ async function restartGame() {
     score = 0;
     scoreFloat = 0;
     nextCoinScore = 1000;
+    const nrl = document.getElementById('new-record-label');
+    if (nrl) nrl.style.display = 'none';
     velocityY = 0;
     isDucking = false;
     isPaused = false;
