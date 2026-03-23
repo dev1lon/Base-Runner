@@ -1017,26 +1017,90 @@ body.w3m-modal-open w3m-modal {
     background: #ffffff;
 }
 
+.character-card.locked .character-name {
+    color: rgba(255,255,255,0.75);
+}
+.character-card.locked .character-rarity {
+    opacity: 0.7;
+}
+
 .character-card.locked {
-    background: var(--color-grey-light);
+    background: #1a1a2e;
+    border-color: rgba(255,255,255,0.07);
+    position: relative;
+    overflow: hidden;
+    /* spotlight CSS vars */
+    --x: 50;
+    --y: 50;
+    --card-x: 50%;
+    --card-y: 50%;
+}
+
+/* spotlight radial glow that follows cursor */
+.character-card.locked::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+        180px 180px at var(--card-x) var(--card-y),
+        rgba(120, 100, 255, 0.18),
+        transparent 70%
+    );
+    pointer-events: none;
+    z-index: 1;
+    transition: background 0.05s;
+}
+
+/* animated border glow */
+.character-card.locked::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1.5px solid transparent;
+    background: radial-gradient(
+        120px 120px at var(--card-x) var(--card-y),
+        rgba(160, 130, 255, 0.55),
+        transparent 70%
+    ) border-box;
+    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: destination-out;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
 }
 
 .character-card.locked .character-image {
     position: relative;
-    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+    background: linear-gradient(160deg, #16162a 0%, #0e0e1a 100%);
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
 }
 
+/* silhouette of character */
+.character-card.locked .character-image .char-silhouette {
+    width: 70%;
+    height: 70%;
+    object-fit: contain;
+    filter: brightness(0) invert(1) opacity(0.07);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* lock icon overlay */
 .character-card.locked .character-image::after {
     content: '🔒';
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 3rem;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    font-size: 2.5rem;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.9);
     z-index: 10;
 }
 

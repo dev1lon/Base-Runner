@@ -2406,6 +2406,19 @@ async function checkCollectionStatus() {
     updateStartButtonState();
 }
 
+// Spotlight pointer tracking for locked cards
+(function initLockedCardSpotlight() {
+    document.addEventListener('pointermove', (e) => {
+        document.querySelectorAll('.character-card.locked').forEach(card => {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            card.style.setProperty('--card-x', `${x}px`);
+            card.style.setProperty('--card-y', `${y}px`);
+        });
+    });
+})();
+
 function updateCollectionUI() {
     // Update all character cards - NO API requests, use cache only
     const cards = document.querySelectorAll('.character-card[data-char-id]');
