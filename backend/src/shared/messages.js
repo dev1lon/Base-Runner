@@ -4,7 +4,7 @@ function buildSessionMessage(sessionId) {
 
 function buildAuthMessage({ address, nonce, chainId, issuedAt }) {
   return [
-    "Base Runner",
+    "Rug Pull Run",
     `Address: ${address}`,
     `Nonce: ${nonce}`,
     `ChainId: ${chainId}`,

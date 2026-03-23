@@ -320,7 +320,7 @@ async function initWeb3Modal() {
         };
         
         const metadata = {
-            name: 'Base Runner',
+            name: 'Rug Pull Run',
             description: 'Run and earn on Base',
             url: window.location.origin,
             icons: [window.location.origin + '/assets/eth.png']
@@ -908,7 +908,7 @@ async function restoreAuthSession() {
 
 function buildAuthMessage({ address, nonce, chainId, issuedAt }) {
     return [
-        "Base Runner",
+        "Rug Pull Run",
         `Address: ${address}`,
         `Nonce: ${nonce}`,
         `ChainId: ${chainId}`,
