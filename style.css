@@ -1009,16 +1009,21 @@ body.w3m-modal-open w3m-modal {
 }
 
 .character-card.owned {
-    border-color: var(--color-success);
+    border-color: rgba(74, 144, 217, 0.7);
 }
 
 .character-card.selected {
-    border-color: var(--color-success);
+    border-color: rgba(74, 144, 217, 0.9);
     background: #ffffff;
 }
 
 .character-card.locked .character-name {
     color: rgba(255,255,255,0.75);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 .character-card.locked .character-rarity {
     opacity: 0.7;
@@ -1087,7 +1092,7 @@ body.w3m-modal-open w3m-modal {
     width: 80%;
     height: 80%;
     object-fit: contain;
-    filter: brightness(0) opacity(0.22);
+    filter: brightness(0) opacity(0.38);
     position: absolute;
     top: 50%;
     left: 50%;
@@ -1102,8 +1107,8 @@ body.w3m-modal-open w3m-modal {
     position: absolute;
     inset: 0;
     background: radial-gradient(
-        90px 90px at var(--img-x, 50%) var(--img-y, 130%),
-        rgba(160, 200, 255, 0.55),
+        110px 110px at var(--img-x, 50%) var(--img-y, 130%),
+        rgba(180, 220, 255, 0.75),
         transparent 70%
     );
     mix-blend-mode: screen;
