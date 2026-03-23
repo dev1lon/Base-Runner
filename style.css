@@ -997,7 +997,7 @@ body.w3m-modal-open w3m-modal {
 
 .character-card {
     background: var(--color-white);
-    border-radius: var(--border-radius-lg);
+    border-radius: 1.5rem;
     padding: 0.75rem;
     display: flex;
     flex-direction: column;
@@ -1027,6 +1027,7 @@ body.w3m-modal-open w3m-modal {
 .character-card.locked {
     background: #1a1a2e;
     border-color: rgba(255,255,255,0.07);
+    border-radius: 1.5rem;
     position: relative;
     overflow: hidden;
     /* spotlight CSS vars */
@@ -1074,6 +1075,7 @@ body.w3m-modal-open w3m-modal {
 .character-card.locked .character-image {
     position: relative;
     background: linear-gradient(160deg, #16162a 0%, #0e0e1a 100%);
+    border-color: rgba(255,255,255,0.06);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1106,18 +1108,27 @@ body.w3m-modal-open w3m-modal {
 
 .character-image {
     width: 100%;
-    aspect-ratio: 1;
-    border-radius: var(--border-radius-md);
+    aspect-ratio: 3/4;
+    border-radius: 8px;
     overflow: hidden;
-    background: transparent;
+    background: linear-gradient(160deg, #f0f4ff 0%, #e4eaf8 100%);
     position: relative;
+    border: 2px solid rgba(100, 120, 200, 0.2);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.06);
+}
+
+/* owned card image area */
+.character-card.owned .character-image,
+.character-card.selected .character-image {
+    background: linear-gradient(160deg, #f0fff4 0%, #dcf5e7 100%);
+    border-color: rgba(34, 197, 94, 0.3);
 }
 
 .character-image img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    /* Remove background - PNG transparency */
+    padding: 6px;
     background: transparent;
 }
 
