@@ -1055,7 +1055,6 @@ body.w3m-modal-open w3m-modal {
     );
     pointer-events: none;
     z-index: 1;
-    transition: background 0.05s;
 }
 
 /* animated border glow */
@@ -1107,8 +1106,8 @@ body.w3m-modal-open w3m-modal {
     position: absolute;
     inset: 0;
     background: radial-gradient(
-        110px 110px at var(--img-x, 50%) var(--img-y, 130%),
-        rgba(180, 220, 255, 0.75),
+        100px 120px at var(--img-x, 50%) var(--img-y, 42%),
+        rgba(180, 220, 255, 0.65),
         transparent 70%
     );
     mix-blend-mode: screen;

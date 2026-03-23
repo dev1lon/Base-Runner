@@ -2407,25 +2407,8 @@ async function checkCollectionStatus() {
 }
 
 // Spotlight pointer tracking for locked cards
-(function initLockedCardSpotlight() {
-    document.addEventListener('pointermove', (e) => {
-        document.querySelectorAll('.character-card.locked').forEach(card => {
-            const cardRect = card.getBoundingClientRect();
-            card.style.setProperty('--card-x', `${e.clientX - cardRect.left}px`);
-            card.style.setProperty('--card-y', `${e.clientY - cardRect.top}px`);
-
-            // Also track cursor relative to the character-image area for silhouette glow
-            const img = card.querySelector('.character-image');
-            if (img) {
-                const imgRect = img.getBoundingClientRect();
-                const ix = ((e.clientX - imgRect.left) / imgRect.width * 100).toFixed(1);
-                const iy = ((e.clientY - imgRect.top) / imgRect.height * 100).toFixed(1);
-                img.style.setProperty('--img-x', `${ix}%`);
-                img.style.setProperty('--img-y', `${iy}%`);
-            }
-        });
-    });
-})();
+// Static silhouette glow — no pointer tracking (bad on mobile)
+// CSS defaults --img-x:50% --img-y:50% already set in stylesheet
 
 // Load silhouette previews for locked character cards
 function loadSilhouettes() {
@@ -3618,14 +3601,13 @@ function update(timestamp) {
     if (coinPopupActive && timestamp) {
         const elapsed = timestamp - coinPopupStartTime;
         if (elapsed < COIN_POPUP_DURATION) {
-            // Smooth easeOut progress (starts fast, slows down)
             const progress = elapsed / COIN_POPUP_DURATION;
-            const easeOut = 1 - Math.pow(1 - progress, 3); // cubic ease out
-            
-            // Opacity fades smoothly
-            const opacity = 1 - easeOut;
-            // Float upward slowly as it fades
-            const floatOffset = Math.round(easeOut * 20 * uiScale);
+            const easeOut = 1 - Math.pow(1 - progress, 3);
+
+            // Opacity: stay visible for first half, then fade out
+            const opacity = progress < 0.4 ? 1 : 1 - ((progress - 0.4) / 0.6);
+            // Float upward — no rounding for smooth sub-pixel movement
+            const floatOffset = easeOut * 28 * uiScale;
             
             const popupText = "+" + coinPopupAmount;
             // Font size reduced by 30% (24 * 0.7 ≈ 17)
