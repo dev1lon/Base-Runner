@@ -9,8 +9,8 @@ import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5
 import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.2.0/contracts/utils/cryptography/MessageHashUtils.sol";
 
 /**
- * @title Base Runner Character NFT (Soulbound)
- * @notice ERC-721 NFT collection for Base Runner game characters
+ * @title Rug Pull Run Character NFT (Soulbound)
+ * @notice ERC-721 NFT collection for Rug Pull Run game characters
  * @dev Soulbound (non-transferable). Purchases verified via backend signature.
  *      Check-in enforced on-chain (24h cooldown). Streak tracked on backend.
  */
@@ -89,7 +89,7 @@ contract CharacterNFT is ERC721, ERC721Enumerable, Ownable {
     constructor(
         address _trustedSigner,
         string memory baseURI
-    ) ERC721("Base Runner Characters", "BRCHAR") Ownable(msg.sender) {
+    ) ERC721("Rug Pull Run Characters", "RPRCHAR") Ownable(msg.sender) {
         trustedSigner = _trustedSigner;
         _baseTokenURI = baseURI;
     }

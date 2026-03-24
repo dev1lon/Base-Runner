@@ -134,36 +134,31 @@ async function confirmPurchase(address, nonce, txHash) {
     return { ok: false, error: "Purchase expired" };
   }
   
-  // Deduct coins from user
-  const user = await getOrCreateUser(address);
-  const newCoins = Math.max(0, user.coins - pending.coins_reserved);
-  await updateUser(address, { coins: newCoins });
-  
+  // Atomic coin deduction — prevents race condition
+  const { deductCoins } = require("../user/userRepo");
+  const deducted = await deductCoins(address, pending.coins_reserved);
+  if (!deducted) {
+    await cancelPurchase(address, nonce);
+    return { ok: false, error: "Insufficient coins" };
+  }
+
   // Update pending purchase status
   await query(
-    `UPDATE pending_purchases 
+    `UPDATE pending_purchases
      SET status = 'completed', tx_hash = $1, completed_at = NOW()
      WHERE id = $2`,
     [txHash, pending.id]
   );
-  
+
   // Add character to owned_characters
   await addOwnedCharacter(address, pending.character_id);
-
-  // Add to user inventory
-  await query(
-    `INSERT INTO user_inventory (address, token_id, character_id, tx_hash)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (address, token_id) DO NOTHING`,
-    [address.toLowerCase(), 0, pending.character_id, txHash]
-  );
 
   const updatedUser = await getOrCreateUser(address);
 
   return {
     ok: true,
     coinsDeducted: pending.coins_reserved,
-    newBalance: newCoins,
+    newBalance: updatedUser.coins,
     ownedCharacters: updatedUser.owned_characters || []
   };
 }

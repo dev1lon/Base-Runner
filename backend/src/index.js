@@ -47,6 +47,9 @@ const PORT = Number(process.env.PORT || 8787);
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 60 * 60 * 1000); // 1 hour
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
+if (ALLOWED_ORIGIN === "*") {
+  console.warn("⚠️  ALLOWED_ORIGIN is '*' — set a specific domain for production!");
+}
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
@@ -361,7 +364,8 @@ app.post("/api/shop/purchase/cancel", requireAuth, async (req, res) => {
 app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
   const { txHash, characterId = 0 } = req.body || {};
 
-  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+  // txHash is optional for backend-only free mint (no blockchain)
+  if (txHash && !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
     return res.status(400).json({ ok: false, error: "Invalid txHash" });
   }
 
@@ -391,48 +395,7 @@ app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
   }
 });
 
-// Record character purchase (after successful on-chain transaction)
-app.post("/api/shop/record-purchase", requireAuth, async (req, res) => {
-  const { txHash, characterId, price } = req.body || {};
-  
-  if (characterId === undefined || !price) {
-    res.status(400).json({ ok: false, error: "Missing characterId or price" });
-    return;
-  }
-  
-  try {
-    const { addOwnedCharacter, deductCoins } = require("./modules/user/userRepo");
-    const user = await getOrCreateUser(req.user.address);
-
-    // Check if already owns
-    if (user.owned_characters && user.owned_characters.includes(characterId)) {
-      res.status(400).json({ ok: false, error: "Already owns this character" });
-      return;
-    }
-
-    // Deduct coins from DB
-    const deducted = await deductCoins(req.user.address, price);
-    if (!deducted) {
-      res.status(400).json({ ok: false, error: "Insufficient coins" });
-      return;
-    }
-    
-    // Add character to owned
-    await addOwnedCharacter(req.user.address, characterId);
-    
-    const updatedUser = await getOrCreateUser(req.user.address);
-    
-    res.json({
-      ok: true,
-      txHash,
-      coinBalance: updatedUser.coins,
-      ownedCharacters: updatedUser.owned_characters || []
-    });
-  } catch (err) {
-    console.error("Record purchase error:", err);
-    res.status(500).json({ ok: false, error: "Failed to record purchase" });
-  }
-});
+// Note: record-purchase removed — use /api/shop/purchase/confirm instead
 
 // Update selected character
 app.post("/api/user/select-character", requireAuth, async (req, res) => {
@@ -546,9 +509,14 @@ app.get("/api/sprites", requireAuth, async (req, res) => {
   }
 });
 
-// Admin: Add character (protected - implement proper admin auth in production)
+// Admin: Add character (only contract owner / signer can call)
+const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || "").toLowerCase().split(",").filter(Boolean);
+
 app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
-  // TODO: Add proper admin check
+  if (!ADMIN_ADDRESSES.includes(req.user.address)) {
+    res.status(403).json({ ok: false, error: "Not authorized" });
+    return;
+  }
   const { characterId, name, description, imageUrl, metadataUri, price, maxSupply } = req.body || {};
   
   if (!characterId || !name) {

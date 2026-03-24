@@ -2716,13 +2716,13 @@ async function loadOwnedSprites(forceReload = false) {
                 });
                 if (spriteResponse.ok) {
                     const blob = await spriteResponse.blob();
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const dataUrl = reader.result;
-                        spriteCache[id] = dataUrl;
-                        saveSpriteToLS(walletAddress, id, dataUrl);
-                    };
-                    reader.readAsDataURL(blob);
+                    const dataUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                    spriteCache[id] = dataUrl;
+                    saveSpriteToLS(walletAddress, id, dataUrl);
                 }
             } catch (e) {
                 console.warn(`Failed to cache sprite ${id}:`, e);
