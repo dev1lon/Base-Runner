@@ -118,16 +118,16 @@ let showWelcome = false;
 let isPaused = false;
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
 const AUTH_TOKENS_STORAGE_KEY = "runner_auth_token";
-const BASE_SEPOLIA_CHAIN_ID = "0x14a34"; // 84532
-const BASE_SEPOLIA_PARAMS = {
-    chainId: BASE_SEPOLIA_CHAIN_ID,
-    chainName: "Base Sepolia",
+const BASE_CHAIN_ID = "0x2105"; // 8453
+const BASE_CHAIN_PARAMS = {
+    chainId: BASE_CHAIN_ID,
+    chainName: "Base",
     nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-    rpcUrls: ["https://sepolia.base.org"],
-    blockExplorerUrls: ["https://sepolia.basescan.org"]
+    rpcUrls: ["https://mainnet.base.org"],
+    blockExplorerUrls: ["https://basescan.org"]
 };
-// Contract addresses (Base Sepolia)
-const NFT_CONTRACT_ADDRESS = "0x1FBdCBb4b139de2c4CC2dc2A677CC9a4f3BDC1B1";
+// Contract addresses (Base Mainnet)
+const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
 
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
@@ -311,12 +311,12 @@ async function initWeb3Modal() {
         // WalletConnect Cloud Project ID
         const projectId = '2b1bf48533e65943f2d6f749c353b1c9';
         
-        const baseSepolia = {
-            chainId: 84532,
-            name: 'Base Sepolia',
+        const baseMainnet = {
+            chainId: 8453,
+            name: 'Base',
             currency: 'ETH',
-            explorerUrl: 'https://sepolia.basescan.org',
-            rpcUrl: 'https://sepolia.base.org'
+            explorerUrl: 'https://basescan.org',
+            rpcUrl: 'https://mainnet.base.org'
         };
         
         const metadata = {
@@ -331,12 +331,12 @@ async function initWeb3Modal() {
             enableEIP6963: true,
             enableInjected: true,
             enableCoinbase: true,
-            rpcUrl: 'https://sepolia.base.org'
+            rpcUrl: 'https://mainnet.base.org'
         });
-        
+
         const modal = createWeb3Modal({
             ethersConfig,
-            chains: [baseSepolia],
+            chains: [baseMainnet],
             projectId,
             enableAnalytics: false,
             themeMode: 'dark'
@@ -721,8 +721,8 @@ async function connectWithInjected() {
         const accounts = await provider.request({ method: "eth_requestAccounts" });
         handleAccountsChanged(accounts);
         
-        // Switch to Base Sepolia
-        await switchToBaseSepolia();
+        // Switch to Base
+        await switchToBase();
         
         isConnectingWallet = false;
         updateWalletUI();
@@ -1191,8 +1191,8 @@ function setConnectButtonText(text) {
 function updateWalletUI() {
     const isConnected = !!walletAddress;
     const normalizedChainId = normalizeChainId(walletChainId);
-    const isOnBaseSepolia = normalizedChainId === BASE_SEPOLIA_CHAIN_ID;
-    const walletConnected = isConnected && isOnBaseSepolia;
+    const isOnBase = normalizedChainId === BASE_CHAIN_ID;
+    const walletConnected = isConnected && isOnBase;
     walletReady = walletConnected && walletAuthenticated;
     const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
 
@@ -1205,7 +1205,7 @@ function updateWalletUI() {
             setConnectButtonText("Connecting...");
         } else if (authInProgress) {
             setConnectButtonText("Signing...");
-        } else if (isConnected && !isOnBaseSepolia) {
+        } else if (isConnected && !isOnBase) {
             setConnectButtonText("Switch Network");
         } else {
             setConnectButtonText("Connect Wallet");
@@ -1226,8 +1226,8 @@ function updateWalletUI() {
         } else if (!isConnected) {
             walletStatus.textContent = "";
             walletStatus.classList.remove("error");
-        } else if (!isOnBaseSepolia) {
-            walletStatus.textContent = "Please switch to Base Sepolia network.";
+        } else if (!isOnBase) {
+            walletStatus.textContent = "Please switch to Base network.";
             walletStatus.classList.remove("error");
         } else if (!walletAuthenticated) {
             walletStatus.textContent = "";
@@ -1294,7 +1294,7 @@ async function initWalletState() {
                 activeWalletType = 'injected';
                 const chainId = await provider.request({ method: "eth_chainId" });
                 walletChainId = normalizeChainId(chainId) || chainId;
-                await switchToBaseSepolia();
+                await switchToBase();
                 
                 // Try to restore existing session first
                 const restored = await restoreAuthSession();
@@ -1313,7 +1313,7 @@ async function initWalletState() {
                 walletAddress = newAccounts[0];
                 const chainId = await provider.request({ method: "eth_chainId" });
                 walletChainId = normalizeChainId(chainId) || chainId;
-                await switchToBaseSepolia();
+                await switchToBase();
                 
                 // Try to restore existing session first
                 const restored = await restoreAuthSession();
@@ -1378,13 +1378,13 @@ async function handleNetworkSwitch() {
         const chainId = await provider.request({ method: "eth_chainId" });
         const normalizedChainId = normalizeChainId(chainId);
         
-        if (normalizedChainId !== BASE_SEPOLIA_CHAIN_ID) {
-            await switchToBaseSepolia();
+        if (normalizedChainId !== BASE_CHAIN_ID) {
+            await switchToBase();
         }
         
         // Authenticate if needed
         const activeChainId = normalizeChainId(walletChainId);
-        if (walletAddress && activeChainId === BASE_SEPOLIA_CHAIN_ID && !walletAuthenticated) {
+        if (walletAddress && activeChainId === BASE_CHAIN_ID && !walletAuthenticated) {
             const restored = await restoreAuthSession();
             if (!restored) {
                 authAttempted = false;
@@ -1427,8 +1427,8 @@ async function connectWalletLegacy() {
             // Some providers may not support eth_chainId at this moment
         }
         const normalizedChainId = normalizeChainId(chainId || walletChainId);
-        if (!normalizedChainId || normalizedChainId !== BASE_SEPOLIA_CHAIN_ID) {
-            const switchResult = await trySwitchToBaseSepolia();
+        if (!normalizedChainId || normalizedChainId !== BASE_CHAIN_ID) {
+            const switchResult = await trySwitchToBase();
             if (!switchResult.ok) {
                 if (switchResult.error && switchResult.error.code === 4001) {
                     setWalletError("Cancelled in wallet.");
@@ -1447,7 +1447,7 @@ async function connectWalletLegacy() {
             }
         }
         const activeChainId = normalizeChainId(walletChainId);
-        if (walletAddress && activeChainId === BASE_SEPOLIA_CHAIN_ID && !walletAuthenticated) {
+        if (walletAddress && activeChainId === BASE_CHAIN_ID && !walletAuthenticated) {
             const restored = await restoreAuthSession();
             if (!restored) {
                 authAttempted = false;
@@ -1471,15 +1471,15 @@ async function connectWalletLegacy() {
     }
 }
 
-async function switchToBaseSepolia() {
-    const result = await trySwitchToBaseSepolia();
+async function switchToBase() {
+    const result = await trySwitchToBase();
     if (!result.ok && result.error) {
         console.error("Failed to switch network:", result.error);
     }
     return result.ok;
 }
 
-async function trySwitchToBaseSepolia() {
+async function trySwitchToBase() {
     const provider = getEthereumProvider();
     if (!provider || !provider.request) {
         return { ok: false, error: null };
@@ -1487,7 +1487,7 @@ async function trySwitchToBaseSepolia() {
     try {
         await provider.request({
             method: "wallet_switchEthereumChain",
-            params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }]
+            params: [{ chainId: BASE_CHAIN_ID }]
         });
         return { ok: true };
     } catch (err) {
@@ -1495,7 +1495,7 @@ async function trySwitchToBaseSepolia() {
             try {
                 await provider.request({
                     method: "wallet_addEthereumChain",
-                    params: [BASE_SEPOLIA_PARAMS]
+                    params: [BASE_CHAIN_PARAMS]
                 });
                 return { ok: true };
             } catch (addErr) {
