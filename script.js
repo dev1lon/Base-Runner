@@ -129,7 +129,7 @@ const BASE_CHAIN_PARAMS = {
 // Contract addresses (Base Mainnet)
 const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
 
-const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
+const BACKEND_URL = "https://rugpullrun.app";
 const BACKEND_TIMEOUT_MS = 8000;
 const ALLOW_GUEST_PLAY = false;
 
@@ -250,7 +250,7 @@ function getSafeAreaLeftPx() {
 let activeWalletType = null; // 'injected'
 
 // App URL for deeplinks
-const APP_URL = 'https://base-runner-k9oj.onrender.com';
+const APP_URL = 'https://rugpullrun.app';
 
 // Check if running inside a wallet browser (Coinbase, MetaMask, Trust, etc.)
 function isWalletBrowser() {
