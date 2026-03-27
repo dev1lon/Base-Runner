@@ -1633,10 +1633,11 @@ function isSpawnXClear(spawnX, minGap) {
 function adjustSpawnX(spawnX, minGap) {
     let adjusted = spawnX;
     let attempts = 0;
-    while (!isSpawnXClear(adjusted, minGap) && attempts < 3) {
+    while (!isSpawnXClear(adjusted, minGap) && attempts < 5) {
         adjusted += minGap;
         attempts++;
     }
+    if (!isSpawnXClear(adjusted, minGap)) return null; // skip spawn if no safe position
     return adjusted;
 }
 
@@ -3845,25 +3846,30 @@ function placeObstacle() {
             tokenWidth = token1Width;
         }
         
-        let token = {
-            x : adjustSpawnX(tokenX, SPAWN_X_GAP),
-            y : tokenY,
-            width : tokenWidth,
-            height: tokenHeight,
-            type: tokenType
+        const safeX = adjustSpawnX(tokenX, SPAWN_X_GAP);
+        if (safeX !== null) {
+            let token = {
+                x : safeX,
+                y : tokenY,
+                width : tokenWidth,
+                height: tokenHeight,
+                type: tokenType
+            }
+            tokenArray.push(token);
         }
-        tokenArray.push(token);
     }
     else if (placeObstacleChance > .35) { //20% chance for bird (flying obstacle)
-        // Set bird at head level (can be ducked under)
         const headLevelY = getBirdFlyY();
-        let bird = {
-            x : adjustSpawnX(birdX, SPAWN_X_GAP),
-            y : headLevelY,
-            width : birdWidth,
-            height: birdHeight
+        const safeX = adjustSpawnX(birdX, SPAWN_X_GAP);
+        if (safeX !== null) {
+            let bird = {
+                x : safeX,
+                y : headLevelY,
+                width : birdWidth,
+                height: birdHeight
+            }
+            birdArray.push(bird);
         }
-        birdArray.push(bird);
     }
 
 }
