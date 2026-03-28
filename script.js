@@ -1722,16 +1722,28 @@ function handleAccountsChanged(accounts) {
     if (accounts && accounts.length) {
         walletAddress = accounts[0];
     } else {
+        // Ignore empty accounts during initialization (Base app sends [] then [addr])
+        if (walletInitializing) {
+            console.log('Ignoring empty accounts during init');
+            return;
+        }
         walletAddress = null;
     }
     console.log('Wallet change:', { previousAddress, newAddress: walletAddress, gameActive });
-    
+
+    // If same address, skip full reset
+    if (previousAddress && walletAddress && previousAddress.toLowerCase() === walletAddress.toLowerCase()) {
+        console.log('Same address reconnected, skipping reset');
+        updateWalletUI();
+        return;
+    }
+
     resetAuthState();
     checkinState.lastCheckin = null;
     checkinState.streak = 0;
     checkinState.message = "";
     clearWalletMessages();
-    
+
     // If wallet was disconnected or changed, clear all cached data
     if (previousAddress && (!walletAddress || walletAddress.toLowerCase() !== previousAddress.toLowerCase())) {
         console.log('Wallet disconnected or changed - clearing cached data');
@@ -2872,12 +2884,35 @@ function lsSelectedKey(address) {
     return `selected_character_${address.toLowerCase()}`;
 }
 function getSpriteFromLS(address, charId) {
-    try { return localStorage.getItem(lsSpritKey(address, charId)); } catch { return null; }
+    const key = lsSpritKey(address, charId);
+    // Check in-memory cache first
+    if (memSpriteCache[key]) return memSpriteCache[key];
+    try { return localStorage.getItem(key); } catch { return null; }
 }
+// In-memory sprite cache (avoid localStorage quota issues in embedded browsers)
+const memSpriteCache = {};
+
 function saveSpriteToLS(address, charId, dataUrl) {
-    try { localStorage.setItem(lsSpritKey(address, charId), dataUrl); } catch (e) {
-        console.warn('localStorage sprite save failed:', e);
+    const key = lsSpritKey(address, charId);
+    memSpriteCache[key] = dataUrl;
+    try { localStorage.setItem(key, dataUrl); } catch (e) {
+        // Quota exceeded — clear old sprites to make room for auth tokens
+        console.warn('localStorage sprite save failed, clearing old sprites:', e);
+        clearOldSprites();
     }
+}
+
+function clearOldSprites() {
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('sprite_')) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
 }
 function getSelectedFromLS(address) {
     try { return localStorage.getItem(lsSelectedKey(address)); } catch { return null; }
