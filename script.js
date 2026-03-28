@@ -1784,6 +1784,25 @@ function handleAccountsChanged(accounts) {
         }
     }
     
+    // Fetch chainId if missing before updating UI
+    if (walletAddress && !walletChainId) {
+        const provider = getEthereumProvider();
+        if (provider) {
+            provider.request({ method: "eth_chainId" }).then(cid => {
+                walletChainId = normalizeChainId(cid) || cid;
+                console.log('[handleAccountsChanged] fetched chainId:', walletChainId);
+                openWalletMenu();
+                updateWalletUI();
+                if (walletAddress) {
+                    void restoreAuthSession().then(updateWalletUI).catch(err => console.warn('Auth restore failed:', err));
+                }
+            }).catch(() => {
+                openWalletMenu();
+                updateWalletUI();
+            });
+            return;
+        }
+    }
     openWalletMenu();
     updateWalletUI();
     if (walletAddress) {
