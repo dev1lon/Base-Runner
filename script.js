@@ -1107,7 +1107,9 @@ async function signWalletMessage(message) {
 }
 
 async function authenticateWallet() {
+    console.log('[AUTH] authenticateWallet called', { walletAddress, authInProgress, walletAuthenticated, walletChainId });
     if (!walletAddress || authInProgress || walletAuthenticated) {
+        console.log('[AUTH] skipping - already auth or in progress');
         return;
     }
     authInProgress = true;
@@ -1117,6 +1119,7 @@ async function authenticateWallet() {
     updateWalletUI();
     try {
         const chainId = normalizeChainId(walletChainId) || walletChainId;
+        console.log('[AUTH] chainId:', chainId, 'BASE_CHAIN_ID:', BASE_CHAIN_ID);
         if (!chainId) {
             throw new Error("ChainId missing");
         }
@@ -1128,10 +1131,12 @@ async function authenticateWallet() {
                 chainId
             })
         });
+        console.log('[AUTH] nonce response status:', nonceResponse.status);
         if (!nonceResponse.ok) {
             throw new Error(`Nonce failed: ${nonceResponse.status}`);
         }
         const nonceData = await nonceResponse.json();
+        console.log('[AUTH] nonceData:', nonceData);
         const message = buildAuthMessage({
             address: walletAddress,
             nonce: nonceData.nonce,
@@ -1139,6 +1144,7 @@ async function authenticateWallet() {
             issuedAt: nonceData.issuedAt
         });
         const signature = await signWalletMessage(message);
+        console.log('[AUTH] signature obtained, verifying...');
         const response = await fetch(`${BACKEND_URL}/auth/verify`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1147,26 +1153,30 @@ async function authenticateWallet() {
                 signature
             })
         });
+        console.log('[AUTH] verify response status:', response.status);
+        const data = await response.json();
+        console.log('[AUTH] verify data:', JSON.stringify(data));
         if (!response.ok) {
             throw new Error(`Auth failed: ${response.status}`);
         }
-        const data = await response.json();
         if (!data || !data.ok) {
-            throw new Error("Auth rejected");
+            throw new Error("Auth rejected: " + (data?.error || 'unknown'));
         }
         authToken = data.token || "";
         walletAuthenticated = true;
+        console.log('[AUTH] SUCCESS - walletAuthenticated:', walletAuthenticated, 'walletReady will be:', !!walletAddress && normalizeChainId(walletChainId) === BASE_CHAIN_ID && walletAuthenticated);
         storeAuthSession(authToken, walletAddress);
         await applyProfileData(data);
         resolveBasename(walletAddress);
     } catch (err) {
-        console.warn("Auth failed", err);
+        console.error("[AUTH] FAILED:", err.message, err);
         walletAuthenticated = false;
         authToken = "";
         clearAuthTokenForAddress(walletAddress);
         setWalletError("Authorization failed. Please try again.");
     } finally {
         authInProgress = false;
+        console.log('[AUTH] finally - walletAuthenticated:', walletAuthenticated, 'walletChainId:', walletChainId, 'isOnBase:', normalizeChainId(walletChainId) === BASE_CHAIN_ID);
         updateWalletUI();
     }
 }
@@ -1371,6 +1381,7 @@ function updateWalletUI() {
     const walletConnected = isConnected && isOnBase;
     walletReady = walletConnected && walletAuthenticated;
     const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
+    console.log('[UI] updateWalletUI:', { isConnected, normalizedChainId, BASE_CHAIN_ID, isOnBase, walletAuthenticated, walletReady, canPlayNow, currentUIState });
 
     // Update connect button state and text - always enabled (we have universal options)
     if (connectButton) {
