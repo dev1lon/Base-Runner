@@ -1,0 +1,14 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Rug Pull Run",
+    "iconUrl": "https://rugpullrun.app/assets/icon.png",
+    "homeUrl": "https://rugpullrun.app/",
+    "splashBackgroundColor": "#0f0f1a"
+  }
+}
