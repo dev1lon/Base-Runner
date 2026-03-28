@@ -2635,7 +2635,7 @@ const CHARACTERS = {
     2: { name: 'Hamaha', rarity: 'COMMON', price: 10 },
     3: { name: 'Hayes', rarity: 'RARE', price: 25 },
     4: { name: 'Pepe', rarity: 'RARE', price: 25 },
-    5: { name: 'Ilon Mask', rarity: 'EPIC', price: 50 },
+    5: { name: 'Elon Mask', rarity: 'EPIC', price: 50 },
     6: { name: 'Sam Bankman', rarity: 'EPIC', price: 50 },
     7: { name: 'Vladimir Novakovski', rarity: 'EPIC', price: 50 },
     8: { name: 'CZ', rarity: 'LEGENDARY', price: 100 },
