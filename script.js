@@ -744,18 +744,24 @@ function formatAddress(address) {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-// Resolve .base.eth basename via ethers.js namehash + Base L2 Resolver
+// Resolve .base.eth basename via Base Reverse Registrar + L2 Resolver
 async function resolveBasename(address) {
     if (!address) return;
     walletBasename = null;
     try {
         const { ethers } = await import('https://esm.sh/ethers@6?bundle');
-        const addr = address.toLowerCase().slice(2);
-        const reverseNode = ethers.namehash(addr + '.addr.reverse');
         const provider = new ethers.JsonRpcProvider('https://mainnet.base.org');
+        // Get correct reverse node from Base Reverse Registrar
+        const reverseRegistrar = new ethers.Contract(
+            '0x79EA96012eEa67A83431F1701B3dFf7e37F9E282',
+            ['function node(address) view returns (bytes32)'],
+            provider
+        );
+        const reverseNode = await reverseRegistrar.node(address);
+        // Resolve name via L2 Resolver
         const resolver = new ethers.Contract(
             '0xC6d566A56A1aFf6508b41f6c90ff131615583BCD',
-            ['function name(bytes32 node) view returns (string)'],
+            ['function name(bytes32) view returns (string)'],
             provider
         );
         const name = await resolver.name(reverseNode);
