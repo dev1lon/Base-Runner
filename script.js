@@ -454,9 +454,7 @@ function showWalletSelector() {
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
     
-    // Deeplinks (reserved for future use)
-    // const coinbaseDeeplink = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
-    // const walletConnectLink = `https://explorer.walletconnect.com/?type=wallet&chains=eip155%3A84532`;
+
     
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
@@ -746,173 +744,28 @@ function formatAddress(address) {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-// Resolve .base.eth basename via Base L2 reverse resolution
+// Resolve .base.eth basename via ethers.js namehash + Base L2 Resolver
 async function resolveBasename(address) {
     if (!address) return;
     walletBasename = null;
     try {
-        // Reverse node: addr.reverse namehash for the address
-        const addr = address.toLowerCase().slice(2); // remove 0x
-        // Use Base mainnet public RPC to call the Universal Resolver
-        // Base L2 Resolver at 0xC6d566A56A1aFf6508b41f6c90ff131615583BCD
-        const BASENAME_L2_RESOLVER = '0xC6d566A56A1aFf6508b41f6c90ff131615583BCD';
-        const BASE_RPC = 'https://mainnet.base.org';
-
-        // Encode reverse lookup: name(bytes32 node) on L2 Resolver
-        // But simpler: use eth_call to the reverse registrar
-        // Actually, use the name() function on the reverse resolver
-        // reverseNode = namehash(addr + ".addr.reverse")
-        const reverseNode = await computeReverseNode(address);
-
-        // Call name(bytes32) = 0x691f3431 + node
-        const callData = '0x691f3431' + reverseNode.slice(2);
-        const result = await fetch(BASE_RPC, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'eth_call',
-                params: [{ to: BASENAME_L2_RESOLVER, data: callData }, 'latest'],
-                id: 1
-            })
-        });
-        const json = await result.json();
-        if (json.result && json.result !== '0x' && json.result.length > 130) {
-            // Decode ABI string response
-            const hex = json.result.slice(2);
-            const offset = parseInt(hex.slice(0, 64), 16) * 2;
-            const length = parseInt(hex.slice(offset, offset + 64), 16);
-            if (length > 0 && length < 256) {
-                const nameHex = hex.slice(offset + 64, offset + 64 + length * 2);
-                const name = new TextDecoder().decode(
-                    new Uint8Array(nameHex.match(/.{2}/g).map(b => parseInt(b, 16)))
-                );
-                if (name && name.includes('.')) {
-                    walletBasename = name;
-                    updateWalletUI();
-                    console.log('Resolved basename:', name);
-                }
-            }
+        const { ethers } = await import('https://esm.sh/ethers@6?bundle');
+        const addr = address.toLowerCase().slice(2);
+        const reverseNode = ethers.namehash(addr + '.addr.reverse');
+        const provider = new ethers.JsonRpcProvider('https://mainnet.base.org');
+        const resolver = new ethers.Contract(
+            '0xC6d566A56A1aFf6508b41f6c90ff131615583BCD',
+            ['function name(bytes32 node) view returns (string)'],
+            provider
+        );
+        const name = await resolver.name(reverseNode);
+        if (name && name.includes('.')) {
+            walletBasename = name;
+            updateWalletUI();
         }
     } catch (err) {
-        console.warn('Basename resolution failed:', err);
+        // Silently fail — display truncated address
     }
-}
-
-// Compute reverse node: namehash of "<addr>.addr.reverse"
-async function computeReverseNode(address) {
-    const addr = address.toLowerCase().slice(2);
-    const label = addr + '.addr.reverse';
-    const parts = label.split('.');
-
-    let node = new Uint8Array(32); // 0x00...00
-    for (let i = parts.length - 1; i >= 0; i--) {
-        const labelHash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(parts[i])));
-        // Actually ENS uses keccak256, not SHA-256. We need keccak.
-        // Use a simple keccak256 implementation
-        const kLabel = keccak256Bytes(new TextEncoder().encode(parts[i]));
-        const combined = new Uint8Array(64);
-        combined.set(node, 0);
-        combined.set(kLabel, 32);
-        node = keccak256Bytes(combined);
-    }
-    return '0x' + Array.from(node).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Minimal keccak256 for ENS namehash (uses ethers-style if available, else inline)
-function keccak256Bytes(data) {
-    // Try using the keccak256 from ethers.js if loaded
-    if (typeof window !== 'undefined' && window.ethers && window.ethers.utils) {
-        const hash = window.ethers.utils.keccak256(data);
-        return new Uint8Array(hash.slice(2).match(/.{2}/g).map(b => parseInt(b, 16)));
-    }
-    // Fallback: use keccak from js-sha3 pattern (tiny inline implementation)
-    return keccak256Impl(data);
-}
-
-// Tiny keccak-256 implementation
-function keccak256Impl(message) {
-    const RC = [
-        0x0000000000000001n, 0x0000000000008082n, 0x800000000000808An, 0x8000000080008000n,
-        0x000000000000808Bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
-        0x000000000000008An, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000An,
-        0x000000008000808Bn, 0x800000000000008Bn, 0x8000000000008089n, 0x8000000000008003n,
-        0x8000000000008002n, 0x8000000000000080n, 0x000000000000800An, 0x800000008000000An,
-        0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n
-    ];
-    const ROTC = [
-        1,3,6,10,15,21,28,36,45,55,2,14,27,41,56,8,25,43,62,18,39,61,20,44
-    ];
-    const PI = [
-        10,7,11,17,18,3,5,16,8,21,24,4,15,23,19,13,12,2,20,14,22,9,6,1
-    ];
-    const rate = 136;
-    const capacity = 64;
-    const outputLen = 32;
-    const state = new BigUint64Array(25);
-    const blockSize = rate;
-
-    // Padding
-    const msgLen = message.length;
-    const padLen = blockSize - (msgLen % blockSize);
-    const padded = new Uint8Array(msgLen + padLen);
-    padded.set(message);
-    padded[msgLen] = 0x01;
-    padded[padded.length - 1] |= 0x80;
-
-    // Absorb
-    const view = new DataView(padded.buffer);
-    for (let offset = 0; offset < padded.length; offset += blockSize) {
-        for (let i = 0; i < blockSize / 8; i++) {
-            state[i] ^= view.getBigUint64(offset + i * 8, true);
-        }
-        keccakF(state, RC, ROTC, PI);
-    }
-
-    // Squeeze
-    const out = new Uint8Array(outputLen);
-    const outView = new DataView(out.buffer);
-    for (let i = 0; i < outputLen / 8; i++) {
-        outView.setBigUint64(i * 8, state[i], true);
-    }
-    return out;
-}
-
-function keccakF(state, RC, ROTC, PI) {
-    for (let round = 0; round < 24; round++) {
-        // θ
-        const C = new BigUint64Array(5);
-        for (let x = 0; x < 5; x++) {
-            C[x] = state[x] ^ state[x+5] ^ state[x+10] ^ state[x+15] ^ state[x+20];
-        }
-        for (let x = 0; x < 5; x++) {
-            const D = C[(x+4)%5] ^ rot64(C[(x+1)%5], 1n);
-            for (let y = 0; y < 25; y += 5) state[y+x] ^= D;
-        }
-        // ρ and π
-        let last = state[1];
-        for (let i = 0; i < 24; i++) {
-            const j = PI[i];
-            const temp = state[j];
-            state[j] = rot64(last, BigInt(ROTC[i]));
-            last = temp;
-        }
-        // χ
-        for (let y = 0; y < 25; y += 5) {
-            const t = new BigUint64Array(5);
-            for (let x = 0; x < 5; x++) t[x] = state[y+x];
-            for (let x = 0; x < 5; x++) {
-                state[y+x] = t[x] ^ ((~t[(x+1)%5]) & t[(x+2)%5]);
-            }
-        }
-        // ι
-        state[0] ^= RC[round];
-    }
-}
-
-function rot64(x, n) {
-    n = n % 64n;
-    return ((x << n) | (x >> (64n - n))) & 0xFFFFFFFFFFFFFFFFn;
 }
 
 function isValidAddress(address) {
@@ -1107,9 +960,7 @@ async function signWalletMessage(message) {
 }
 
 async function authenticateWallet() {
-    console.log('[AUTH] authenticateWallet called', { walletAddress, authInProgress, walletAuthenticated, walletChainId });
     if (!walletAddress || authInProgress || walletAuthenticated) {
-        console.log('[AUTH] skipping - already auth or in progress');
         return;
     }
     authInProgress = true;
@@ -1119,7 +970,6 @@ async function authenticateWallet() {
     updateWalletUI();
     try {
         const chainId = normalizeChainId(walletChainId) || walletChainId;
-        console.log('[AUTH] chainId:', chainId, 'BASE_CHAIN_ID:', BASE_CHAIN_ID);
         if (!chainId) {
             throw new Error("ChainId missing");
         }
@@ -1131,12 +981,10 @@ async function authenticateWallet() {
                 chainId
             })
         });
-        console.log('[AUTH] nonce response status:', nonceResponse.status);
         if (!nonceResponse.ok) {
             throw new Error(`Nonce failed: ${nonceResponse.status}`);
         }
         const nonceData = await nonceResponse.json();
-        console.log('[AUTH] nonceData:', nonceData);
         const message = buildAuthMessage({
             address: walletAddress,
             nonce: nonceData.nonce,
@@ -1144,7 +992,6 @@ async function authenticateWallet() {
             issuedAt: nonceData.issuedAt
         });
         const signature = await signWalletMessage(message);
-        console.log('[AUTH] signature obtained, verifying...');
         const response = await fetch(`${BACKEND_URL}/auth/verify`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1153,30 +1000,26 @@ async function authenticateWallet() {
                 signature
             })
         });
-        console.log('[AUTH] verify response status:', response.status);
-        const data = await response.json();
-        console.log('[AUTH] verify data:', JSON.stringify(data));
         if (!response.ok) {
             throw new Error(`Auth failed: ${response.status}`);
         }
+        const data = await response.json();
         if (!data || !data.ok) {
             throw new Error("Auth rejected: " + (data?.error || 'unknown'));
         }
         authToken = data.token || "";
         walletAuthenticated = true;
-        console.log('[AUTH] SUCCESS - walletAuthenticated:', walletAuthenticated, 'walletReady will be:', !!walletAddress && normalizeChainId(walletChainId) === BASE_CHAIN_ID && walletAuthenticated);
         storeAuthSession(authToken, walletAddress);
         await applyProfileData(data);
         resolveBasename(walletAddress);
     } catch (err) {
-        console.error("[AUTH] FAILED:", err.message, err);
+        console.warn("Auth failed", err);
         walletAuthenticated = false;
         authToken = "";
         clearAuthTokenForAddress(walletAddress);
         setWalletError("Authorization failed. Please try again.");
     } finally {
         authInProgress = false;
-        console.log('[AUTH] finally - walletAuthenticated:', walletAuthenticated, 'walletChainId:', walletChainId, 'isOnBase:', normalizeChainId(walletChainId) === BASE_CHAIN_ID);
         updateWalletUI();
     }
 }
@@ -1381,7 +1224,6 @@ function updateWalletUI() {
     const walletConnected = isConnected && isOnBase;
     walletReady = walletConnected && walletAuthenticated;
     const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
-    console.log('[UI] updateWalletUI:', { isConnected, normalizedChainId, BASE_CHAIN_ID, isOnBase, walletAuthenticated, walletReady, canPlayNow, currentUIState });
 
     // Update connect button state and text - always enabled (we have universal options)
     if (connectButton) {
@@ -1717,23 +1559,17 @@ async function trySwitchToBase() {
 }
 
 function handleAccountsChanged(accounts) {
-    console.log('handleAccountsChanged called:', accounts);
-    const previousAddress = walletAddress; // Save actual address
+    const previousAddress = walletAddress;
     if (accounts && accounts.length) {
         walletAddress = accounts[0];
     } else {
         // Ignore empty accounts during initialization (Base app sends [] then [addr])
-        if (walletInitializing) {
-            console.log('Ignoring empty accounts during init');
-            return;
-        }
+        if (walletInitializing) return;
         walletAddress = null;
     }
-    console.log('Wallet change:', { previousAddress, newAddress: walletAddress, gameActive });
 
     // If same address, skip full reset
     if (previousAddress && walletAddress && previousAddress.toLowerCase() === walletAddress.toLowerCase()) {
-        console.log('Same address reconnected, skipping reset');
         updateWalletUI();
         return;
     }
@@ -1746,7 +1582,6 @@ function handleAccountsChanged(accounts) {
 
     // If wallet was disconnected or changed, clear all cached data
     if (previousAddress && (!walletAddress || walletAddress.toLowerCase() !== previousAddress.toLowerCase())) {
-        console.log('Wallet disconnected or changed - clearing cached data');
         
         // Clear sprite cache
         Object.values(spriteCache).forEach(url => {
@@ -1776,10 +1611,8 @@ function handleAccountsChanged(accounts) {
         
         // Force exit if was playing
         if (previousAddress && !walletAddress) {
-            console.log('Wallet disconnected - forcing exit');
             forceExitToMenu('Wallet disconnected');
         } else {
-            console.log('Wallet changed - forcing exit');
             forceExitToMenu('Wallet changed');
         }
     }
@@ -1790,7 +1623,6 @@ function handleAccountsChanged(accounts) {
         if (provider) {
             provider.request({ method: "eth_chainId" }).then(cid => {
                 walletChainId = normalizeChainId(cid) || cid;
-                console.log('[handleAccountsChanged] fetched chainId:', walletChainId);
                 openWalletMenu();
                 updateWalletUI();
                 if (walletAddress) {
@@ -1816,10 +1648,7 @@ function handleChainChanged(chainId) {
     walletChainId = newChainId;
 
     // Don't reset auth during wallet initialization (switchToBase triggers this)
-    if (walletInitializing) {
-        console.log('chainChanged during init, skipping auth reset');
-        return;
-    }
+    if (walletInitializing) return;
 
     if (chainActuallyChanged) {
         resetAuthState();
@@ -2116,8 +1945,6 @@ function canPlayGame() {
 
 // Force exit to menu when wallet disconnects or changes
 function forceExitToMenu(reason) {
-    console.log('🚨 Force exit to menu:', reason, { gameActive, currentUIState });
-    
     // Stop game immediately
     gameActive = false;
     isPaused = false;
