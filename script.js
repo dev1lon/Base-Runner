@@ -744,30 +744,50 @@ function formatAddress(address) {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-// Resolve .base.eth basename via Base Reverse Registrar + L2 Resolver
+// Resolve .base.eth basename via raw JSON-RPC (no ethers dependency)
 async function resolveBasename(address) {
     if (!address) return;
     walletBasename = null;
     try {
-        const { ethers } = await import('https://esm.sh/ethers@6?bundle');
-        const provider = new ethers.JsonRpcProvider('https://mainnet.base.org');
-        // Get correct reverse node from Base Reverse Registrar
-        const reverseRegistrar = new ethers.Contract(
-            '0x79EA96012eEa67A83431F1701B3dFf7e37F9E282',
-            ['function node(address) view returns (bytes32)'],
-            provider
-        );
-        const reverseNode = await reverseRegistrar.node(address);
-        // Resolve name via L2 Resolver
-        const resolver = new ethers.Contract(
-            '0xC6d566A56A1aFf6508b41f6c90ff131615583BCD',
-            ['function name(bytes32) view returns (string)'],
-            provider
-        );
-        const name = await resolver.name(reverseNode);
-        if (name && name.includes('.')) {
-            walletBasename = name;
-            updateWalletUI();
+        const BASE_RPC = 'https://mainnet.base.org';
+        const paddedAddr = address.toLowerCase().slice(2).padStart(64, '0');
+
+        // Step 1: Call ReverseRegistrar.node(address) -> bytes32
+        const nodeResult = await fetch(BASE_RPC, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0', id: 1, method: 'eth_call',
+                params: [{ to: '0x79EA96012eEa67A83431F1701B3dFf7e37F9E282', data: '0xbffbe61c' + paddedAddr }, 'latest']
+            })
+        });
+        const nodeJson = await nodeResult.json();
+        const reverseNode = nodeJson.result;
+        if (!reverseNode || reverseNode === '0x' || reverseNode.length < 66) return;
+
+        // Step 2: Call L2Resolver.name(bytes32) -> string
+        const nameResult = await fetch(BASE_RPC, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0', id: 2, method: 'eth_call',
+                params: [{ to: '0xC6d566A56A1aFf6508b41f6c90ff131615583BCD', data: '0x691f3431' + reverseNode.slice(2) }, 'latest']
+            })
+        });
+        const nameJson = await nameResult.json();
+        if (!nameJson.result || nameJson.result === '0x' || nameJson.result.length <= 130) return;
+
+        // Decode ABI-encoded string
+        const hex = nameJson.result.slice(2);
+        const strOffset = parseInt(hex.slice(0, 64), 16) * 2;
+        const strLen = parseInt(hex.slice(strOffset, strOffset + 64), 16);
+        if (strLen > 0 && strLen < 256) {
+            const strHex = hex.slice(strOffset + 64, strOffset + 64 + strLen * 2);
+            const name = new TextDecoder().decode(new Uint8Array(strHex.match(/.{2}/g).map(b => parseInt(b, 16))));
+            if (name && name.includes('.')) {
+                walletBasename = name;
+                updateWalletUI();
+            }
         }
     } catch (err) {
         // Silently fail — display truncated address
