@@ -38,7 +38,7 @@ async function verifyNonce({ address, signature }) {
     chainId: record.chain_id,
     issuedAt: new Date(record.issued_at).toISOString()
   });
-  if (!verifySignature(address, message, signature)) {
+  if (!(await verifySignature(address, message, signature))) {
     return { ok: false, error: "Invalid signature" };
   }
   await deleteNonce(address);

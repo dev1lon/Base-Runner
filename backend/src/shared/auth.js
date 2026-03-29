@@ -1,17 +1,39 @@
-const { verifyMessage } = require("ethers");
+const { verifyMessage, ethers, hashMessage } = require("ethers");
 const jwt = require("jsonwebtoken");
+
+// EIP-1271 magic value
+const EIP1271_MAGIC = "0x1626ba7e";
 
 function normalizeAddress(address) {
   if (!address || typeof address !== "string") return null;
   return address.toLowerCase();
 }
 
-function verifySignature(address, message, signature) {
+async function verifySignature(address, message, signature) {
   if (!address || !message || !signature) return false;
+
+  // 1. Try EOA verification first
   try {
     const recovered = verifyMessage(message, signature);
-    return normalizeAddress(recovered) === normalizeAddress(address);
+    if (normalizeAddress(recovered) === normalizeAddress(address)) {
+      return true;
+    }
   } catch (err) {
+    // Not a valid EOA signature, try EIP-1271
+  }
+
+  // 2. Try EIP-1271 (smart contract wallet like Coinbase Smart Wallet)
+  try {
+    const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const hash = hashMessage(message);
+    const contract = new ethers.Contract(address, [
+      "function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)"
+    ], provider);
+    const result = await contract.isValidSignature(hash, signature);
+    return result === EIP1271_MAGIC;
+  } catch (err) {
+    console.warn("EIP-1271 verification failed:", err.message);
     return false;
   }
 }
