@@ -296,8 +296,8 @@ function getEthereumProvider() {
     if (activeWalletType === 'walletconnect' && window.web3modalProvider) {
         return window.web3modalProvider;
     }
-    // Return injected provider (MetaMask, Coinbase, Trust, etc.)
-    return window.ethereum || null;
+    // Return EIP-6963 selected provider or injected
+    return window._activeProvider || window.ethereum || null;
 }
 
 // Initialize Web3Modal on demand
@@ -450,45 +450,83 @@ function waitForEthereumProvider(maxWaitMs = 3000) {
     });
 }
 
+// Discover installed wallets via EIP-6963
+function discoverEIP6963Providers() {
+    return new Promise((resolve) => {
+        const providers = [];
+        const handler = (event) => {
+            providers.push(event.detail);
+        };
+        window.addEventListener('eip6963:announceProvider', handler);
+        window.dispatchEvent(new Event('eip6963:requestProvider'));
+        // Wallets respond synchronously or within a tick
+        setTimeout(() => {
+            window.removeEventListener('eip6963:announceProvider', handler);
+            resolve(providers);
+        }, 200);
+    });
+}
+
 // Show wallet selection modal
 async function showWalletSelector() {
     // Remove existing modal if any
     const existingModal = document.getElementById('wallet-modal');
     if (existingModal) existingModal.remove();
-    
+
     const mobile = isMobile();
-
-    // Desktop — use Web3Modal (shows all installed wallets via EIP-6963 + WalletConnect)
-    if (!mobile) {
-        try {
-            const web3modal = await initWeb3Modal();
-            if (web3modal) {
-                await web3modal.open();
-            }
-        } catch (err) {
-            console.error('Web3Modal error:', err);
-        }
-        return;
-    }
-
-    // Mobile outside wallet app — show simple modal
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
+
+    let buttonsHtml = '';
+
+    if (!mobile) {
+        // Desktop — discover installed wallets via EIP-6963
+        const eip6963Wallets = await discoverEIP6963Providers();
+        window._lastEIP6963Wallets = eip6963Wallets;
+
+        if (eip6963Wallets.length > 0) {
+            // Render a button for each discovered wallet
+            eip6963Wallets.forEach((w, i) => {
+                const icon = w.info.icon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
+                buttonsHtml += `
+                    <button type="button" class="wallet-option" data-eip6963-idx="${i}">
+                        <img src="${icon}" alt="${w.info.name}" width="32" height="32">
+                        <span>${w.info.name}</span>
+                    </button>`;
+            });
+        } else if (window.ethereum) {
+            // Fallback — single injected provider, no EIP-6963
+            buttonsHtml = `
+                <button type="button" class="wallet-option" id="btn-injected-fallback">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Wallet" width="32" height="32">
+                    <span>Browser Wallet</span>
+                </button>`;
+        }
+
+        // Always offer WalletConnect as last option
+        buttonsHtml += `
+            <button type="button" class="wallet-option" id="btn-walletconnect">
+                <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
+                <span>WalletConnect</span>
+            </button>`;
+    } else {
+        // Mobile browser
+        buttonsHtml = `
+            <button type="button" class="wallet-option" id="btn-coinbase">
+                <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
+                <span>Coinbase Wallet</span>
+            </button>
+            <button type="button" class="wallet-option" id="btn-walletconnect">
+                <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
+                <span>Other Wallets</span>
+            </button>`;
+    }
 
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
         <div class="wallet-modal-content">
             <h3>Connect Wallet</h3>
-            <div class="wallet-options">
-                <button type="button" class="wallet-option" id="btn-coinbase">
-                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
-                    <span>Coinbase Wallet</span>
-                </button>
-                <button type="button" class="wallet-option" id="btn-other">
-                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
-                    <span>Other Wallets</span>
-                </button>
-            </div>
+            <div class="wallet-options">${buttonsHtml}</div>
             <button type="button" class="wallet-modal-close">Cancel</button>
         </div>
     `;
@@ -637,67 +675,124 @@ async function showWalletSelector() {
     closeBtn.addEventListener('click', closeModal);
     closeBtn.addEventListener('touchend', closeModal);
     
-    // Mobile modal button handlers
-    const coinbaseBtn = modal.querySelector('#btn-coinbase');
-    const otherBtn = modal.querySelector('#btn-other');
+    // --- Button handlers ---
 
-    const handleCoinbase = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        modal.remove();
-        const link = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
-        window.location.href = link;
-    };
+    // EIP-6963 wallet buttons (desktop)
+    if (!mobile) {
+        const eip6963Wallets = window._lastEIP6963Wallets || [];
+        modal.querySelectorAll('[data-eip6963-idx]').forEach(btn => {
+            const idx = parseInt(btn.getAttribute('data-eip6963-idx'));
+            const handler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                modal.remove();
+                connectWithInjected(eip6963Wallets[idx]?.provider);
+            };
+            btn.addEventListener('click', handler);
+            btn.addEventListener('touchend', handler);
+        });
 
-    const handleOtherWallets = async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (otherBtn) { otherBtn.innerHTML = '<span>Loading...</span>'; otherBtn.disabled = true; }
-        try {
-            const web3modal = await initWeb3Modal();
-            modal.remove();
-            if (web3modal) { await web3modal.open(); return; }
-        } catch (err) {
-            console.error('Web3Modal error:', err);
+        // Fallback injected
+        const fallbackBtn = modal.querySelector('#btn-injected-fallback');
+        if (fallbackBtn) {
+            const handler = (e) => { e.preventDefault(); e.stopPropagation(); modal.remove(); connectWithInjected(); };
+            fallbackBtn.addEventListener('click', handler);
+            fallbackBtn.addEventListener('touchend', handler);
         }
-        modal.remove();
-        const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
-        window.location.href = link;
-    };
-
-    if (coinbaseBtn) {
-        coinbaseBtn.addEventListener('click', handleCoinbase);
-        coinbaseBtn.addEventListener('touchend', handleCoinbase);
     }
-    if (otherBtn) {
-        otherBtn.addEventListener('click', handleOtherWallets);
-        otherBtn.addEventListener('touchend', handleOtherWallets);
+
+    // WalletConnect button (desktop & mobile)
+    const wcBtn = modal.querySelector('#btn-walletconnect');
+    if (wcBtn) {
+        const handleWC = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            wcBtn.innerHTML = '<span>Loading...</span>';
+            wcBtn.disabled = true;
+            try {
+                const web3modal = await initWeb3Modal();
+                modal.remove();
+                if (web3modal) { await web3modal.open(); return; }
+            } catch (err) {
+                console.error('Web3Modal error:', err);
+            }
+            modal.remove();
+        };
+        wcBtn.addEventListener('click', handleWC);
+        wcBtn.addEventListener('touchend', handleWC);
+    }
+
+    // Coinbase deeplink (mobile only)
+    const coinbaseBtn = modal.querySelector('#btn-coinbase');
+    if (coinbaseBtn) {
+        const handleCB = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            modal.remove();
+            const link = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
+            window.location.href = link;
+        };
+        coinbaseBtn.addEventListener('click', handleCB);
+        coinbaseBtn.addEventListener('touchend', handleCB);
     }
 }
 
 // Connect with injected wallet (MetaMask, etc.)
-async function connectWithInjected() {
-    const provider = window.ethereum;
+// Accepts optional EIP-6963 provider; falls back to window.ethereum
+async function connectWithInjected(eip6963Provider) {
+    const provider = eip6963Provider || window.ethereum;
     if (!provider) {
         setWalletError("No browser wallet found");
         return;
     }
-    
+
     try {
         activeWalletType = 'injected';
         isConnectingWallet = true;
         updateWalletUI();
-        
+
         const accounts = await provider.request({ method: "eth_requestAccounts" });
-        handleAccountsChanged(accounts);
-        
-        // Switch to Base
-        await switchToBase();
-        
+        walletAddress = accounts[0] || null;
+
+        // Get chain id
+        const chainId = await provider.request({ method: "eth_chainId" });
+        walletChainId = normalizeChainId(chainId) || chainId;
+
+        // Switch to Base if needed
+        if (walletChainId !== BASE_CHAIN_ID) {
+            try {
+                await provider.request({
+                    method: "wallet_switchEthereumChain",
+                    params: [{ chainId: BASE_CHAIN_ID }]
+                });
+                walletChainId = BASE_CHAIN_ID;
+            } catch (e) {
+                console.warn("Chain switch failed:", e);
+            }
+        }
+
+        // If a custom provider was passed (EIP-6963), override window.ethereum for this session
+        if (eip6963Provider) {
+            window._activeProvider = eip6963Provider;
+        }
+
+        // Set up event listeners on the provider
+        if (provider.on) {
+            provider.on("accountsChanged", handleAccountsChanged);
+            provider.on("chainChanged", handleChainChanged);
+        }
+
+        // Authenticate with backend
+        resetAuthState();
+        const restored = await restoreAuthSession();
+        if (!restored && walletAddress) {
+            await authenticateWallet();
+        }
+        resolveBasename(walletAddress);
+
         isConnectingWallet = false;
         updateWalletUI();
-        
-        console.log("Connected with browser wallet");
+        console.log("Connected with browser wallet:", walletAddress);
     } catch (err) {
         console.error("Injected wallet connect error:", err);
         setWalletError(err.message || "Connection failed");
@@ -1319,6 +1414,7 @@ async function disconnectWallet() {
     activeWalletType = null;
     walletAuthenticated = false;
     walletBasename = null;
+    window._activeProvider = null;
     resetAuthState();
     clearWalletMessages();
     updateWalletUI();
@@ -1898,8 +1994,8 @@ window.onload = function() {
     }
     initWalletState();
 
-    // Pre-load Web3Modal on desktop so it opens instantly on click
-    if (!isMobile()) {
+    // Pre-load Web3Modal only for WalletConnect fallback (lazy, non-blocking)
+    if (!isMobile() && !window.ethereum) {
         initWeb3Modal().catch(() => {});
     }
 
