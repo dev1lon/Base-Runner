@@ -130,8 +130,8 @@ const BASE_CHAIN_PARAMS = {
 const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
 
 // ERC-8021 Builder Code suffix for Base leaderboard attribution
-// Code: bc_d5td9rtw (11 chars = 0x0b)
-const BUILDER_CODE_SUFFIX = "0x0b62635f6435746439727477008021802180218021802180218021802180218021";
+// Code: bc_d5td9rtw
+const BUILDER_CODE_SUFFIX = "0x62635f64357464397274770b0080218021802180218021802180218021";
 
 // Send a contract call with Builder Code attribution appended to calldata
 async function sendWithBuilderCode(signer, contract, method, args = []) {
