@@ -385,6 +385,8 @@ async function initWeb3Modal() {
                 if (previousAddress && previousAddress.toLowerCase() !== state.address.toLowerCase()) {
                     forceExitToMenu('Wallet changed');
                 }
+                // Close modal UI so it doesn't block the screen
+                try { modal.close(); } catch (e) {}
                 const restored = await restoreAuthSession();
                 if (!restored) {
                     await authenticateWallet();
@@ -1343,34 +1345,25 @@ async function initWalletState() {
         console.log("Wallet event listeners registered");
     }
     
-    // Auto-connect if inside wallet browser (Coinbase Wallet, MetaMask app, etc.)
-    if (isWalletBrowser() || isMobile()) {
-        console.log("Wallet browser detected, auto-connecting...");
+    // Inside mobile wallet app (Base App, MetaMask mobile) — auto-connect with popup
+    if (isWalletApp()) {
+        console.log("Mobile wallet app detected, auto-connecting...");
         walletInitializing = true;
         try {
-            // Use eth_requestAccounts so the wallet registers the dapp as connected
             const accounts = await provider.request({ method: "eth_requestAccounts" });
             if (accounts && accounts.length > 0) {
                 walletAddress = accounts[0];
                 activeWalletType = 'injected';
                 const chainId = await provider.request({ method: "eth_chainId" });
                 walletChainId = normalizeChainId(chainId) || chainId;
-
-                // Only switch if not already on Base
                 if (walletChainId !== BASE_CHAIN_ID) {
                     await switchToBase();
                     const newChainId = await provider.request({ method: "eth_chainId" });
                     walletChainId = normalizeChainId(newChainId) || newChainId;
                 }
-
                 walletInitializing = false;
-
-                // Try to restore existing session first
                 const restored = await restoreAuthSession();
-                if (!restored) {
-                    // Only request new signature if no valid session
-                    await authenticateWallet();
-                }
+                if (!restored) await authenticateWallet();
                 resolveBasename(walletAddress);
                 updateWalletUI();
                 return;
@@ -1383,20 +1376,23 @@ async function initWalletState() {
         }
     }
 
-    // Event listeners already set up above
-
+    // Desktop / mobile browser — silently check if already connected and session exists
     try {
         if (provider) {
             const accounts = await provider.request({ method: "eth_accounts" });
             if (accounts && accounts.length) {
-                walletAddress = accounts[0];
-                activeWalletType = 'injected';
+                const savedToken = getAuthTokenForAddress(accounts[0]);
+                if (savedToken) {
+                    // Previous session exists — restore silently
+                    walletAddress = accounts[0];
+                    activeWalletType = 'injected';
+                    const chainId = await provider.request({ method: "eth_chainId" });
+                    walletChainId = normalizeChainId(chainId) || chainId;
+                    await restoreAuthSession();
+                }
+                // No saved token = don't auto-connect, wait for user to click Connect
             }
-            const chainId = await provider.request({ method: "eth_chainId" });
-            walletChainId = normalizeChainId(chainId) || chainId;
         }
-        resetAuthState();
-        await restoreAuthSession();
     } catch (err) {
         // ignore
     } finally {
