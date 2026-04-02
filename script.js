@@ -455,7 +455,13 @@ function showWalletSelector() {
     const hasInjected = !!window.ethereum;
     const mobile = isMobile();
 
-    // Always show modal so user can choose wallet after disconnect
+    // On desktop with injected wallet — connect directly (MetaMask, Rabby, Rainbow, etc.)
+    if (hasInjected && !mobile) {
+        connectWithInjected();
+        return;
+    }
+
+    // Otherwise show modal
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
 
@@ -1862,21 +1868,26 @@ window.onload = function() {
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
 
-    // Disconnect buttons
+    // Disconnect buttons — hide in Base App (only one wallet available there)
     const disconnectBtn = document.getElementById("disconnect-button");
     const disconnectBtnPause = document.getElementById("disconnect-button-pause");
-    function handleDisconnect(e) {
-        e.stopPropagation();
-        e.preventDefault();
-        disconnectWallet();
-    }
-    if (disconnectBtn) {
-        disconnectBtn.addEventListener("click", handleDisconnect);
-        disconnectBtn.addEventListener("touchend", handleDisconnect, { passive: false });
-    }
-    if (disconnectBtnPause) {
-        disconnectBtnPause.addEventListener("click", handleDisconnect);
-        disconnectBtnPause.addEventListener("touchend", handleDisconnect, { passive: false });
+    if (isWalletBrowser()) {
+        if (disconnectBtn) disconnectBtn.style.display = 'none';
+        if (disconnectBtnPause) disconnectBtnPause.style.display = 'none';
+    } else {
+        function handleDisconnect(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            disconnectWallet();
+        }
+        if (disconnectBtn) {
+            disconnectBtn.addEventListener("click", handleDisconnect);
+            disconnectBtn.addEventListener("touchend", handleDisconnect, { passive: false });
+        }
+        if (disconnectBtnPause) {
+            disconnectBtnPause.addEventListener("click", handleDisconnect);
+            disconnectBtnPause.addEventListener("touchend", handleDisconnect, { passive: false });
+        }
     }
     
     // Collection elements
