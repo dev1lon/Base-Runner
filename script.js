@@ -129,6 +129,17 @@ const BASE_CHAIN_PARAMS = {
 // Contract addresses (Base Mainnet)
 const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
 
+// ERC-8021 Builder Code suffix for Base leaderboard attribution
+// Code: bc_d5td9rtw (11 chars = 0x0b)
+const BUILDER_CODE_SUFFIX = "0x0b62635f6435746439727477008021802180218021802180218021802180218021";
+
+// Send a contract call with Builder Code attribution appended to calldata
+async function sendWithBuilderCode(signer, contract, method, args = []) {
+    const populated = await contract[method].populateTransaction(...args);
+    populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
+    return signer.sendTransaction(populated);
+}
+
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 8000;
 const ALLOW_GUEST_PLAY = false;
@@ -1128,7 +1139,7 @@ async function sendCheckinTransaction() {
     const signer = await ethersProvider.getSigner();
     const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
 
-    const tx = await contract.checkIn();
+    const tx = await sendWithBuilderCode(signer, contract, 'checkIn');
     const receipt = await tx.wait();
 
     // 2. Notify backend with txHash
@@ -2502,9 +2513,9 @@ async function claimFreeCharacter() {
         }
         
         // Send transaction
-        const tx = await contract.mintFreeCharacter();
+        const tx = await sendWithBuilderCode(signer, contract, 'mintFreeCharacter');
         const receipt = await tx.wait();
-        
+
         // Mark as claimed on backend
         await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
             method: "POST",
@@ -2764,7 +2775,7 @@ async function handleMintVitalik() {
         }
         
         // Send transaction
-        const tx = await contract.mintFreeCharacter();
+        const tx = await sendWithBuilderCode(signer, contract, 'mintFreeCharacter');
         if (mintVitalikBtn) mintVitalikBtn.textContent = 'Confirming...';
         const receipt = await tx.wait();
         
@@ -3038,7 +3049,7 @@ async function handleFreeMint() {
         // Send transaction
         console.log('Sending mint transaction...');
         if (btn) btn.textContent = 'Confirm in wallet...';
-        const tx = await contract.mintFreeCharacter();
+        const tx = await sendWithBuilderCode(signer, contract, 'mintFreeCharacter');
         
         console.log('Waiting for confirmation...', tx.hash);
         if (btn) btn.textContent = 'Confirming...';
