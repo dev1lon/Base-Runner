@@ -454,47 +454,30 @@ function showWalletSelector() {
     const existingModal = document.getElementById('wallet-modal');
     if (existingModal) existingModal.remove();
     
-    // Check what wallets are available
-    const hasInjected = !!window.ethereum;
     const mobile = isMobile();
 
-    // On desktop with injected wallet — connect directly (MetaMask, Rabby, Rainbow, etc.)
-    if (hasInjected && !mobile) {
-        connectWithInjected();
+    // Desktop — use Web3Modal (shows all installed wallets via EIP-6963 + WalletConnect)
+    if (!mobile) {
+        try {
+            const web3modal = await initWeb3Modal();
+            if (web3modal) {
+                await web3modal.open();
+            }
+        } catch (err) {
+            console.error('Web3Modal error:', err);
+        }
         return;
     }
 
-    // Otherwise show modal
+    // Mobile outside wallet app — show simple modal
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
-
-    const injectedLabel = window.ethereum && window.ethereum.isCoinbaseWallet
-        ? 'Coinbase Wallet'
-        : window.ethereum && window.ethereum.isMetaMask
-            ? 'MetaMask'
-            : 'Browser Wallet';
-
-    const injectedIcon = window.ethereum && window.ethereum.isCoinbaseWallet
-        ? 'https://avatars.githubusercontent.com/u/18060234?s=200&v=4'
-        : window.ethereum && window.ethereum.isMetaMask
-            ? 'https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg'
-            : 'https://avatars.githubusercontent.com/u/18060234?s=200&v=4';
 
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
         <div class="wallet-modal-content">
             <h3>Connect Wallet</h3>
             <div class="wallet-options">
-                ${hasInjected ? `
-                <button type="button" class="wallet-option" id="btn-injected">
-                    <img src="${injectedIcon}" alt="${injectedLabel}" width="32" height="32">
-                    <span>${injectedLabel}</span>
-                </button>
-                <button type="button" class="wallet-option" id="btn-other">
-                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
-                    <span>Other Wallets</span>
-                </button>
-                ` : mobile ? `
                 <button type="button" class="wallet-option" id="btn-coinbase">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
@@ -503,16 +486,6 @@ function showWalletSelector() {
                     <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
                     <span>Other Wallets</span>
                 </button>
-                ` : `
-                <button type="button" class="wallet-option" id="btn-install-coinbase">
-                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
-                    <span>Install Coinbase Wallet</span>
-                </button>
-                <button type="button" class="wallet-option" id="btn-install-metamask">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" width="32" height="32">
-                    <span>Install MetaMask</span>
-                </button>
-                `}
             </div>
             <button type="button" class="wallet-modal-close">Cancel</button>
         </div>
@@ -662,13 +635,10 @@ function showWalletSelector() {
     closeBtn.addEventListener('click', closeModal);
     closeBtn.addEventListener('touchend', closeModal);
     
-    // Handle wallet buttons with both click and touch
-    const injectedBtn = modal.querySelector('#btn-injected');
+    // Mobile modal button handlers
     const coinbaseBtn = modal.querySelector('#btn-coinbase');
     const otherBtn = modal.querySelector('#btn-other');
-    const installCoinbaseBtn = modal.querySelector('#btn-install-coinbase');
-    const installMetamaskBtn = modal.querySelector('#btn-install-metamask');
-    
+
     const handleCoinbase = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -676,78 +646,30 @@ function showWalletSelector() {
         const link = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
         window.location.href = link;
     };
-    
+
     const handleOtherWallets = async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        
-        // Show loading state
-        if (otherBtn) {
-            otherBtn.innerHTML = '<span>Loading...</span>';
-            otherBtn.disabled = true;
-        }
-        
+        if (otherBtn) { otherBtn.innerHTML = '<span>Loading...</span>'; otherBtn.disabled = true; }
         try {
-            // Load Web3Modal on demand
             const web3modal = await initWeb3Modal();
             modal.remove();
-            
-            if (web3modal) {
-                await web3modal.open();
-                return;
-            }
+            if (web3modal) { await web3modal.open(); return; }
         } catch (err) {
             console.error('Web3Modal error:', err);
         }
-        
         modal.remove();
-        // Fallback - open MetaMask deeplink
         const link = `https://metamask.app.link/dapp/${APP_URL.replace('https://', '')}`;
         window.location.href = link;
     };
-    
-    const handleInstallCoinbase = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        window.open('https://www.coinbase.com/wallet', '_blank');
-    };
-    
-    const handleInstallMetamask = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        window.open('https://metamask.io/download/', '_blank');
-    };
-    
-    const handleInjected = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        modal.remove();
-        connectWithInjected();
-    };
-
-    if (injectedBtn) {
-        injectedBtn.addEventListener('click', handleInjected);
-        injectedBtn.addEventListener('touchend', handleInjected);
-    }
 
     if (coinbaseBtn) {
         coinbaseBtn.addEventListener('click', handleCoinbase);
         coinbaseBtn.addEventListener('touchend', handleCoinbase);
     }
-    
     if (otherBtn) {
         otherBtn.addEventListener('click', handleOtherWallets);
         otherBtn.addEventListener('touchend', handleOtherWallets);
-    }
-    
-    if (installCoinbaseBtn) {
-        installCoinbaseBtn.addEventListener('click', handleInstallCoinbase);
-        installCoinbaseBtn.addEventListener('touchend', handleInstallCoinbase);
-    }
-    
-    if (installMetamaskBtn) {
-        installMetamaskBtn.addEventListener('click', handleInstallMetamask);
-        installMetamaskBtn.addEventListener('touchend', handleInstallMetamask);
     }
 }
 
@@ -1979,7 +1901,12 @@ window.onload = function() {
         }, { passive: false });
     }
     initWalletState();
-    
+
+    // Pre-load Web3Modal on desktop so it opens instantly on click
+    if (!isMobile()) {
+        initWeb3Modal().catch(() => {});
+    }
+
     context = board.getContext("2d");
 
     // Setup crisp rendering
