@@ -268,19 +268,22 @@ const APP_URL = 'https://base-runner-k9oj.onrender.com';
 // Check if running inside a wallet browser (Coinbase, MetaMask, Trust, etc.)
 function isWalletBrowser() {
     const ua = navigator.userAgent.toLowerCase();
-    // Check user agent
     if (ua.includes('coinbase') || ua.includes('metamask') || ua.includes('trust') || ua.includes('rainbow')) {
         return true;
     }
-    // Check provider flags
     if (window.ethereum) {
-        return window.ethereum.isCoinbaseWallet || 
+        return window.ethereum.isCoinbaseWallet ||
                window.ethereum.isCoinbaseBrowser ||
                window.ethereum.isMetaMask ||
                window.ethereum.isTrust ||
                window.ethereum.isWalletBrowser;
     }
     return false;
+}
+
+// True only when running inside a mobile wallet app (not a desktop browser extension)
+function isWalletApp() {
+    return isWalletBrowser() && isMobile();
 }
 
 // Check if mobile device
@@ -1423,9 +1426,9 @@ async function initWalletState() {
         console.log("Wallet browser detected, auto-connecting...");
         walletInitializing = true;
         try {
-            const accounts = await provider.request({ method: "eth_accounts" });
+            // Use eth_requestAccounts so the wallet registers the dapp as connected
+            const accounts = await provider.request({ method: "eth_requestAccounts" });
             if (accounts && accounts.length > 0) {
-                // Already connected, just use existing connection
                 walletAddress = accounts[0];
                 activeWalletType = 'injected';
                 const chainId = await provider.request({ method: "eth_chainId" });
@@ -1447,34 +1450,6 @@ async function initWalletState() {
                     await authenticateWallet();
                 }
                 resolveBasename(walletAddress);
-                updateWalletUI();
-                return;
-            } else {
-                // Not connected yet, request connection
-                activeWalletType = 'injected';
-                isConnectingWallet = true;
-                updateWalletUI();
-                const newAccounts = await provider.request({ method: "eth_requestAccounts" });
-                walletAddress = newAccounts[0];
-                const chainId = await provider.request({ method: "eth_chainId" });
-                walletChainId = normalizeChainId(chainId) || chainId;
-
-                // Only switch if not already on Base
-                if (walletChainId !== BASE_CHAIN_ID) {
-                    await switchToBase();
-                    const newChainId = await provider.request({ method: "eth_chainId" });
-                    walletChainId = normalizeChainId(newChainId) || newChainId;
-                }
-
-                walletInitializing = false;
-
-                // Try to restore existing session first
-                const restored = await restoreAuthSession();
-                if (!restored) {
-                    await authenticateWallet();
-                }
-                resolveBasename(walletAddress);
-                isConnectingWallet = false;
                 updateWalletUI();
                 return;
             }
@@ -1868,10 +1843,10 @@ window.onload = function() {
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
 
-    // Disconnect buttons — hide in Base App (only one wallet available there)
+    // Disconnect buttons — hide only inside mobile wallet apps (Base App, MetaMask mobile, etc.)
     const disconnectBtn = document.getElementById("disconnect-button");
     const disconnectBtnPause = document.getElementById("disconnect-button-pause");
-    if (isWalletBrowser()) {
+    if (isWalletApp()) {
         if (disconnectBtn) disconnectBtn.style.display = 'none';
         if (disconnectBtnPause) disconnectBtnPause.style.display = 'none';
     } else {
