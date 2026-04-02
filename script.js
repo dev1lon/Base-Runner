@@ -747,7 +747,18 @@ function formatAddress(address) {
 // Resolve .base.eth basename via raw JSON-RPC (no ethers dependency)
 async function resolveBasename(address) {
     if (!address) return;
-    walletBasename = null;
+    // Show cached basename immediately while resolving fresh
+    const cacheKey = 'basename_' + address.toLowerCase();
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+        walletBasename = cached;
+        const addrEl = document.getElementById('wallet-address');
+        if (addrEl) addrEl.textContent = cached;
+        const pauseEl = document.getElementById('wallet-address-pause');
+        if (pauseEl) pauseEl.textContent = cached;
+    } else {
+        walletBasename = null;
+    }
     try {
         console.log('resolveBasename:', address);
         const BASE_RPC = 'https://mainnet.base.org';
@@ -789,11 +800,17 @@ async function resolveBasename(address) {
             const name = new TextDecoder().decode(new Uint8Array(strHex.match(/.{2}/g).map(b => parseInt(b, 16))));
             if (name && name.includes('.')) {
                 walletBasename = name;
-                updateWalletUI();
+                localStorage.setItem(cacheKey, name);
+                // Directly update address display elements (updateWalletUI skips updateUIState if already in MENU)
+                const formatted = name;
+                const addrEl = document.getElementById('wallet-address');
+                if (addrEl) addrEl.textContent = formatted;
+                const pauseEl = document.getElementById('wallet-address-pause');
+                if (pauseEl) pauseEl.textContent = formatted;
             }
         }
     } catch (err) {
-        console.warn('basename err:', err);
+        // Silently fail — display truncated address
     }
 }
 
@@ -1320,6 +1337,23 @@ function updateWalletUI() {
     updateCheckinUI();
 }
 
+async function disconnectWallet() {
+    // Disconnect WalletConnect modal if active
+    if (activeWalletType === 'walletconnect' && window.web3modal) {
+        try { await window.web3modal.disconnect(); } catch (e) { /* ignore */ }
+        window.web3modalProvider = null;
+    }
+    // Clear all wallet state
+    walletAddress = null;
+    walletChainId = null;
+    activeWalletType = null;
+    walletAuthenticated = false;
+    walletBasename = null;
+    resetAuthState();
+    clearWalletMessages();
+    updateWalletUI();
+}
+
 async function initWalletState() {
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
@@ -1790,6 +1824,23 @@ window.onload = function() {
     checkinStatus = document.getElementById("checkin-status");
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
+
+    // Disconnect buttons
+    const disconnectBtn = document.getElementById("disconnect-button");
+    const disconnectBtnPause = document.getElementById("disconnect-button-pause");
+    function handleDisconnect(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        disconnectWallet();
+    }
+    if (disconnectBtn) {
+        disconnectBtn.addEventListener("click", handleDisconnect);
+        disconnectBtn.addEventListener("touchend", handleDisconnect, { passive: false });
+    }
+    if (disconnectBtnPause) {
+        disconnectBtnPause.addEventListener("click", handleDisconnect);
+        disconnectBtnPause.addEventListener("touchend", handleDisconnect, { passive: false });
+    }
     
     // Collection elements
     overlayCollection = document.getElementById("overlay-collection");
