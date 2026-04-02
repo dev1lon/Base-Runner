@@ -443,25 +443,38 @@ function showWalletSelector() {
     // Check what wallets are available
     const hasInjected = !!window.ethereum;
     const mobile = isMobile();
-    
-    // If we have an injected provider (PC with extension or inside wallet app), connect directly
-    if (hasInjected) {
-        connectWithInjected();
-        return;
-    }
-    
-    // No wallet - show options
+
+    // Always show modal so user can choose wallet after disconnect
     const modal = document.createElement('div');
     modal.id = 'wallet-modal';
-    
 
-    
+    const injectedLabel = window.ethereum && window.ethereum.isCoinbaseWallet
+        ? 'Coinbase Wallet'
+        : window.ethereum && window.ethereum.isMetaMask
+            ? 'MetaMask'
+            : 'Browser Wallet';
+
+    const injectedIcon = window.ethereum && window.ethereum.isCoinbaseWallet
+        ? 'https://avatars.githubusercontent.com/u/18060234?s=200&v=4'
+        : window.ethereum && window.ethereum.isMetaMask
+            ? 'https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg'
+            : 'https://avatars.githubusercontent.com/u/18060234?s=200&v=4';
+
     modal.innerHTML = `
         <div class="wallet-modal-backdrop"></div>
         <div class="wallet-modal-content">
             <h3>Connect Wallet</h3>
             <div class="wallet-options">
-                ${mobile ? `
+                ${hasInjected ? `
+                <button type="button" class="wallet-option" id="btn-injected">
+                    <img src="${injectedIcon}" alt="${injectedLabel}" width="32" height="32">
+                    <span>${injectedLabel}</span>
+                </button>
+                <button type="button" class="wallet-option" id="btn-other">
+                    <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
+                    <span>Other Wallets</span>
+                </button>
+                ` : mobile ? `
                 <button type="button" class="wallet-option" id="btn-coinbase">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Coinbase Wallet</span>
@@ -630,6 +643,7 @@ function showWalletSelector() {
     closeBtn.addEventListener('touchend', closeModal);
     
     // Handle wallet buttons with both click and touch
+    const injectedBtn = modal.querySelector('#btn-injected');
     const coinbaseBtn = modal.querySelector('#btn-coinbase');
     const otherBtn = modal.querySelector('#btn-other');
     const installCoinbaseBtn = modal.querySelector('#btn-install-coinbase');
@@ -684,6 +698,18 @@ function showWalletSelector() {
         window.open('https://metamask.io/download/', '_blank');
     };
     
+    const handleInjected = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        modal.remove();
+        connectWithInjected();
+    };
+
+    if (injectedBtn) {
+        injectedBtn.addEventListener('click', handleInjected);
+        injectedBtn.addEventListener('touchend', handleInjected);
+    }
+
     if (coinbaseBtn) {
         coinbaseBtn.addEventListener('click', handleCoinbase);
         coinbaseBtn.addEventListener('touchend', handleCoinbase);
