@@ -449,7 +449,7 @@ function waitForEthereumProvider(maxWaitMs = 3000) {
 }
 
 // Show wallet selection modal
-function showWalletSelector() {
+async function showWalletSelector() {
     // Remove existing modal if any
     const existingModal = document.getElementById('wallet-modal');
     if (existingModal) existingModal.remove();
