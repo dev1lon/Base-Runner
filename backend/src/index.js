@@ -541,6 +541,50 @@ app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
   }
 });
 
+// Admin: full reset — wipe progress but refund coins spent on characters
+app.post("/api/admin/reset", requireAuth, async (req, res) => {
+  if (!ADMIN_ADDRESSES.includes(req.user.address)) {
+    res.status(403).json({ ok: false, error: "Not authorized" });
+    return;
+  }
+  const { query } = require("./shared/db");
+  try {
+    // 1. Add back coins spent on characters (completed purchases)
+    await query(`
+      UPDATE users u
+      SET coins = coins + COALESCE((
+        SELECT SUM(pp.coins_reserved)
+        FROM pending_purchases pp
+        WHERE pp.address = u.address AND pp.status = 'completed'
+      ), 0),
+      updated_at = NOW()
+    `);
+
+    // 2. Reset all user progress except coins and address
+    await query(`
+      UPDATE users SET
+        has_claimed_free = FALSE,
+        owned_characters = '[]'::jsonb,
+        best_score = 0,
+        last_checkin_at = NULL,
+        streak = 0,
+        checkin_count = 0,
+        selected_character = 0,
+        updated_at = NOW()
+    `);
+
+    // 3. Clear purchases and inventory
+    await query(`DELETE FROM pending_purchases`);
+    await query(`DELETE FROM user_inventory`);
+    await query(`DELETE FROM auth_nonces`);
+
+    res.json({ ok: true, message: "Reset complete. Coins refunded." });
+  } catch (err) {
+    console.error("Reset error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 setInterval(cleanupSessions, 60 * 1000);
 
 async function startServer() {
