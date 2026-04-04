@@ -133,10 +133,59 @@ const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
 // Code: bc_d5td9rtw
 const BUILDER_CODE_SUFFIX = "0x62635f64357464397274770b0080218021802180218021802180218021";
 
-// Send a contract call with Builder Code attribution appended to calldata
+// CDP Paymaster URL for gas-free transactions (EIP-5792 / Coinbase Smart Wallet)
+// Get your API key at https://portal.cdp.coinbase.com/
+const PAYMASTER_URL = 'https://api.developer.coinbase.com/rpc/v1/base/YOUR_CDP_API_KEY';
+
+// Send a contract call with Builder Code attribution and optional paymaster sponsorship.
+// For Coinbase Smart Wallet (Base App), uses EIP-5792 wallet_sendCalls + paymaster so gas is free.
+// Falls back to regular ethers sendTransaction for other wallets.
 async function sendWithBuilderCode(signer, contract, method, args = []) {
     const populated = await contract[method].populateTransaction(...args);
     populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
+
+    // Try EIP-5792 wallet_sendCalls with paymaster (Coinbase Smart Wallet)
+    if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && provider?.request) {
+        try {
+            const callsId = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '1.0',
+                    chainId: '0x2105',
+                    from: walletAddress,
+                    calls: [{
+                        to: populated.to,
+                        data: populated.data,
+                        value: populated.value ? '0x' + BigInt(populated.value).toString(16) : '0x0'
+                    }],
+                    capabilities: {
+                        paymasterService: { url: PAYMASTER_URL }
+                    }
+                }]
+            });
+            // Return object compatible with tx.wait()
+            return {
+                hash: callsId,
+                wait: async () => {
+                    for (let i = 0; i < 60; i++) {
+                        await new Promise(r => setTimeout(r, 2000));
+                        const status = await provider.request({
+                            method: 'wallet_getCallsStatus',
+                            params: [callsId]
+                        });
+                        if (status.status === 'CONFIRMED') {
+                            return { hash: status.receipts?.[0]?.transactionHash || callsId };
+                        }
+                        if (status.status === 'FAILED') throw new Error('Transaction failed');
+                    }
+                    throw new Error('Transaction timeout');
+                }
+            };
+        } catch (err) {
+            // wallet_sendCalls not supported or paymaster rejected — fall back to regular tx
+        }
+    }
+
     return signer.sendTransaction(populated);
 }
 
