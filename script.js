@@ -825,7 +825,6 @@ async function resolveBasename(address) {
         walletBasename = null;
     }
     try {
-        console.log('resolveBasename:', address);
         const BASE_RPC = 'https://mainnet.base.org';
         const paddedAddr = address.toLowerCase().slice(2).padStart(64, '0');
 
@@ -840,7 +839,6 @@ async function resolveBasename(address) {
         });
         const nodeJson = await nodeResult.json();
         const reverseNode = nodeJson.result;
-        console.log('reverseNode:', reverseNode);
         if (!reverseNode || reverseNode === '0x' || reverseNode.length < 66) return;
 
         // Step 2: Call L2Resolver.name(bytes32) -> string
@@ -853,7 +851,6 @@ async function resolveBasename(address) {
             })
         });
         const nameJson = await nameResult.json();
-        console.log('nameResult:', nameJson.result?.slice(0, 80));
         if (!nameJson.result || nameJson.result === '0x' || nameJson.result.length <= 130) return;
 
         // Decode ABI-encoded string
