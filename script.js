@@ -184,7 +184,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                 }
             };
         } catch (err) {
-            // wallet_sendCalls not supported or paymaster rejected — fall back to regular tx
+            console.warn('wallet_sendCalls failed, falling back to regular tx:', err);
         }
     }
 
