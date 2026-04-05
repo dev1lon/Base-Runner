@@ -1348,11 +1348,11 @@ async function submitBackendRun(finalScore) {
 }
 
 function handleGameOver() {
-    if (backendSessionActive && !backendRunSubmitted) {
-        recordRunOnChain(score).then(onChainOk => {
-            if (onChainOk) submitBackendRun(score);
-        });
-    }
+    recordRunOnChain(score).then(onChainOk => {
+        if (onChainOk && backendSessionActive && !backendRunSubmitted) {
+            submitBackendRun(score);
+        }
+    });
 }
 
 function setGameOverState() {
