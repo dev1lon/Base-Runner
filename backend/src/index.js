@@ -89,7 +89,8 @@ app.post("/auth/nonce", async (req, res) => {
     res.status(400).json({ ok: false, error: "Invalid address" });
     return;
   }
-  const result = await issueNonce(addressNorm, String(chainId));
+  // Store original address for message reconstruction (checksum matters for signature)
+  const result = await issueNonce(addressNorm, String(chainId), address);
   res.json({ ok: true, nonce: result.nonce, issuedAt: result.issuedAt });
 });
 
@@ -100,7 +101,7 @@ app.post("/auth/verify", async (req, res) => {
     res.status(400).json({ ok: false, error: "Invalid address" });
     return;
   }
-  const result = await verifyNonce({ address: addressNorm, signature });
+  const result = await verifyNonce({ address: addressNorm, signature, originalAddress: address });
   if (!result.ok) {
     console.warn(`[auth/verify] FAILED address=${addressNorm} error=${result.error} sigLen=${signature?.length} sigEnd=${signature?.slice(-8)}`);
     res.status(400).json({ ok: false, error: result.error });
