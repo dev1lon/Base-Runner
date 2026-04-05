@@ -29,8 +29,9 @@ async function verifyERC6492(address, message, signature) {
 
     // Deploy counterfactually using eth_call with state override
     // The universal verifier contract handles this
-    // Use the ERC-6492 universal validator deployed on Base
-    const UNIVERSAL_VALIDATOR = "0xCe64Ca66DB8a5CcACCcCC05a9C8C74DF3d4827e6";
+    // ERC-6492 Universal Validator by Ambire — deployed on Base mainnet
+    // https://eips.ethereum.org/EIPS/eip-6492
+    const UNIVERSAL_VALIDATOR = "0x00000000000000adc04c56bf30ac9d3c0aaf14dc";
     const validatorAbi = [
       "function isValidSig(address _signer, bytes32 _hash, bytes calldata _signature) view returns (bool)"
     ];
@@ -40,24 +41,13 @@ async function verifyERC6492(address, message, signature) {
       const valid = await validator.isValidSig(address, hash, signature);
       return valid === true;
     } catch (e) {
-      // Universal validator not available, try manual: simulate deploy then check
-      // Simulate factory call to get deployed bytecode, then call isValidSignature
-      // This is complex — fall through to inner sig check
+      console.warn("ERC-6492 universal validator failed:", e.message);
     }
 
-    // Fallback: try verifying inner signature as EOA
+    // Fallback: verify inner signature as EOA (owner key)
     try {
       const recovered = verifyMessage(message, innerSig);
       if (normalizeAddress(recovered) === normalizeAddress(address)) return true;
-    } catch (e) {}
-
-    // Fallback: try EIP-1271 on the factory-computed address
-    try {
-      const contract = new ethers.Contract(address, [
-        "function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)"
-      ], provider);
-      const result = await contract.isValidSignature(hash, innerSig);
-      return result === EIP1271_MAGIC;
     } catch (e) {}
 
     return false;
