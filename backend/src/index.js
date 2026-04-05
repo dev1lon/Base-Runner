@@ -102,6 +102,7 @@ app.post("/auth/verify", async (req, res) => {
   }
   const result = await verifyNonce({ address: addressNorm, signature });
   if (!result.ok) {
+    console.warn(`[auth/verify] FAILED address=${addressNorm} error=${result.error} sigLen=${signature?.length} sigEnd=${signature?.slice(-8)}`);
     res.status(400).json({ ok: false, error: result.error });
     return;
   }
