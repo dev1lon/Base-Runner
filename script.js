@@ -136,7 +136,7 @@ const BUILDER_CODE_SUFFIX = "0x62635f64357464397274770b0080218021802180218021802
 
 // CDP Paymaster URL for gas-free transactions (EIP-5792 / Coinbase Smart Wallet)
 // Get your API key at https://portal.cdp.coinbase.com/
-const PAYMASTER_URL = 'https://api.developer.coinbase.com/rpc/v1/base/e0c92308-1798-4f36-97c7-f89e26725ed6';
+const PAYMASTER_URL = 'https://api.developer.coinbase.com/rpc/v1/base/cjnueih0AaiYBVVOk5iiZRXjP00VX1fB';
 
 // Send a contract call with Builder Code attribution and optional paymaster sponsorship.
 // For Coinbase Smart Wallet (Base App), uses EIP-5792 wallet_sendCalls + paymaster so gas is free.
