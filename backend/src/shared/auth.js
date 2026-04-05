@@ -17,41 +17,35 @@ async function verifyERC6492(address, message, signature) {
   try {
     const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const hash = hashMessage(message);
 
-    // Decode: (address factory, bytes calldata, bytes signature)
-    const inner = "0x" + signature.slice(2, -ERC6492_MAGIC.length);
-    const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
-      ["address", "bytes", "bytes"],
-      inner
-    );
-    const [factory, factoryCalldata, innerSig] = decoded;
-
-    // Deploy counterfactually using eth_call with state override
-    // The universal verifier contract handles this
-    // ERC-6492 Universal Validator by Ambire — deployed on Base mainnet
-    // https://eips.ethereum.org/EIPS/eip-6492
-    const UNIVERSAL_VALIDATOR = "0x00000000000000adc04c56bf30ac9d3c0aaf14dc";
+    // ERC-6492 Universal Validator — canonical address per EIP-6492 spec
+    const UNIVERSAL_VALIDATOR = "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC";
     const validatorAbi = [
       "function isValidSig(address _signer, bytes32 _hash, bytes calldata _signature) view returns (bool)"
     ];
+    const validator = new ethers.Contract(UNIVERSAL_VALIDATOR, validatorAbi, provider);
 
+    // Try 1: prefixed hash (standard personal_sign)
     try {
-      const validator = new ethers.Contract(UNIVERSAL_VALIDATOR, validatorAbi, provider);
+      const hash = hashMessage(message);
       const valid = await validator.isValidSig(address, hash, signature);
-      return valid === true;
+      if (valid === true) return true;
     } catch (e) {
-      console.warn("ERC-6492 universal validator failed:", e.message);
+      console.warn("ERC-6492 prefixed hash failed:", e.message);
     }
 
-    // Fallback: verify inner signature as EOA (owner key)
+    // Try 2: raw keccak256 (some wallets skip prefix for hex-encoded data)
     try {
-      const recovered = verifyMessage(message, innerSig);
-      if (normalizeAddress(recovered) === normalizeAddress(address)) return true;
-    } catch (e) {}
+      const rawHash = ethers.keccak256(ethers.toUtf8Bytes(message));
+      const valid = await validator.isValidSig(address, rawHash, signature);
+      if (valid === true) return true;
+    } catch (e) {
+      console.warn("ERC-6492 raw hash failed:", e.message);
+    }
 
     return false;
   } catch (err) {
+    console.warn("ERC-6492 verify error:", err.message);
     return false;
   }
 }
