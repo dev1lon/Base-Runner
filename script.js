@@ -308,6 +308,7 @@ let backendInputLog = [];
 let backendSessionStartMs = 0;
 let backendSessionActive = false;
 let backendRunSubmitted = false;
+let runRecordedOnChain = false; // prevent duplicate recordRun calls per game
 let rng = null;
 
 function getViewportSize() {
@@ -1255,6 +1256,7 @@ function resetBackendSession() {
     backendSessionStartMs = 0;
     backendSessionActive = false;
     backendRunSubmitted = false;
+    runRecordedOnChain = false;
     rng = null;
 }
 
@@ -1348,6 +1350,8 @@ async function submitBackendRun(finalScore) {
 }
 
 function handleGameOver() {
+    if (runRecordedOnChain) return;
+    runRecordedOnChain = true;
     recordRunOnChain(score).then(onChainOk => {
         if (onChainOk && backendSessionActive && !backendRunSubmitted) {
             submitBackendRun(score);
@@ -4315,7 +4319,6 @@ async function restartGame() {
     tokenArray = [];
     birdArray = [];
     
-    gameActive = false;
-    await startBackendSession();
     gameActive = true;
+    startBackendSession(); // fire-and-forget, don't block game start
 }
