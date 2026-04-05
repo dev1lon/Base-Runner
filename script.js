@@ -128,7 +128,7 @@ const BASE_CHAIN_PARAMS = {
 };
 // Contract addresses (Base Mainnet)
 const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
-const RUN_RECORDER_ADDRESS = ""; // Set after deploying contracts/RunRecorder.sol
+const RUN_RECORDER_ADDRESS = "0x44D090F487fF730aCd94f6E3E9f832ff6b933d36";
 
 // ERC-8021 Builder Code suffix for Base leaderboard attribution
 // Code: bc_d5td9rtw
