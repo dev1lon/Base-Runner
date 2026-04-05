@@ -578,6 +578,17 @@ async function showWalletSelector() {
                 </button>`;
         }
 
+        // Coinbase Wallet (Smart Wallet — no extension needed)
+        const hasCoinbaseEIP6963 = eip6963Wallets.some(w => w.info.rdns === 'com.coinbase.wallet');
+        if (!hasCoinbaseEIP6963) {
+            buttonsHtml += `
+                <button type="button" class="wallet-option" id="btn-coinbase-desktop">
+                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase Wallet" width="32" height="32">
+                    <span>Coinbase Wallet</span>
+                    <span class="wallet-badge">Smart Wallet</span>
+                </button>`;
+        }
+
         // Always offer WalletConnect as last option
         buttonsHtml += `
             <button type="button" class="wallet-option" id="btn-walletconnect">
@@ -797,6 +808,19 @@ async function showWalletSelector() {
         wcBtn.addEventListener('touchend', handleWC);
     }
 
+    // Coinbase Smart Wallet (desktop, no extension)
+    const coinbaseDesktopBtn = modal.querySelector('#btn-coinbase-desktop');
+    if (coinbaseDesktopBtn) {
+        const handleCBDesktop = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            modal.remove();
+            await connectWithCoinbaseSmartWallet();
+        };
+        coinbaseDesktopBtn.addEventListener('click', handleCBDesktop);
+        coinbaseDesktopBtn.addEventListener('touchend', handleCBDesktop);
+    }
+
     // Coinbase deeplink (mobile only)
     const coinbaseBtn = modal.querySelector('#btn-coinbase');
     if (coinbaseBtn) {
@@ -814,6 +838,23 @@ async function showWalletSelector() {
 
 // Connect with injected wallet (MetaMask, etc.)
 // Accepts optional EIP-6963 provider; falls back to window.ethereum
+// Connect via Coinbase Smart Wallet SDK (no extension required)
+async function connectWithCoinbaseSmartWallet() {
+    try {
+        const { CoinbaseWalletSDK } = await import('https://esm.sh/@coinbase/wallet-sdk@4?bundle');
+        const sdk = new CoinbaseWalletSDK({
+            appName: 'Rug Pull Run',
+            appLogoUrl: 'https://rugpullrun.app/assets/coin.png',
+        });
+        const cbProvider = sdk.makeWeb3Provider();
+        await connectWithInjected(cbProvider);
+    } catch (err) {
+        console.error('Coinbase Smart Wallet error:', err);
+        setWalletError('Failed to connect Coinbase Wallet');
+        updateWalletUI();
+    }
+}
+
 async function connectWithInjected(eip6963Provider) {
     const provider = eip6963Provider || window.ethereum;
     if (!provider) {
