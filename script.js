@@ -212,17 +212,19 @@ const RUN_RECORDER_ABI = [
     "function recordRun(uint256 score) external"
 ];
 
-// Record completed run on-chain (fire-and-forget, gas free via paymaster)
+// Record completed run on-chain, then notify backend.
+// Returns true if on-chain tx confirmed, false otherwise.
 async function recordRunOnChain(finalScore) {
-    if (!RUN_RECORDER_ADDRESS || !walletReady || !provider) return;
+    if (!RUN_RECORDER_ADDRESS || !walletReady || !provider) return false;
     try {
         const ethersProvider = new ethers.BrowserProvider(provider);
         const signer = await ethersProvider.getSigner();
         const contract = new ethers.Contract(RUN_RECORDER_ADDRESS, RUN_RECORDER_ABI, signer);
         const tx = await sendWithBuilderCode(signer, contract, 'recordRun', [finalScore]);
         await tx.wait();
+        return true;
     } catch (e) {
-        // silently fail — backend still records the score
+        return false;
     }
 }
 
@@ -1347,9 +1349,11 @@ async function submitBackendRun(finalScore) {
 
 function handleGameOver() {
     if (backendSessionActive && !backendRunSubmitted) {
-        submitBackendRun(score);
+        // Record on-chain first, then submit to backend
+        recordRunOnChain(score).then(onChainOk => {
+            submitBackendRun(score);
+        });
     }
-    recordRunOnChain(score);
 }
 
 function setGameOverState() {
