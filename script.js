@@ -1349,10 +1349,14 @@ async function submitBackendRun(finalScore) {
 
 function handleGameOver() {
     if (backendSessionActive && !backendRunSubmitted) {
-        // Record on-chain first, then submit to backend
-        recordRunOnChain(score).then(onChainOk => {
+        // Only record on-chain if it's a new personal best
+        if (score > bestScore) {
+            recordRunOnChain(score).then(onChainOk => {
+                if (onChainOk) submitBackendRun(score);
+            });
+        } else {
             submitBackendRun(score);
-        });
+        }
     }
 }
 
