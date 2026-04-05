@@ -32,9 +32,10 @@ async function verifySignature(address, message, signature) {
   // 2. Use viem verifyMessage — handles EIP-1271 and ERC-6492 (counterfactual wallets)
   try {
     const client = getViemClient();
-    const { verifyMessage } = require("viem");
+    const { verifyMessage, getAddress } = require("viem");
+    const checksumAddress = getAddress(address); // convert to EIP-55 checksum format
     const valid = await verifyMessage(client, {
-      address,
+      address: checksumAddress,
       message,
       signature
     });
