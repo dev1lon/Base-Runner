@@ -215,6 +215,7 @@ const RUN_RECORDER_ABI = [
 // Record completed run on-chain, then notify backend.
 // Returns true if on-chain tx confirmed, false otherwise.
 async function recordRunOnChain(finalScore) {
+    console.log('recordRunOnChain called:', { finalScore, RUN_RECORDER_ADDRESS, walletReady, hasProvider: !!provider });
     if (!RUN_RECORDER_ADDRESS || !walletReady || !provider) return false;
     try {
         const ethersProvider = new ethers.BrowserProvider(provider);
@@ -224,6 +225,7 @@ async function recordRunOnChain(finalScore) {
         await tx.wait();
         return true;
     } catch (e) {
+        console.error('recordRunOnChain failed:', e);
         return false;
     }
 }
