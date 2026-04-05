@@ -3417,11 +3417,6 @@ async function startGameFromWelcome() {
         return;
     }
     
-    // Ensure player sprite is set
-    if (!spriteCache[selectedCharacter]) {
-        console.log('Sprite not cached, loading...');
-        await loadOwnedSprites(true); // Force reload
-    }
     updatePlayerSprite();
     
     // Transition to running state
