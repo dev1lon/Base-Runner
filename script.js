@@ -146,9 +146,10 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
     populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
 
     // Try EIP-5792 wallet_sendCalls with paymaster (Coinbase Smart Wallet)
-    if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && provider?.request) {
+    const _provider = getEthereumProvider();
+    if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && _provider?.request) {
         try {
-            const callsId = await provider.request({
+            const callsId = await _provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
                     version: '1.0',
@@ -170,7 +171,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                 wait: async () => {
                     for (let i = 0; i < 60; i++) {
                         await new Promise(r => setTimeout(r, 2000));
-                        const status = await provider.request({
+                        const status = await _provider.request({
                             method: 'wallet_getCallsStatus',
                             params: [callsId]
                         });
@@ -215,10 +216,11 @@ const RUN_RECORDER_ABI = [
 // Record completed run on-chain, then notify backend.
 // Returns true if on-chain tx confirmed, false otherwise.
 async function recordRunOnChain(finalScore) {
-    console.log('recordRunOnChain called:', { finalScore, RUN_RECORDER_ADDRESS, walletReady, hasProvider: !!provider });
-    if (!RUN_RECORDER_ADDRESS || !walletReady || !provider) return false;
+    if (!RUN_RECORDER_ADDRESS || !walletReady) return false;
     try {
-        const ethersProvider = new ethers.BrowserProvider(provider);
+        const p = getEthereumProvider();
+        if (!p) return false;
+        const ethersProvider = new ethers.BrowserProvider(p);
         const signer = await ethersProvider.getSigner();
         const contract = new ethers.Contract(RUN_RECORDER_ADDRESS, RUN_RECORDER_ABI, signer);
         const tx = await sendWithBuilderCode(signer, contract, 'recordRun', [finalScore]);
