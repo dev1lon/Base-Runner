@@ -846,7 +846,8 @@ async function connectWithCoinbaseSmartWallet() {
             appName: 'Rug Pull Run',
             appLogoUrl: 'https://rugpullrun.app/assets/coin.png',
         });
-        const cbProvider = sdk.makeWeb3Provider();
+        // preference: 'smartWalletOnly' — opens Coinbase Smart Wallet popup, no extension needed
+        const cbProvider = sdk.makeWeb3Provider({ options: 'smartWalletOnly' });
         await connectWithInjected(cbProvider);
     } catch (err) {
         console.error('Coinbase Smart Wallet error:', err);
@@ -1237,7 +1238,7 @@ async function authenticateWallet() {
         await applyProfileData(data);
         resolveBasename(walletAddress);
     } catch (err) {
-        console.warn("Auth failed", err);
+        console.warn("Auth failed:", err.message, err);
         walletAuthenticated = false;
         authToken = "";
         clearAuthTokenForAddress(walletAddress);
