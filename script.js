@@ -128,6 +128,7 @@ const BASE_CHAIN_PARAMS = {
 };
 // Contract addresses (Base Mainnet)
 const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
+const RUN_RECORDER_ADDRESS = ""; // Set after deploying contracts/RunRecorder.sol
 
 // ERC-8021 Builder Code suffix for Base leaderboard attribution
 // Code: bc_d5td9rtw
@@ -206,6 +207,24 @@ const NFT_ABI = [
     "function getOwnedCharacterList(address wallet) external view returns (uint8[])",
     "function balanceOf(address owner) external view returns (uint256)"
 ];
+
+const RUN_RECORDER_ABI = [
+    "function recordRun(uint256 score) external"
+];
+
+// Record completed run on-chain (fire-and-forget, gas free via paymaster)
+async function recordRunOnChain(finalScore) {
+    if (!RUN_RECORDER_ADDRESS || !walletReady || !provider) return;
+    try {
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        const contract = new ethers.Contract(RUN_RECORDER_ADDRESS, RUN_RECORDER_ABI, signer);
+        const tx = await sendWithBuilderCode(signer, contract, 'recordRun', [finalScore]);
+        await tx.wait();
+    } catch (e) {
+        // silently fail — backend still records the score
+    }
+}
 
 // UI State Machine
 const UI_STATE = {
@@ -1330,6 +1349,7 @@ function handleGameOver() {
     if (backendSessionActive && !backendRunSubmitted) {
         submitBackendRun(score);
     }
+    recordRunOnChain(score);
 }
 
 function setGameOverState() {
