@@ -1,10 +1,6 @@
 const { query } = require("../../shared/db");
 
 async function upsertNonce({ address, nonce, chainId, issuedAt, expiresAt, originalAddress }) {
-  // Add original_address column if it doesn't exist (migration)
-  try {
-    await query(`ALTER TABLE auth_nonces ADD COLUMN IF NOT EXISTS original_address TEXT`);
-  } catch (e) {}
   await query(
     `INSERT INTO auth_nonces (address, nonce, chain_id, issued_at, expires_at, original_address)
      VALUES ($1, $2, $3, $4, $5, $6)

@@ -39,6 +39,9 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_characters JSONB DEFAULT '[]';`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS selected_character INTEGER DEFAULT 0;`);
   
+  // Auth nonces: store original address for checksum-sensitive signature verification
+  await pool.query(`ALTER TABLE auth_nonces ADD COLUMN IF NOT EXISTS original_address TEXT;`);
+
   // Check-in tracking (backend-only, no blockchain)
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER NOT NULL DEFAULT 0;`);
