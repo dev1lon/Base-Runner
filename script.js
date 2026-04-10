@@ -115,6 +115,7 @@ let lastFrameTime = null;
 let lastUpdateTime = 0; // For deltaTime calculation
 let gameActive = true;
 let showWelcome = false;
+let _rafId = 0;
 let isPaused = false;
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
 const AUTH_TOKENS_STORAGE_KEY = "runner_auth_token";
@@ -2166,7 +2167,7 @@ window.onload = function() {
     coinCount = parseInt(localStorage.getItem(COIN_STORAGE_KEY)) || 0;
     nextCoinScore = 1000;
 
-    requestAnimationFrame(update);
+    drawStaticFrame(); // Draw platform once; full loop starts on game start
     setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
     document.addEventListener("keydown", movePlayer);
     document.addEventListener("touchstart", handleTouchStart, { passive: false });
@@ -2261,6 +2262,11 @@ function updateUIState() {
             break;
     }
     
+    // Manage game loop — only run RAF when game is active
+    if (currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED) {
+        startGameLoop();
+    }
+
     // Update pause button visibility
     updatePauseButtonVisibility();
     
@@ -3455,6 +3461,7 @@ async function startGameFromWelcome() {
     gameActive = false;
     isPaused = false;
     updateUIState();
+    startGameLoop();
     await restartGame();
 }
 
@@ -3593,6 +3600,11 @@ function setupCrispCanvas() {
     
     // Apply scaling
     applyGameScale();
+
+    // Redraw static frame if game loop is not running
+    if (!_rafId) {
+        drawStaticFrame();
+    }
 }
 
 // Compute normalized opaque bounds for an image (0..1)
@@ -3644,15 +3656,37 @@ function computeOpaqueBounds(img) {
     return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
 
+function startGameLoop() {
+    if (!_rafId) {
+        lastFrameTime = null;
+        _rafId = requestAnimationFrame(update);
+    }
+}
+
+function stopGameLoop() {
+    if (_rafId) {
+        cancelAnimationFrame(_rafId);
+        _rafId = 0;
+    }
+}
+
+function drawStaticFrame() {
+    if (!context) return;
+    context.clearRect(0, 0, boardWidth, boardHeight);
+    if (platformImg && platformImg.complete) {
+        context.drawImage(platformImg, platform.x, platform.y, platform.width, platform.height);
+    }
+}
+
 function update(timestamp) {
-    requestAnimationFrame(update);
-    
+    _rafId = requestAnimationFrame(update);
+
     // Check if wallet disconnected during gameplay
     if (gameActive && !canPlayGame()) {
         forceExitToMenu('Session ended');
         return;
     }
-    
+
     if (lastFrameTime === null) {
         lastFrameTime = timestamp;
     }
@@ -3660,18 +3694,18 @@ function update(timestamp) {
     lastFrameTime = timestamp;
     const FRAME_MS = 1000 / 60;
     const dtScale = deltaMs / FRAME_MS;
-    
+
     const isGameOver = gameState === GAME_STATE.GAME_OVER;
     const shouldUpdate = gameActive && !isPaused && !isGameOver;
     const stepScale = shouldUpdate ? dtScale : 0;
-    
+
     context.clearRect(0, 0, boardWidth, boardHeight);
-    
+
     // Draw platform PNG sprite
     if (platformImg && platformImg.complete) {
         context.drawImage(platformImg, platform.x, platform.y, platform.width, platform.height);
     }
-    
+
     // Debug: visualize groundY line
     if (DEBUG_SHOW_GROUND_LINE) {
         context.save();
@@ -3686,6 +3720,8 @@ function update(timestamp) {
 
     // Don't draw game elements when overlay is visible (except during game over)
     if (showWelcome && !gameActive && !isGameOver) {
+        // Stop the loop — menu is visible, no need to render
+        stopGameLoop();
         return;
     }
 

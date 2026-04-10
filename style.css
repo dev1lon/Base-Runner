@@ -443,9 +443,7 @@ body {
 }
 
 .overlay-dimmed {
-    background: rgba(200, 210, 230, 0.7);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(200, 210, 230, 0.85);
 }
 
 /* ============================================
@@ -455,16 +453,7 @@ body {
 .overlay-bg {
     position: absolute;
     inset: 0;
-    background: 
-        /* Subtle grid pattern */
-        linear-gradient(rgba(74, 144, 217, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(74, 144, 217, 0.03) 1px, transparent 1px),
-        /* Curved lines */
-        radial-gradient(ellipse 150% 100% at 20% 0%, transparent 70%, rgba(255, 255, 255, 0.4) 71%, transparent 72%),
-        radial-gradient(ellipse 120% 80% at 80% 100%, transparent 75%, rgba(255, 255, 255, 0.3) 76%, transparent 77%),
-        /* Base gradient */
-        linear-gradient(180deg, var(--color-bg-start) 0%, var(--color-bg-end) 100%);
-    background-size: 30px 30px, 30px 30px, 100% 100%, 100% 100%, 100% 100%;
+    background: linear-gradient(180deg, var(--color-bg-start) 0%, var(--color-bg-end) 100%);
     pointer-events: none;
 }
 
@@ -1013,8 +1002,6 @@ body.w3m-modal-open w3m-modal {
     justify-content: center;
     gap: 0.5rem;
     background: rgba(74, 144, 217, 0.15);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     padding: 0.5rem 1rem;
     border-radius: 999px;
     border: 1px solid rgba(74, 144, 217, 0.3);
