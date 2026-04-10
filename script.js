@@ -2122,7 +2122,11 @@ window.onload = function() {
 
     // Setup crisp rendering
     setupCrispCanvas();
-    window.addEventListener("resize", setupCrispCanvas);
+    let _resizeTimer;
+    window.addEventListener("resize", () => {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(setupCrispCanvas, 150);
+    });
     
     // Load platform PNG sprite
     platformImg = new Image();

@@ -326,6 +326,8 @@ body {
     image-rendering: crisp-edges;
     position: relative;
     z-index: 1;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 /* Game Platform - now drawn in canvas, hide DOM element */
@@ -1181,8 +1183,8 @@ body.w3m-modal-open w3m-modal {
 
 .character-image {
     width: 100%;
-    flex: 1;
-    min-height: 0;
+    aspect-ratio: 1;
+    flex-shrink: 0;
     border-radius: 8px;
     overflow: hidden;
     background: linear-gradient(160deg, #f0f4ff 0%, #e4eaf8 100%);
