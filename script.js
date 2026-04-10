@@ -275,6 +275,7 @@ let ethImg;
 let gameCoinsEl;
 let gameScoreEl;
 let gameBestEl;
+let newRecordEl;
 let gameUIContainer;
 let gameOverOverlay;
 let coinCount = 0;
@@ -435,14 +436,10 @@ async function initWeb3Modal() {
         
         window.web3modal = modal;
         window.web3modalLoading = false;
-        console.log('Web3Modal loaded successfully');
-        
         // Setup provider listener - only react to actual connections/disconnections
         let wasConnectedViaModal = false;
         modal.subscribeProvider(async (state) => {
-            console.log('Web3Modal state:', state);
             if (state.isConnected && state.address) {
-                console.log('Web3Modal connected:', state.address);
                 const previousAddress = walletAddress;
                 wasConnectedViaModal = true;
                 walletAddress = state.address;
@@ -469,7 +466,6 @@ async function initWeb3Modal() {
                 updateWalletUI();
             } else if (!state.isConnected && wasConnectedViaModal && activeWalletType === 'walletconnect') {
                 // Only disconnect if user was actually connected via this modal
-                console.log('Web3Modal disconnected');
                 wasConnectedViaModal = false;
                 walletAddress = null;
                 activeWalletType = null;
@@ -909,7 +905,6 @@ async function connectWithInjected(eip6963Provider) {
 
         isConnectingWallet = false;
         updateWalletUI();
-        console.log("Connected with browser wallet:", walletAddress);
     } catch (err) {
         console.error("Injected wallet connect error:", err);
         setWalletError(err.message || "Connection failed");
@@ -1557,12 +1552,10 @@ async function initWalletState() {
     if (provider && provider.on) {
         provider.on("accountsChanged", handleAccountsChanged);
         provider.on("chainChanged", handleChainChanged);
-        console.log("Wallet event listeners registered");
     }
     
     // Inside mobile wallet app (Base App, MetaMask mobile) — auto-connect with popup
     if (isWalletApp()) {
-        console.log("Mobile wallet app detected, auto-connecting...");
         walletInitializing = true;
         try {
             const accounts = await provider.request({ method: "eth_requestAccounts" });
@@ -1904,6 +1897,7 @@ const playerBirdHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const coinHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const stickHitboxScratch = { x: 0, y: 0, width: 0, height: 0 };
 const playerDrawRectScratch = { x: 0, y: 0, width: 0, height: 0 };
+const birdInsetScratch = { top: 3, bottom: 3, left: 3, right: 3 };
 
 // Normalized opaque bounds for sprite images (0..1)
 const spriteBounds = {
@@ -2012,6 +2006,7 @@ window.onload = function() {
     gameScoreEl = document.getElementById("game-score");
     gameBestEl = document.getElementById("game-best");
     gameUIContainer = document.querySelector(".game-ui");
+    newRecordEl = document.getElementById("new-record-label");
     gameOverOverlay = document.getElementById("game-over-overlay");
 
     // Initial state
@@ -2320,15 +2315,26 @@ function updateGameUIVisibility() {
     }
 }
 
+let _prevCoins = -1, _prevScore = -1, _prevBest = -1, _prevIsNewRecord = false;
 function updateGameUI() {
-    if (gameCoinsEl) gameCoinsEl.textContent = String(coinCount);
-    if (gameScoreEl) gameScoreEl.textContent = String(score);
-
+    if (gameCoinsEl && coinCount !== _prevCoins) {
+        gameCoinsEl.textContent = String(coinCount);
+        _prevCoins = coinCount;
+    }
+    if (gameScoreEl && score !== _prevScore) {
+        gameScoreEl.textContent = String(score);
+        _prevScore = score;
+    }
     const isNewRecord = score > 0 && score >= bestScore;
-    if (gameBestEl)  gameBestEl.textContent = isNewRecord ? String(score) : String(bestScore);
-
-    const newRecordEl = document.getElementById('new-record-label');
-    if (newRecordEl) newRecordEl.style.display = isNewRecord ? '' : 'none';
+    const bestVal = isNewRecord ? score : bestScore;
+    if (gameBestEl && bestVal !== _prevBest) {
+        gameBestEl.textContent = String(bestVal);
+        _prevBest = bestVal;
+    }
+    if (newRecordEl && isNewRecord !== _prevIsNewRecord) {
+        newRecordEl.style.display = isNewRecord ? '' : 'none';
+        _prevIsNewRecord = isNewRecord;
+    }
 }
 
 function updateMenuState() {
@@ -2720,7 +2726,6 @@ function needsFreeClaim() {
 async function checkCollectionStatus() {
     // Data is now loaded from backend in applyProfileData
     // This function just updates the UI
-    console.log('Collection status:', { hasFreeMint, ownedCharacters, selectedCharacter });
     loadSelectedCharacter();
     updateCollectionUI();
     updateStartButtonState();
@@ -3095,7 +3100,6 @@ async function loadSpriteForCharacter(charId) {
         if (response.ok) {
             const blob = await response.blob();
             spriteCache[charId] = URL.createObjectURL(blob);
-            console.log(`Loaded sprite for newly purchased character ${charId}`);
         }
     } catch (e) {
         console.warn(`Failed to load sprite ${charId}:`, e);
@@ -3104,7 +3108,6 @@ async function loadSpriteForCharacter(charId) {
 
 // Handle character button click - select if owned, purchase if not
 async function handleCharacterAction(charId) {
-    console.log('handleCharacterAction called:', charId);
     const char = CHARACTERS[charId];
     if (!char) {
         console.warn('Character not found:', charId);
@@ -3112,28 +3115,22 @@ async function handleCharacterAction(charId) {
     }
     
     const isOwned = ownedCharacters.includes(charId) || (charId === 0 && hasFreeMint);
-    console.log('Character action:', { charId, isOwned, hasFreeMint, ownedCharacters });
     
     if (isOwned) {
         // Already owned - select it
-        console.log('Selecting character:', charId);
         await selectCharacter(charId);
     } else if (charId === 0) {
         // Free mint
-        console.log('Starting free mint for Vitalik');
         await handleFreeMint();
     } else {
         // Purchase
-        console.log('Starting purchase for:', charId);
         await handlePurchase(charId);
     }
 }
 
 // Handle free mint (character 0 - Vitalik)
 async function handleFreeMint() {
-    console.log('handleFreeMint called, hasFreeMint:', hasFreeMint);
     if (hasFreeMint) {
-        console.log('Already has free mint, skipping');
         return;
     }
     
@@ -3151,21 +3148,18 @@ async function handleFreeMint() {
     try {
         // Check if NFT contract is configured
         if (!isValidAddress(NFT_CONTRACT_ADDRESS)) {
-            console.log('NFT contract not configured, using backend-only mint');
             // Fallback to backend-only mint
             await backendOnlyFreeMint();
             return;
         }
         
         // Blockchain mint
-        console.log('Starting blockchain free mint...');
         const provider = getEthereumProvider();
         const ethersProvider = new ethers.BrowserProvider(provider);
         const signer = await ethersProvider.getSigner();
         const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
         
         // Check if can claim
-        console.log('Checking if can claim free mint...');
         const canClaim = await contract.canClaimFreeMint(walletAddress);
         if (!canClaim) {
             alert('Already claimed or not available on-chain');
@@ -3175,14 +3169,11 @@ async function handleFreeMint() {
         }
         
         // Send transaction
-        console.log('Sending mint transaction...');
         if (btn) btn.textContent = 'Confirm in wallet...';
         const tx = await sendWithBuilderCode(signer, contract, 'mintFreeCharacter');
         
-        console.log('Waiting for confirmation...', tx.hash);
         if (btn) btn.textContent = 'Confirming...';
         const receipt = await tx.wait();
-        console.log('Transaction confirmed:', receipt.hash);
         
         // Record on backend
         await recordFreeMintOnBackend(receipt.hash);
@@ -3193,7 +3184,6 @@ async function handleFreeMint() {
             alert('Transaction cancelled');
         } else if (e.message?.includes('canClaimFreeMint')) {
             // Contract method doesn't exist, fallback to backend
-            console.log('Contract method not found, using backend-only mint');
             await backendOnlyFreeMint();
             return;
         } else {
@@ -3208,7 +3198,6 @@ async function handleFreeMint() {
 // Fallback: backend-only free mint (no blockchain)
 async function backendOnlyFreeMint() {
     try {
-        console.log('Calling backend claim-free...');
         const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
             method: 'POST',
             headers: {
@@ -3219,7 +3208,6 @@ async function backendOnlyFreeMint() {
         });
         
         const data = await response.json();
-        console.log('Backend response:', data);
         
         if (data.ok) {
             if (Array.isArray(data.ownedCharacters)) {
@@ -3235,7 +3223,6 @@ async function backendOnlyFreeMint() {
             updatePlayerSprite(); // Set player sprite!
             updateCollectionUI();
             updateStartButtonState();
-            console.log('Free mint successful (backend only)!');
         } else {
             console.error('Backend returned error:', data.error);
             alert(data.error || 'Free mint failed');
@@ -3261,7 +3248,6 @@ async function recordFreeMintOnBackend(txHash) {
             body: JSON.stringify({ txHash, characterId: 0 })
         });
         const data = await response.json();
-        console.log('Backend recorded mint:', data);
         
         if (data.ok) {
             if (Array.isArray(data.ownedCharacters)) {
@@ -3284,7 +3270,6 @@ async function recordFreeMintOnBackend(txHash) {
     updatePlayerSprite(); // Set player sprite!
     updateCollectionUI();
     updateStartButtonState();
-    console.log('Free mint successful!');
 }
 
 // Handle character purchase
@@ -3414,7 +3399,6 @@ async function selectCharacter(charType) {
         }
     }
     
-    console.log('Selected character:', char.name);
 }
 
 // Update player sprite based on selected character
@@ -3627,7 +3611,7 @@ function computeOpaqueBounds(img) {
     const canvas = document.createElement("canvas");
     canvas.width = img.width;
     canvas.height = img.height;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(img, 0, 0);
 
     const { width, height } = canvas;
@@ -3842,8 +3826,8 @@ function update(timestamp) {
         birdHitboxScratch.y = Math.round(bird.y);
         birdHitboxScratch.width = bird.width;
         birdHitboxScratch.height = bird.height;
-        const birdInset = { top: hitboxPadding, bottom: hitboxPadding, left: hitboxPadding, right: hitboxPadding };
-        applySpriteBounds(birdHitboxScratch, spriteBounds.bird, birdInset, birdHitboxScratch);
+        birdInsetScratch.top = birdInsetScratch.bottom = birdInsetScratch.left = birdInsetScratch.right = hitboxPadding;
+        applySpriteBounds(birdHitboxScratch, spriteBounds.bird, birdInsetScratch, birdHitboxScratch);
         
         // Debug: draw bird hitbox if enabled
         if (debugHitboxes) {
@@ -4343,8 +4327,9 @@ async function restartGame() {
     score = 0;
     scoreFloat = 0;
     nextCoinScore = 1000;
-    const nrl = document.getElementById('new-record-label');
-    if (nrl) nrl.style.display = 'none';
+    if (newRecordEl) newRecordEl.style.display = 'none';
+    _prevCoins = _prevScore = _prevBest = -1;
+    _prevIsNewRecord = false;
     velocityY = 0;
     isDucking = false;
     isPaused = false;

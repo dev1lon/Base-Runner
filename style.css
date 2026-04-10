@@ -326,8 +326,6 @@ body {
     image-rendering: crisp-edges;
     position: relative;
     z-index: 1;
-    will-change: transform;
-    transform: translateZ(0);
 }
 
 /* Game Platform - now drawn in canvas, hide DOM element */
@@ -1064,6 +1062,7 @@ body.w3m-modal-open w3m-modal {
     border: 2px solid transparent;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     height: 100%;
+    contain: layout style;
 }
 
 .character-card.owned {
