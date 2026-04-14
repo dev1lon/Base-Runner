@@ -3000,6 +3000,14 @@ function updateStartButtonState() {
     }
     startButton.textContent = 'Free Game';
 
+    if (payGameButton) {
+        if (needsMint) {
+            payGameButton.classList.add('btn-locked');
+        } else {
+            payGameButton.classList.remove('btn-locked');
+        }
+    }
+
     // Collection button: show prompt before free mint, normal text after
     if (collectionButton) {
         collectionButton.textContent = needsMint ? 'Mint your first character to play!' : 'Collection';
