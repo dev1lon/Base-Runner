@@ -97,6 +97,8 @@ async function doCheckin(address, txHash) {
     newStreak = (user.streak || 0) + 1;
   }
 
+  console.log(`[doCheckin] address=${address} dbLastCheckinAt=${dbLastCheckinAt} onChainMs=${onChainMs} userStreak=${user.streak} newStreak=${newStreak} now=${now} streakDiff=${now - dbLastCheckinAt}ms streakTimeout=${STREAK_TIMEOUT_MS}ms`);
+
   const reward = calcReward(newStreak);
   const newCoins = (user.coins || 0) + reward;
   const newCount = (user.checkin_count || 0) + 1;
@@ -108,6 +110,8 @@ async function doCheckin(address, txHash) {
      RETURNING streak, coins, checkin_count`,
     [newCoins, newStreak, newCount, address.toLowerCase()]
   );
+
+  console.log(`[doCheckin] UPDATE result rowCount=${updated.rowCount} returned=${JSON.stringify(updated.rows[0])}`);
 
   if (!updated.rows[0]) {
     // No row matched — try upsert with correct lowercase key
