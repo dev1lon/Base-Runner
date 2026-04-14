@@ -176,10 +176,15 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                             method: 'wallet_getCallsStatus',
                             params: [callsId]
                         });
-                        if (status.status === 'CONFIRMED') {
-                            return { hash: status.receipts?.[0]?.transactionHash || callsId };
+                        const s = status.status;
+                        // EIP-5792: old spec uses strings, new spec uses numeric codes (200=ok, 400=fail)
+                        const confirmed = s === 'CONFIRMED' || s === 200 || s === '200';
+                        const failed = s === 'FAILED' || s === 400 || s === '400';
+                        if (confirmed) {
+                            const txHash = status.receipts?.[0]?.transactionHash;
+                            return { hash: txHash || callsId };
                         }
-                        if (status.status === 'FAILED') throw new Error('Transaction failed');
+                        if (failed) throw new Error('Transaction failed');
                     }
                     throw new Error('Transaction timeout');
                 }
