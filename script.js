@@ -4060,12 +4060,13 @@ function update(timestamp) {
     // Add coins at score milestones (every 1000 points)
     if (score >= nextCoinScore) {
         const increments = Math.floor((score - nextCoinScore) / 1000) + 1;
-        addCoins(increments);
+        const coinsPerMilestone = isPaidGame ? 5 : 1;
+        addCoins(increments * coinsPerMilestone);
         nextCoinScore += increments * 1000;
         // Start coin popup animation
         coinPopupActive = true;
         coinPopupStartTime = timestamp;
-        coinPopupAmount = increments;
+        coinPopupAmount = increments * coinsPerMilestone;
     }
     if (gameUIContainer) {
         updateGameUI();
