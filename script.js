@@ -146,16 +146,16 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
     const populated = await contract[method].populateTransaction(...args);
     populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
 
-    // Try EIP-5792 wallet_sendCalls with paymaster (Coinbase Smart Wallet)
+    // Try EIP-5792 wallet_sendCalls with paymaster (Coinbase Smart Wallet only)
     const _provider = getEthereumProvider();
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && _provider?.request) {
         try {
-            console.log('[paymaster] trying wallet_sendCalls, method:', method);
             const callsId = await _provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
-                    version: '2.0.0',
+                    version: '1.0',
                     chainId: '0x2105',
+                    from: walletAddress,
                     calls: [{
                         to: populated.to,
                         data: populated.data,
@@ -166,7 +166,6 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                     }
                 }]
             });
-            console.log('[paymaster] wallet_sendCalls ok, callsId:', callsId);
             // Return object compatible with tx.wait()
             return {
                 hash: callsId,
@@ -177,22 +176,22 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                             method: 'wallet_getCallsStatus',
                             params: [callsId]
                         });
-                        console.log('[paymaster] getCallsStatus:', JSON.stringify(status));
                         const s = status.status;
-                        // EIP-5792: old spec uses strings, new spec uses numeric codes (200=ok, 400=fail)
-                        const confirmed = s === 'CONFIRMED' || s === 200 || s === '200';
-                        const failed = s === 'FAILED' || s === 400 || s === '400';
-                        if (confirmed) {
-                            const txHash = status.receipts?.[0]?.transactionHash;
-                            return { hash: txHash || callsId };
+                        // Support both string ('CONFIRMED') and numeric (200) status codes
+                        if (s === 'CONFIRMED' || s === 200 || s === '200') {
+                            return { hash: status.receipts?.[0]?.transactionHash || callsId };
                         }
-                        if (failed) throw new Error('Transaction failed');
+                        if (s === 'FAILED' || s === 400 || s === '400') {
+                            throw new Error('Transaction failed');
+                        }
                     }
                     throw new Error('Transaction timeout');
                 }
             };
         } catch (err) {
-            console.warn('[paymaster] wallet_sendCalls failed, falling back:', err.code, err.message, err);
+            if (err.code !== -32601) {
+                console.warn('wallet_sendCalls failed, falling back to regular tx:', err.message);
+            }
         }
     }
 
