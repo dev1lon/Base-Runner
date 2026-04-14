@@ -150,12 +150,12 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
     const _provider = getEthereumProvider();
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && _provider?.request) {
         try {
+            console.log('[paymaster] trying wallet_sendCalls, method:', method);
             const callsId = await _provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
-                    version: '1.0',
+                    version: '2.0.0',
                     chainId: '0x2105',
-                    from: walletAddress,
                     calls: [{
                         to: populated.to,
                         data: populated.data,
@@ -166,6 +166,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                     }
                 }]
             });
+            console.log('[paymaster] wallet_sendCalls ok, callsId:', callsId);
             // Return object compatible with tx.wait()
             return {
                 hash: callsId,
@@ -176,6 +177,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                             method: 'wallet_getCallsStatus',
                             params: [callsId]
                         });
+                        console.log('[paymaster] getCallsStatus:', JSON.stringify(status));
                         const s = status.status;
                         // EIP-5792: old spec uses strings, new spec uses numeric codes (200=ok, 400=fail)
                         const confirmed = s === 'CONFIRMED' || s === 200 || s === '200';
@@ -190,7 +192,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                 }
             };
         } catch (err) {
-            console.warn('wallet_sendCalls failed, falling back to regular tx:', err);
+            console.warn('[paymaster] wallet_sendCalls failed, falling back:', err.code, err.message, err);
         }
     }
 
