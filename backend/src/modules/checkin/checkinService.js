@@ -101,19 +101,36 @@ async function doCheckin(address, txHash) {
   const newCoins = (user.coins || 0) + reward;
   const newCount = (user.checkin_count || 0) + 1;
 
-  await query(
+  const updated = await query(
     `UPDATE users
      SET coins = $1, streak = $2, checkin_count = $3, last_checkin_at = NOW(), updated_at = NOW()
-     WHERE address = $4`,
+     WHERE address = $4
+     RETURNING streak, coins, checkin_count`,
     [newCoins, newStreak, newCount, address.toLowerCase()]
   );
 
+  if (!updated.rows[0]) {
+    // No row matched — try upsert with correct lowercase key
+    const upserted = await query(
+      `INSERT INTO users (address, coins, streak, checkin_count, last_checkin_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (address) DO UPDATE
+       SET coins = EXCLUDED.coins, streak = EXCLUDED.streak,
+           checkin_count = EXCLUDED.checkin_count, last_checkin_at = NOW(), updated_at = NOW()
+       RETURNING streak, coins, checkin_count`,
+      [address.toLowerCase(), newCoins, newStreak, newCount]
+    );
+    const saved = upserted.rows[0];
+    return { ok: true, streak: saved ? saved.streak : newStreak, reward, newBalance: saved ? saved.coins : newCoins, checkinCount: saved ? saved.checkin_count : newCount };
+  }
+
+  const saved = updated.rows[0];
   return {
     ok: true,
-    streak: newStreak,
+    streak: saved.streak,
     reward,
-    newBalance: newCoins,
-    checkinCount: newCount
+    newBalance: saved.coins,
+    checkinCount: saved.checkin_count
   };
 }
 

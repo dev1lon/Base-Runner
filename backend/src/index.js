@@ -107,6 +107,7 @@ app.post("/auth/verify", async (req, res) => {
     res.status(400).json({ ok: false, error: result.error });
     return;
   }
+  const checkin = await getCheckinStatus(addressNorm);
   res.json({
     ok: true,
     token: result.token,
@@ -115,7 +116,8 @@ app.post("/auth/verify", async (req, res) => {
     bestScore: result.user.best_score,
     hasFreeMint: result.user.has_claimed_free || false,
     ownedCharacters: result.user.owned_characters || [],
-    selectedCharacter: result.user.selected_character || 0
+    selectedCharacter: result.user.selected_character || 0,
+    checkin
   });
 });
 
