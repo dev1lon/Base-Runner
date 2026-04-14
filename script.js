@@ -262,6 +262,7 @@ let walletAddressDisplay;
 let startButton;
 let payGameButton;
 let resumeButton;
+let homeButtonPause;
 let checkinButton;
 let checkinStatus;
 let checkinButtonPause;
@@ -2023,6 +2024,7 @@ window.onload = function() {
     startButton = document.getElementById("start-button");
     payGameButton = document.getElementById("pay-game-button");
     resumeButton = document.getElementById("resume-button");
+    homeButtonPause = document.getElementById("home-button-pause");
     checkinButton = document.getElementById("checkin-button");
     checkinStatus = document.getElementById("checkin-status");
     checkinButtonPause = document.getElementById("checkin-button-pause");
@@ -2099,7 +2101,15 @@ window.onload = function() {
             resumeGame();
         }, { passive: false });
     }
-    
+    if (homeButtonPause) {
+        homeButtonPause.addEventListener("click", goHome);
+        homeButtonPause.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            goHome();
+        }, { passive: false });
+    }
+
     // Collection button listeners
     if (collectionButton) {
         collectionButton.addEventListener("click", () => openCollection('menu'));
@@ -3592,6 +3602,19 @@ async function startGameFromWelcome() {
     updateUIState();
     startGameLoop();
     await restartGame();
+}
+
+function goHome() {
+    gameState = GAME_STATE.IDLE;
+    gameOver = false;
+    gameActive = false;
+    isPaused = false;
+    showWelcome = true;
+    resetBackendSession();
+    currentUIState = canPlayGame() ? UI_STATE.MENU : UI_STATE.CONNECT;
+    updateUIState();
+    stopGameLoop();
+    drawStaticFrame();
 }
 
 function openPauseMenu() {
