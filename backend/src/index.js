@@ -41,11 +41,19 @@ const { normalizeAddress, verifyJwt } = require("./shared/auth");
 const { issueNonce, verifyNonce } = require("./modules/auth/authService");
 const { getCheckinStatus, doCheckin } = require("./modules/checkin/checkinService");
 
+const { ethers } = require("ethers");
+
 const app = express();
 
 const PORT = Number(process.env.PORT || 8787);
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 60 * 60 * 1000); // 1 hour
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
+const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || "").toLowerCase();
+// Default: 3000000000000 wei = 0.000003 ETH ≈ $0.01 at ~$3333/ETH
+const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "3000000000000");
+
+// In-memory set to prevent reusing the same tx for multiple paid sessions
+const usedPaidTxHashes = new Set();
 
 if (ALLOWED_ORIGIN === "*") {
   console.warn("⚠️  ALLOWED_ORIGIN is '*' — set a specific domain for production!");
@@ -59,6 +67,14 @@ function randomSeed() {
 
 app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
+});
+
+// Public config for frontend (treasury address, paid game price)
+app.get("/api/game-config", (req, res) => {
+  res.json({
+    treasuryAddress: TREASURY_ADDRESS || null,
+    paidGamePriceWei: PAID_GAME_PRICE_WEI.toString()
+  });
 });
 
 function requireAuth(req, res, next) {
@@ -145,6 +161,64 @@ app.post("/api/session/start", requireAuth, (req, res) => {
   });
 });
 
+app.post("/api/session/start-paid", requireAuth, async (req, res) => {
+  const { txHash } = req.body || {};
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ ok: false, error: "Invalid txHash" });
+  }
+  if (!TREASURY_ADDRESS) {
+    return res.status(503).json({ ok: false, error: "Paid games not configured" });
+  }
+  if (usedPaidTxHashes.has(txHash)) {
+    return res.status(400).json({ ok: false, error: "Transaction already used" });
+  }
+
+  try {
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
+    const [tx, receipt] = await Promise.all([
+      provider.getTransaction(txHash),
+      provider.getTransactionReceipt(txHash)
+    ]);
+
+    if (!tx || !receipt) {
+      return res.status(400).json({ ok: false, error: "Transaction not found" });
+    }
+    if (receipt.status !== 1) {
+      return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
+    }
+    if ((tx.to || "").toLowerCase() !== TREASURY_ADDRESS) {
+      return res.status(400).json({ ok: false, error: "Wrong recipient" });
+    }
+    if (BigInt(tx.value) < PAID_GAME_PRICE_WEI) {
+      return res.status(400).json({ ok: false, error: "Insufficient payment" });
+    }
+
+    usedPaidTxHashes.add(txHash);
+
+    const addressNorm = req.user.address;
+    const seed = randomSeed();
+    const session = createSession({ address: addressNorm, seed, ttlMs: SESSION_TTL_MS, paid: true });
+    res.json({
+      ok: true,
+      sessionId: session.sessionId,
+      seed: session.seed,
+      issuedAt: session.issuedAt,
+      expiresAt: session.expiresAt,
+      config: {
+        frameMs: DEFAULT_CONFIG.frameMs,
+        speedStart: DEFAULT_CONFIG.speedStart,
+        speedMax: DEFAULT_CONFIG.speedMax,
+        speedMaxScore: DEFAULT_CONFIG.speedMaxScore,
+        gravity: DEFAULT_CONFIG.gravity,
+        jumpVelocity: DEFAULT_CONFIG.jumpVelocity
+      }
+    });
+  } catch (err) {
+    console.error("start-paid error:", err);
+    res.status(500).json({ ok: false, error: "Failed to verify payment" });
+  }
+});
+
 app.post("/api/session/submit", requireAuth, async (req, res) => {
   const { sessionId, inputLog, reportedScore, gameElapsedMs } = req.body || {};
 
@@ -215,8 +289,9 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   console.log("📊 Score info:", { reported, maxScore, gameDurationMs });
 
   const finalScore = Math.min(reported, maxScore);
-  const coinsAwarded = Math.floor(finalScore / 1000);
-  console.log("💰 Awarding:", { finalScore, coinsAwarded, address: addressNorm });
+  const coinsPerScore = session.paid ? 5 : 1;
+  const coinsAwarded = Math.floor(finalScore / 1000) * coinsPerScore;
+  console.log("💰 Awarding:", { finalScore, coinsAwarded, paid: session.paid, address: addressNorm });
   markSessionUsed(sessionId);
   const result = await applyScore(addressNorm, finalScore, coinsAwarded);
 

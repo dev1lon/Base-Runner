@@ -260,6 +260,7 @@ let connectButton;
 let walletStatus;
 let walletAddressDisplay;
 let startButton;
+let payGameButton;
 let resumeButton;
 let checkinButton;
 let checkinStatus;
@@ -308,6 +309,9 @@ let checkinState = {
     loading: false,
     message: ""
 };
+let gameConfig = { treasuryAddress: null, paidGamePriceWei: "3000000000000" };
+let isPaidGame = false;
+let pendingPaidTxHash = null;
 let backendSessionId = null;
 let backendSeed = null;
 let backendInputLog = [];
@@ -1300,6 +1304,8 @@ function resetBackendSession() {
     backendRunSubmitted = false;
     runRecordedOnChain = false;
     rng = null;
+    isPaidGame = false;
+    pendingPaidTxHash = null;
 }
 
 function recordInput(type) {
@@ -1308,6 +1314,53 @@ function recordInput(type) {
     }
     const elapsed = Math.round(performance.now() - backendSessionStartMs);
     backendInputLog.push({ t: elapsed, type });
+}
+
+async function fetchGameConfig() {
+    if (!BACKEND_URL) return;
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/game-config`);
+        if (res.ok) {
+            const data = await res.json();
+            gameConfig.treasuryAddress = data.treasuryAddress || null;
+            gameConfig.paidGamePriceWei = data.paidGamePriceWei || "3000000000000";
+        }
+    } catch (e) {
+        console.warn("Failed to fetch game config:", e);
+    }
+}
+
+async function startPaidBackendSession(txHash) {
+    resetBackendSession();
+    if (!BACKEND_URL || !authToken) return false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/session/start-paid`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ txHash }),
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || `Backend start-paid failed: ${response.status}`);
+        }
+        const data = await response.json();
+        backendSessionId = data.sessionId || null;
+        backendSeed = data.seed || null;
+        backendSessionStartMs = performance.now();
+        backendInputLog = [];
+        backendSessionActive = !!backendSessionId;
+        rng = backendSeed ? createRng(backendSeed) : null;
+        return backendSessionActive;
+    } catch (err) {
+        console.warn("Paid session start failed", err);
+        resetBackendSession();
+        return false;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 async function startBackendSession() {
@@ -1512,6 +1565,9 @@ function updateWalletUI() {
     // Update start button
     if (startButton) {
         startButton.disabled = !canPlayNow;
+    }
+    if (payGameButton) {
+        payGameButton.disabled = !canPlayNow;
     }
     
     updateCheckinUI();
@@ -1965,6 +2021,7 @@ window.onload = function() {
     walletStatus = document.getElementById("wallet-status");
     walletAddressDisplay = document.getElementById("wallet-address");
     startButton = document.getElementById("start-button");
+    payGameButton = document.getElementById("pay-game-button");
     resumeButton = document.getElementById("resume-button");
     checkinButton = document.getElementById("checkin-button");
     checkinStatus = document.getElementById("checkin-status");
@@ -2024,6 +2081,14 @@ window.onload = function() {
             e.stopPropagation();
             e.preventDefault();
             startGameFromWelcome();
+        }, { passive: false });
+    }
+    if (payGameButton) {
+        payGameButton.addEventListener("click", handlePayGame);
+        payGameButton.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handlePayGame();
         }, { passive: false });
     }
     if (resumeButton) {
@@ -2108,6 +2173,7 @@ window.onload = function() {
         }, { passive: false });
     }
     initWalletState();
+    fetchGameConfig(); // fire-and-forget
 
     // Pre-load Web3Modal only for WalletConnect fallback (lazy, non-blocking)
     if (!isMobile() && !window.ethereum) {
@@ -2587,6 +2653,69 @@ async function handleCheckin() {
     }
 }
 
+// ============ Paid Game ============
+
+async function handlePayGame() {
+    if (!walletReady || !walletAddress || !authToken) {
+        updateWalletUI();
+        return;
+    }
+    if (needsFreeClaim()) {
+        openCollection();
+        return;
+    }
+    if (!gameConfig.treasuryAddress) {
+        alert("Paid games are not available yet.");
+        return;
+    }
+
+    if (payGameButton) {
+        payGameButton.disabled = true;
+        payGameButton.textContent = "Sending...";
+    }
+
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+
+        const tx = await signer.sendTransaction({
+            to: gameConfig.treasuryAddress,
+            value: BigInt(gameConfig.paidGamePriceWei)
+        });
+        if (payGameButton) payGameButton.textContent = "Confirming...";
+        await tx.wait();
+
+        isPaidGame = true;
+        pendingPaidTxHash = tx.hash;
+
+        // Start the game
+        updatePlayerSprite();
+        currentUIState = UI_STATE.RUNNING;
+        showWelcome = false;
+        gameActive = false;
+        isPaused = false;
+        updateUIState();
+        startGameLoop();
+        await restartGame();
+
+    } catch (err) {
+        console.warn("Pay game failed:", err);
+        isPaidGame = false;
+        pendingPaidTxHash = null;
+        if (err.code === 4001 || (err.message && err.message.includes("user rejected"))) {
+            // User cancelled — silent
+        } else {
+            alert("Payment failed. Please try again.");
+        }
+    } finally {
+        if (payGameButton) {
+            payGameButton.disabled = false;
+            payGameButton.textContent = "Pay Game · $0.01";
+        }
+    }
+}
+
 // ============ Shop Functions ============
 
 // Shop state
@@ -2840,7 +2969,7 @@ function updateStartButtonState() {
     } else {
         startButton.classList.remove('btn-locked');
     }
-    startButton.textContent = 'Start Game';
+    startButton.textContent = 'Free Game';
 
     // Collection button: show prompt before free mint, normal text after
     if (collectionButton) {
@@ -4386,5 +4515,9 @@ async function restartGame() {
     birdArray = [];
     
     gameActive = true;
-    startBackendSession(); // fire-and-forget, don't block game start
+    if (isPaidGame && pendingPaidTxHash) {
+        startPaidBackendSession(pendingPaidTxHash); // fire-and-forget
+    } else {
+        startBackendSession(); // fire-and-forget, don't block game start
+    }
 }
