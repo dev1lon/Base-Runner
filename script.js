@@ -1338,7 +1338,9 @@ async function fetchGameConfig() {
 }
 
 async function startPaidBackendSession(txHash) {
+    const savedStartMs = backendSessionStartMs; // set by restartGame() before this call
     resetBackendSession();
+    backendSessionStartMs = savedStartMs;
     isPaidGame = true; // restore after reset — must stay true during the game
     if (!BACKEND_URL || !authToken) return false;
     const controller = new AbortController();
@@ -1357,7 +1359,7 @@ async function startPaidBackendSession(txHash) {
         const data = await response.json();
         backendSessionId = data.sessionId || null;
         backendSeed = data.seed || null;
-        backendSessionStartMs = performance.now();
+        // backendSessionStartMs already set in restartGame() — don't overwrite
         backendInputLog = [];
         backendSessionActive = !!backendSessionId;
         rng = backendSeed ? createRng(backendSeed) : null;
@@ -1372,7 +1374,9 @@ async function startPaidBackendSession(txHash) {
 }
 
 async function startBackendSession() {
+    const savedStartMs = backendSessionStartMs; // set by restartGame() before this call
     resetBackendSession();
+    backendSessionStartMs = savedStartMs;
     if (!BACKEND_URL || !authToken) {
         return false;
     }
@@ -1393,7 +1397,7 @@ async function startBackendSession() {
         const data = await response.json();
         backendSessionId = data.sessionId || null;
         backendSeed = data.seed || null;
-        backendSessionStartMs = performance.now();
+        // backendSessionStartMs already set in restartGame() — don't overwrite
         backendInputLog = [];
         backendSessionActive = !!backendSessionId;
         rng = backendSeed ? createRng(backendSeed) : null;
@@ -4547,6 +4551,9 @@ async function restartGame() {
     birdArray = [];
     
     gameActive = true;
+    // Record game start time NOW — before the async session call — so
+    // gameElapsedMs in submitBackendRun covers the full actual play time.
+    backendSessionStartMs = performance.now();
     if (isPaidGame && pendingPaidTxHash) {
         startPaidBackendSession(pendingPaidTxHash); // fire-and-forget
     } else {
