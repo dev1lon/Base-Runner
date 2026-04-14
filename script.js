@@ -1126,6 +1126,8 @@ function resetAuthState() {
     authToken = "";
     authAttempted = false;
     walletBasename = null;
+    isPaidGame = false;
+    pendingPaidTxHash = null;
 }
 
 function shouldRestoreAuth() {
@@ -1305,6 +1307,10 @@ function resetBackendSession() {
     backendRunSubmitted = false;
     runRecordedOnChain = false;
     rng = null;
+}
+
+function resetFullSession() {
+    resetBackendSession();
     isPaidGame = false;
     pendingPaidTxHash = null;
 }
@@ -1333,6 +1339,7 @@ async function fetchGameConfig() {
 
 async function startPaidBackendSession(txHash) {
     resetBackendSession();
+    isPaidGame = true; // restore after reset — must stay true during the game
     if (!BACKEND_URL || !authToken) return false;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
@@ -1448,11 +1455,12 @@ async function submitBackendRun(finalScore) {
 function handleGameOver() {
     if (runRecordedOnChain) return;
     runRecordedOnChain = true;
-    recordRunOnChain(score).then(onChainOk => {
-        if (onChainOk && backendSessionActive && !backendRunSubmitted) {
-            submitBackendRun(score);
-        }
-    });
+    // Submit to backend immediately — don't wait for slow on-chain tx
+    if (backendSessionActive && !backendRunSubmitted) {
+        submitBackendRun(score);
+    }
+    // Record on-chain in parallel (fire-and-forget)
+    recordRunOnChain(score);
 }
 
 function setGameOverState() {
@@ -3610,7 +3618,7 @@ function goHome() {
     gameActive = false;
     isPaused = false;
     showWelcome = true;
-    resetBackendSession();
+    resetFullSession();
     currentUIState = canPlayGame() ? UI_STATE.MENU : UI_STATE.CONNECT;
     updateUIState();
     stopGameLoop();
@@ -3632,7 +3640,7 @@ function openWalletMenu() {
     showWelcome = true;
     isPaused = false;
     gameActive = false;
-    resetBackendSession();
+    resetFullSession();
     updateUIState();
 }
 
