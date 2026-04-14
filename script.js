@@ -1428,6 +1428,8 @@ async function startBackendSession() {
 }
 
 async function submitBackendRun(finalScore) {
+    if (backendRunSubmitted || !BACKEND_URL) return;
+    backendRunSubmitted = true; // set immediately to prevent double-submit
     // If session is still starting (slow mobile network), wait up to 6s for it
     if (!backendSessionActive && backendSessionPromise) {
         await Promise.race([
@@ -1435,10 +1437,9 @@ async function submitBackendRun(finalScore) {
             new Promise(r => setTimeout(r, 6000))
         ]);
     }
-    if (!backendSessionActive || backendRunSubmitted || !BACKEND_URL) {
+    if (!backendSessionActive) {
         return;
     }
-    backendRunSubmitted = true;
     const gameElapsedMs = Math.round(performance.now() - backendSessionStartMs);
     const payload = {
         sessionId: backendSessionId,
@@ -1482,10 +1483,8 @@ async function submitBackendRun(finalScore) {
 function handleGameOver() {
     if (runRecordedOnChain) return;
     runRecordedOnChain = true;
-    // Submit to backend immediately — don't wait for slow on-chain tx
-    if (backendSessionActive && !backendRunSubmitted) {
-        submitBackendRun(score);
-    }
+    // submitBackendRun waits internally for session if still in-flight
+    submitBackendRun(score);
     // Record on-chain in parallel (fire-and-forget)
     recordRunOnChain(score);
 }
