@@ -166,6 +166,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                     }
                 }]
             });
+            console.log('[pm] sendCalls ok, callsId:', callsId, typeof callsId);
             // Return object compatible with tx.wait()
             return {
                 hash: callsId,
@@ -176,6 +177,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                             method: 'wallet_getCallsStatus',
                             params: [callsId]
                         });
+                        console.log('[pm] status raw:', JSON.stringify(status));
                         const s = status.status;
                         // Support both string ('CONFIRMED') and numeric (200) status codes
                         if (s === 'CONFIRMED' || s === 200 || s === '200') {
@@ -190,7 +192,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
             };
         } catch (err) {
             if (err.code !== -32601) {
-                console.warn('wallet_sendCalls failed, falling back to regular tx:', err.message);
+                console.warn('[pm] wallet_sendCalls failed:', err.code, err.message);
             }
         }
     }
