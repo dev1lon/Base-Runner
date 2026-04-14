@@ -2511,16 +2511,7 @@ function updateCheckinUI() {
     if (checkinState.message) {
         setCheckinStatusText(checkinState.message, checkedIn);
     } else if (checkedIn) {
-        // Show when streak expires (36h window from last checkin)
-        const STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
-        const expiresAt = (checkinState.lastCheckin || 0) + STREAK_TIMEOUT_MS;
-        const msLeft = expiresAt - Date.now();
-        let extra = '';
-        if (msLeft > 0) {
-            const hLeft = Math.floor(msLeft / 3600000);
-            extra = hLeft > 0 ? ` · expires in ${hLeft}h` : ' · expires soon!';
-        }
-        setCheckinStatusText(`Streak: ${checkinState.streak}${extra}`, true);
+        setCheckinStatusText(`Streak: ${checkinState.streak}`, true);
     } else {
         setCheckinStatusText(`Streak: ${checkinState.streak}`, false);
     }
