@@ -322,6 +322,7 @@ let gameConfig = { treasuryAddress: null, paidGamePriceWei: "3000000000000" };
 let isPaidGame = false;
 let pendingPaidTxHash = null;
 let backendSessionId = null;
+let backendSessionPromise = null; // tracks in-flight session start
 let backendSeed = null;
 let backendInputLog = [];
 let backendSessionStartMs = 0;
@@ -1315,6 +1316,7 @@ function resetBackendSession() {
     backendRunSubmitted = false;
     runRecordedOnChain = false;
     rng = null;
+    backendSessionPromise = null;
 }
 
 function resetFullSession() {
@@ -1353,6 +1355,7 @@ async function startPaidBackendSession(txHash) {
     if (!BACKEND_URL || !authToken) return false;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+    backendSessionPromise = (async () => {
     try {
         const response = await fetch(`${BACKEND_URL}/api/session/start-paid`, {
             method: "POST",
@@ -1379,6 +1382,8 @@ async function startPaidBackendSession(txHash) {
     } finally {
         clearTimeout(timeoutId);
     }
+    })();
+    return backendSessionPromise;
 }
 
 async function startBackendSession() {
@@ -1390,6 +1395,7 @@ async function startBackendSession() {
     }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+    backendSessionPromise = (async () => {
     try {
         const response = await fetch(`${BACKEND_URL}/api/session/start`, {
             method: "POST",
@@ -1417,9 +1423,18 @@ async function startBackendSession() {
     } finally {
         clearTimeout(timeoutId);
     }
+    })();
+    return backendSessionPromise;
 }
 
 async function submitBackendRun(finalScore) {
+    // If session is still starting (slow mobile network), wait up to 6s for it
+    if (!backendSessionActive && backendSessionPromise) {
+        await Promise.race([
+            backendSessionPromise,
+            new Promise(r => setTimeout(r, 6000))
+        ]);
+    }
     if (!backendSessionActive || backendRunSubmitted || !BACKEND_URL) {
         return;
     }
