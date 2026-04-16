@@ -201,7 +201,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
 }
 
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
-const BACKEND_TIMEOUT_MS = 8000;
+const BACKEND_TIMEOUT_MS = 25000;
 const ALLOW_GUEST_PLAY = false;
 
 // NFT Contract ABI
@@ -1417,8 +1417,9 @@ async function startBackendSession() {
         rng = backendSeed ? createRng(backendSeed) : null;
         return backendSessionActive;
     } catch (err) {
-        console.warn("Backend session start failed", err);
-        resetBackendSession();
+        console.warn("Backend session start failed", err.message);
+        backendSessionActive = false;
+        // don't call resetBackendSession — preserves backendSessionPromise so submitBackendRun can detect completion
         return false;
     } finally {
         clearTimeout(timeoutId);
@@ -1460,7 +1461,8 @@ async function submitBackendRun(finalScore) {
             signal: controller.signal
         });
         if (!response.ok) {
-            throw new Error(`Backend submit failed: ${response.status}`);
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(`submit ${response.status}: ${errBody.error || ''}`);
         }
         const data = await response.json();
         if (data && data.ok) {
@@ -1474,7 +1476,7 @@ async function submitBackendRun(finalScore) {
             }
         }
     } catch (err) {
-        console.warn("Backend submit failed", err);
+        console.warn("Backend submit failed:", err.message);
     } finally {
         clearTimeout(timeoutId);
     }
@@ -2720,18 +2722,55 @@ async function handlePayGame() {
 
     try {
         const provider = getEthereumProvider();
-        const ethersProvider = new ethers.BrowserProvider(provider);
-        const signer = await ethersProvider.getSigner();
+        const priceHex = '0x' + BigInt(gameConfig.paidGamePriceWei).toString(16);
+        let txHash;
 
-        const tx = await signer.sendTransaction({
-            to: gameConfig.treasuryAddress,
-            value: BigInt(gameConfig.paidGamePriceWei)
-        });
-        if (payGameButton) payGameButton.textContent = "Confirming...";
-        await tx.wait();
+        // Try EIP-5792 wallet_sendCalls first (Base App / Coinbase Smart Wallet)
+        if (provider?.request) {
+            try {
+                const callsId = await provider.request({
+                    method: 'wallet_sendCalls',
+                    params: [{
+                        version: '1.0',
+                        chainId: '0x2105',
+                        from: walletAddress,
+                        calls: [{ to: gameConfig.treasuryAddress, value: priceHex, data: '0x' }],
+                        capabilities: {}
+                    }]
+                });
+                if (payGameButton) payGameButton.textContent = "Confirming...";
+                for (let i = 0; i < 60; i++) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const status = await provider.request({ method: 'wallet_getCallsStatus', params: [callsId] });
+                    const s = status.status;
+                    if (s === 'CONFIRMED' || s === 200 || s === '200') {
+                        txHash = status.receipts?.[0]?.transactionHash || callsId;
+                        break;
+                    }
+                    if (s === 'FAILED' || s === 400 || s === '400') throw new Error('Payment transaction failed');
+                }
+                if (!txHash) throw new Error('Payment confirmation timeout');
+            } catch (e) {
+                if (e.code === -32601) {
+                    // wallet_sendCalls not supported — fall through to ethers
+                } else {
+                    throw e;
+                }
+            }
+        }
+
+        // Fallback: regular ethers sendTransaction
+        if (!txHash) {
+            const ethersProvider = new ethers.BrowserProvider(provider);
+            const signer = await ethersProvider.getSigner();
+            const tx = await signer.sendTransaction({ to: gameConfig.treasuryAddress, value: BigInt(gameConfig.paidGamePriceWei) });
+            if (payGameButton) payGameButton.textContent = "Confirming...";
+            const receipt = await tx.wait();
+            txHash = receipt.hash || tx.hash;
+        }
 
         isPaidGame = true;
-        pendingPaidTxHash = tx.hash;
+        pendingPaidTxHash = txHash;
 
         // Start the game
         updatePlayerSprite();
