@@ -139,6 +139,37 @@ const BUILDER_CODE_SUFFIX = "0x62635f64357464397274770b0080218021802180218021802
 // Get your API key at https://portal.cdp.coinbase.com/
 const PAYMASTER_URL = 'https://api.developer.coinbase.com/rpc/v1/base/cjnueih0AaiYBVVOk5iiZRXjP00VX1fB';
 
+// Normalize wallet_sendCalls response — EIP-5792 v1.0 returns string, v2.0 returns { id, capabilities }.
+function extractCallsId(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object' && typeof raw.id === 'string') return raw.id;
+    return null;
+}
+
+// Poll wallet_getCallsStatus until we have a real transactionHash (receipts populated) or FAILED.
+async function waitForCallsTxHash(provider, callsId) {
+    for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        let status;
+        try {
+            status = await provider.request({ method: 'wallet_getCallsStatus', params: [callsId] });
+        } catch (err) {
+            console.warn('[pm] getCallsStatus error:', err.code, err.message);
+            continue;
+        }
+        const s = status?.status;
+        const txHash = status?.receipts?.[0]?.transactionHash;
+        if ((s === 'CONFIRMED' || s === 200 || s === '200') && txHash) {
+            return txHash;
+        }
+        if (s === 'FAILED' || s === 400 || s === 500 || s === '400' || s === '500') {
+            throw new Error('Transaction failed');
+        }
+    }
+    throw new Error('Transaction timeout');
+}
+
 // Send a contract call with Builder Code attribution and optional paymaster sponsorship.
 // For Coinbase Smart Wallet (Base App), uses EIP-5792 wallet_sendCalls + paymaster so gas is free.
 // Falls back to regular ethers sendTransaction for other wallets.
@@ -150,7 +181,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
     const _provider = getEthereumProvider();
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && _provider?.request) {
         try {
-            const callsId = await _provider.request({
+            const raw = await _provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
                     version: '1.0',
@@ -166,33 +197,15 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                     }
                 }]
             });
-            console.log('[pm] sendCalls ok, callsId:', callsId, typeof callsId);
-            // Return object compatible with tx.wait()
+            const callsId = extractCallsId(raw);
+            if (!callsId) throw new Error('wallet_sendCalls returned no id');
             return {
                 hash: callsId,
-                wait: async () => {
-                    for (let i = 0; i < 60; i++) {
-                        await new Promise(r => setTimeout(r, 2000));
-                        const status = await _provider.request({
-                            method: 'wallet_getCallsStatus',
-                            params: [callsId]
-                        });
-                        console.log('[pm] status raw:', JSON.stringify(status));
-                        const s = status.status;
-                        // Support both string ('CONFIRMED') and numeric (200) status codes
-                        if (s === 'CONFIRMED' || s === 200 || s === '200') {
-                            return { hash: status.receipts?.[0]?.transactionHash || callsId };
-                        }
-                        if (s === 'FAILED' || s === 400 || s === '400') {
-                            throw new Error('Transaction failed');
-                        }
-                    }
-                    throw new Error('Transaction timeout');
-                }
+                wait: async () => ({ hash: await waitForCallsTxHash(_provider, callsId) })
             };
         } catch (err) {
             if (err.code !== -32601) {
-                console.warn('[pm] wallet_sendCalls failed:', err.code, err.message);
+                console.warn('[pm] wallet_sendCalls failed:', err.code, err.message, err.data || '');
             }
         }
     }
@@ -1377,7 +1390,8 @@ async function startPaidBackendSession(txHash) {
         return backendSessionActive;
     } catch (err) {
         console.warn("Paid session start failed", err);
-        resetBackendSession();
+        backendSessionActive = false;
+        // don't call resetBackendSession — preserves backendSessionPromise so submitBackendRun can detect completion
         return false;
     } finally {
         clearTimeout(timeoutId);
@@ -2728,7 +2742,7 @@ async function handlePayGame() {
         // Try EIP-5792 wallet_sendCalls first (Base App / Coinbase Smart Wallet)
         if (provider?.request) {
             try {
-                const callsId = await provider.request({
+                const raw = await provider.request({
                     method: 'wallet_sendCalls',
                     params: [{
                         version: '1.0',
@@ -2738,18 +2752,11 @@ async function handlePayGame() {
                         capabilities: {}
                     }]
                 });
+                const callsId = extractCallsId(raw);
+                if (!callsId) throw new Error('wallet_sendCalls returned no id');
                 if (payGameButton) payGameButton.textContent = "Confirming...";
-                for (let i = 0; i < 60; i++) {
-                    await new Promise(r => setTimeout(r, 2000));
-                    const status = await provider.request({ method: 'wallet_getCallsStatus', params: [callsId] });
-                    const s = status.status;
-                    if (s === 'CONFIRMED' || s === 200 || s === '200') {
-                        txHash = status.receipts?.[0]?.transactionHash || callsId;
-                        break;
-                    }
-                    if (s === 'FAILED' || s === 400 || s === '400') throw new Error('Payment transaction failed');
-                }
-                if (!txHash) throw new Error('Payment confirmation timeout');
+                // Block until we have a real on-chain transactionHash — backend verifies it.
+                txHash = await waitForCallsTxHash(provider, callsId);
             } catch (e) {
                 if (e.code === -32601) {
                     // wallet_sendCalls not supported — fall through to ethers
