@@ -2913,17 +2913,24 @@ async function claimFreeCharacter() {
 
 // Request purchase signature from backend
 async function requestPurchaseSignature(charId) {
-    const response = await fetch(`${BACKEND_URL}/api/shop/purchase/start`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ characterId: charId })
-    });
-    const data = await response.json();
-    if (!data.ok) throw new Error(data.error || 'Failed to start purchase');
-    return data; // { nonce, expiry, signature, price }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/shop/purchase/start`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ characterId: charId }),
+            signal: controller.signal
+        });
+        const data = await response.json();
+        if (!data.ok) throw new Error(data.error || 'Failed to start purchase');
+        return data; // { nonce, expiry, signature, price }
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 // Confirm purchase with backend after tx confirmed
@@ -3550,18 +3557,18 @@ async function handlePurchase(charId) {
         if (!voucher.signature) throw new Error('Backend signer not configured');
 
         // Step 2: User signs one transaction — mint NFT with backend signature
-        if (btn) btn.textContent = 'Confirm tx...';
         const provider = getEthereumProvider();
         const ethersProvider = new ethers.BrowserProvider(provider);
         const signer = await ethersProvider.getSigner();
         const nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
 
-        const tx = await nftContract.mintWithSignature(
+        if (btn) btn.textContent = 'Confirm tx...';
+        const tx = await sendWithBuilderCode(signer, nftContract, 'mintWithSignature', [
             charId,
             voucher.nonce,
             voucher.expiry,
             voucher.signature
-        );
+        ]);
 
         if (btn) btn.textContent = 'Minting...';
         const receipt = await tx.wait();
