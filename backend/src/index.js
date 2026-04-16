@@ -204,14 +204,15 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
 
     if (!isDirectPayment) {
       const blockNum = receipt.blockNumber;
+      console.log(`[start-paid] ERC-4337 check: tx.to=${tx.to} treasury=${TREASURY_ADDRESS} block=${blockNum}`);
       const [balBefore, balAfter] = await Promise.all([
         provider.getBalance(TREASURY_ADDRESS, blockNum - 1),
         provider.getBalance(TREASURY_ADDRESS, blockNum)
       ]);
       const received = BigInt(balAfter) - BigInt(balBefore);
-      console.log(`[start-paid] smart-wallet check: balBefore=${balBefore} balAfter=${balAfter} received=${received} required=${PAID_GAME_PRICE_WEI}`);
+      console.log(`[start-paid] balance: before=${balBefore} after=${balAfter} received=${received} required=${PAID_GAME_PRICE_WEI}`);
       if (received < PAID_GAME_PRICE_WEI) {
-        return res.status(400).json({ ok: false, error: "Insufficient payment" });
+        return res.status(400).json({ ok: false, error: `recv:${received} need:${PAID_GAME_PRICE_WEI} blk:${blockNum} to:${(tx.to||'').slice(0,10)}` });
       }
     }
 
