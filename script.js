@@ -1445,11 +1445,12 @@ async function startBackendSession() {
 async function submitBackendRun(finalScore) {
     if (backendRunSubmitted || !BACKEND_URL) return;
     backendRunSubmitted = true; // set immediately to prevent double-submit
-    // If session is still starting (slow mobile network), wait up to 6s for it
+    // If session is still starting (slow mobile / Render cold start / paid-tx indexing),
+    // wait up to BACKEND_TIMEOUT_MS for it — otherwise coins awarded this run are lost.
     if (!backendSessionActive && backendSessionPromise) {
         await Promise.race([
             backendSessionPromise,
-            new Promise(r => setTimeout(r, 6000))
+            new Promise(r => setTimeout(r, BACKEND_TIMEOUT_MS))
         ]);
     }
     if (!backendSessionActive) {

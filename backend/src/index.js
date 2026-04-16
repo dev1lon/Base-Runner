@@ -175,10 +175,17 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
 
   try {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
-    const [tx, receipt] = await Promise.all([
-      provider.getTransaction(txHash),
-      provider.getTransactionReceipt(txHash)
-    ]);
+    // Retry a few times — backend RPC may lag behind the wallet RPC that confirmed the tx.
+    let tx = null;
+    let receipt = null;
+    for (let i = 0; i < 5; i++) {
+      [tx, receipt] = await Promise.all([
+        provider.getTransaction(txHash),
+        provider.getTransactionReceipt(txHash)
+      ]);
+      if (tx && receipt) break;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
 
     if (!tx || !receipt) {
       return res.status(400).json({ ok: false, error: "Transaction not found" });
