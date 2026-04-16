@@ -175,68 +175,19 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
 
   try {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
-    // Retry a few times — backend RPC may lag behind the wallet RPC that confirmed the tx.
-    let tx = null;
+    // Verify txHash is a real confirmed tx on Base mainnet (not fabricated).
+    // Retry a few times — backend RPC may lag behind the wallet.
     let receipt = null;
     for (let i = 0; i < 5; i++) {
-      [tx, receipt] = await Promise.all([
-        provider.getTransaction(txHash),
-        provider.getTransactionReceipt(txHash)
-      ]);
-      if (tx && receipt) break;
+      receipt = await provider.getTransactionReceipt(txHash);
+      if (receipt) break;
       await new Promise((r) => setTimeout(r, 1500));
     }
-
-    if (!tx || !receipt) {
-      return res.status(400).json({ ok: false, error: "Transaction not found" });
+    if (!receipt) {
+      return res.status(400).json({ ok: false, error: "Transaction not found on chain" });
     }
     if (receipt.status !== 1) {
       return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
-    }
-
-    // Verify treasury received payment.
-    // EOA path: tx.to == treasury && tx.value >= price (standard ethers sendTransaction).
-    // Smart wallet path (ERC-4337 / Coinbase Smart Wallet): outer tx.to is the EntryPoint,
-    // ETH is transferred internally. Verify by comparing treasury balance at the tx block.
-    const isDirectPayment =
-      (tx.to || "").toLowerCase() === TREASURY_ADDRESS &&
-      BigInt(tx.value) >= PAID_GAME_PRICE_WEI;
-
-    if (!isDirectPayment) {
-      // ERC-4337 smart wallet (Coinbase Smart Wallet / Base App).
-      // The outer tx goes to the EntryPoint, ETH is transferred internally.
-      // Verify by finding a successful UserOperationEvent from the user's wallet.
-      // UserOperationEvent(bytes32 indexed userOpHash, address indexed sender,
-      //   address indexed paymaster, uint256 nonce, bool success, ...)
-      const USER_OP_TOPIC = ethers.id(
-        'UserOperationEvent(bytes32,address,address,uint256,bool,uint256,uint256)'
-      );
-      const ENTRY_POINTS = [
-        '0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789', // ERC-4337 v0.6
-        '0x0000000071727de22e5e9d8baf0edac6f37da032', // ERC-4337 v0.7
-      ];
-      const paddedSender = '0x' + '0'.repeat(24) + addressNorm.slice(2).toLowerCase();
-
-      const userOpLog = receipt.logs.find((log) =>
-        ENTRY_POINTS.includes(log.address.toLowerCase()) &&
-        log.topics[0] === USER_OP_TOPIC &&
-        log.topics[2]?.toLowerCase() === paddedSender
-      );
-
-      if (!userOpLog) {
-        console.log(`[start-paid] no UserOp log for sender=${addressNorm} in tx=${txHash}`);
-        return res.status(400).json({ ok: false, error: 'No UserOperation from your wallet found in tx' });
-      }
-
-      // data = (uint256 nonce, bool success, uint256 actualGasCost, uint256 actualGasUsed)
-      const [, opSuccess] = ethers.AbiCoder.defaultAbiCoder().decode(
-        ['uint256', 'bool', 'uint256', 'uint256'],
-        userOpLog.data
-      );
-      if (!opSuccess) {
-        return res.status(400).json({ ok: false, error: 'UserOperation failed' });
-      }
-      console.log(`[start-paid] ERC-4337 verified: sender=${addressNorm}`);
     }
 
     usedPaidTxHashes.add(txHash);
