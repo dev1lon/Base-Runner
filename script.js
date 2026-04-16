@@ -1509,6 +1509,9 @@ function handleGameOver() {
     submitBackendRun(score);
     // Record on-chain in parallel (fire-and-forget)
     recordRunOnChain(score);
+    // Paid game is one-shot — consume the flag so any restart becomes a free game
+    isPaidGame = false;
+    pendingPaidTxHash = null;
 }
 
 function setGameOverState() {
