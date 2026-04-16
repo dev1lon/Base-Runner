@@ -193,11 +193,26 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
     if (receipt.status !== 1) {
       return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
     }
-    if ((tx.to || "").toLowerCase() !== TREASURY_ADDRESS) {
-      return res.status(400).json({ ok: false, error: "Wrong recipient" });
-    }
-    if (BigInt(tx.value) < PAID_GAME_PRICE_WEI) {
-      return res.status(400).json({ ok: false, error: "Insufficient payment" });
+
+    // Verify treasury received payment.
+    // EOA path: tx.to == treasury && tx.value >= price (standard ethers sendTransaction).
+    // Smart wallet path (ERC-4337 / Coinbase Smart Wallet): outer tx.to is the EntryPoint,
+    // ETH is transferred internally. Verify by comparing treasury balance at the tx block.
+    const isDirectPayment =
+      (tx.to || "").toLowerCase() === TREASURY_ADDRESS &&
+      BigInt(tx.value) >= PAID_GAME_PRICE_WEI;
+
+    if (!isDirectPayment) {
+      const blockNum = receipt.blockNumber;
+      const [balBefore, balAfter] = await Promise.all([
+        provider.getBalance(TREASURY_ADDRESS, blockNum - 1),
+        provider.getBalance(TREASURY_ADDRESS, blockNum)
+      ]);
+      const received = BigInt(balAfter) - BigInt(balBefore);
+      console.log(`[start-paid] smart-wallet check: balBefore=${balBefore} balAfter=${balAfter} received=${received} required=${PAID_GAME_PRICE_WEI}`);
+      if (received < PAID_GAME_PRICE_WEI) {
+        return res.status(400).json({ ok: false, error: "Insufficient payment" });
+      }
     }
 
     usedPaidTxHashes.add(txHash);
