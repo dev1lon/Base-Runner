@@ -14,7 +14,7 @@ const NFT_ABI = [
 ];
 
 function getContract() {
-  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://sepolia.base.org");
+  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
   return new ethers.Contract(process.env.NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
 }
 

@@ -1348,15 +1348,20 @@ function recordInput(type) {
 
 async function fetchGameConfig() {
     if (!BACKEND_URL) return;
-    try {
-        const res = await fetch(`${BACKEND_URL}/api/game-config`);
-        if (res.ok) {
-            const data = await res.json();
-            gameConfig.treasuryAddress = data.treasuryAddress || null;
-            gameConfig.paidGamePriceWei = data.paidGamePriceWei || "3000000000000";
+    // Retry with backoff — first call doubles as a cold-start warmup for Render's free tier.
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/game-config`);
+            if (res.ok) {
+                const data = await res.json();
+                gameConfig.treasuryAddress = data.treasuryAddress || null;
+                gameConfig.paidGamePriceWei = data.paidGamePriceWei || "3000000000000";
+                return;
+            }
+        } catch (e) {
+            if (attempt === 3) console.warn("Failed to fetch game config:", e);
         }
-    } catch (e) {
-        console.warn("Failed to fetch game config:", e);
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
     }
 }
 
@@ -2716,7 +2721,10 @@ async function handleCheckin() {
 
 // ============ Paid Game ============
 
+let payGameInFlight = false;
+
 async function handlePayGame() {
+    if (payGameInFlight) return;
     if (!walletReady || !walletAddress || !authToken) {
         updateWalletUI();
         return;
@@ -2729,6 +2737,7 @@ async function handlePayGame() {
         alert("Paid games are not available yet.");
         return;
     }
+    payGameInFlight = true;
 
     if (payGameButton) {
         payGameButton.disabled = true;
@@ -2800,6 +2809,7 @@ async function handlePayGame() {
             alert("Payment failed. Please try again.");
         }
     } finally {
+        payGameInFlight = false;
         if (payGameButton) {
             payGameButton.disabled = false;
             payGameButton.textContent = "Pay Game · $0.01";
