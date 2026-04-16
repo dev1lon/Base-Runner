@@ -3055,6 +3055,7 @@ function updateStartButtonState() {
     startButton.textContent = 'Free Game';
 
     if (payGameButton) {
+        payGameButton.disabled = needsMint;
         if (needsMint) {
             payGameButton.classList.add('btn-locked');
         } else {
