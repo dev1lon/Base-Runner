@@ -1296,13 +1296,15 @@ body.w3m-modal-open w3m-modal {
     color: var(--color-warning) !important;
 }
 
-/* Start button disabled state */
-#start-button.btn-locked {
+/* Start/Pay button locked state */
+#start-button.btn-locked,
+#pay-game-button.btn-locked {
     opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;
 }
 
-#start-button.btn-locked::after {
+#start-button.btn-locked::after,
+#pay-game-button.btn-locked::after {
     content: ' 🔒';
 }
