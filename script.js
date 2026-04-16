@@ -1366,11 +1366,12 @@ async function fetchGameConfig() {
 }
 
 async function startPaidBackendSession(txHash) {
+    console.log('[paid-session] starting with txHash:', txHash);
     const savedStartMs = backendSessionStartMs; // set by restartGame() before this call
     resetBackendSession();
     backendSessionStartMs = savedStartMs;
     isPaidGame = true; // restore after reset — must stay true during the game
-    if (!BACKEND_URL || !authToken) return false;
+    if (!BACKEND_URL || !authToken) { console.warn('[paid-session] no BACKEND_URL or authToken'); return false; }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
     backendSessionPromise = (async () => {
@@ -1386,6 +1387,7 @@ async function startPaidBackendSession(txHash) {
             throw new Error(err.error || `Backend start-paid failed: ${response.status}`);
         }
         const data = await response.json();
+        console.log('[paid-session] started ok, sessionId:', data.sessionId);
         backendSessionId = data.sessionId || null;
         backendSeed = data.seed || null;
         // backendSessionStartMs already set in restartGame() — don't overwrite
@@ -1394,7 +1396,7 @@ async function startPaidBackendSession(txHash) {
         rng = backendSeed ? createRng(backendSeed) : null;
         return backendSessionActive;
     } catch (err) {
-        console.warn("Paid session start failed", err);
+        console.warn('[paid-session] failed:', err.message);
         backendSessionActive = false;
         // don't call resetBackendSession — preserves backendSessionPromise so submitBackendRun can detect completion
         return false;
@@ -1450,6 +1452,7 @@ async function startBackendSession() {
 async function submitBackendRun(finalScore) {
     if (backendRunSubmitted || !BACKEND_URL) return;
     backendRunSubmitted = true; // set immediately to prevent double-submit
+    console.log('[submit] start, paid:', isPaidGame, 'sessionActive:', backendSessionActive, 'promise:', !!backendSessionPromise);
     // If session is still starting (slow mobile / Render cold start / paid-tx indexing),
     // wait up to BACKEND_TIMEOUT_MS for it — otherwise coins awarded this run are lost.
     if (!backendSessionActive && backendSessionPromise) {
@@ -1458,7 +1461,9 @@ async function submitBackendRun(finalScore) {
             new Promise(r => setTimeout(r, BACKEND_TIMEOUT_MS))
         ]);
     }
+    console.log('[submit] after wait, sessionActive:', backendSessionActive, 'sessionId:', backendSessionId);
     if (!backendSessionActive) {
+        console.warn('[submit] no active session, skipping');
         return;
     }
     const gameElapsedMs = Math.round(performance.now() - backendSessionStartMs);
@@ -1468,6 +1473,7 @@ async function submitBackendRun(finalScore) {
         inputLog: backendInputLog,
         gameElapsedMs: gameElapsedMs
     };
+    console.log('[submit] sending score:', finalScore, 'elapsed:', gameElapsedMs);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
     try {
@@ -1485,6 +1491,7 @@ async function submitBackendRun(finalScore) {
             throw new Error(`submit ${response.status}: ${errBody.error || ''}`);
         }
         const data = await response.json();
+        console.log('[submit] response:', JSON.stringify(data));
         if (data && data.ok) {
             if (Number.isFinite(data.coinBalance)) {
                 coinCount = data.coinBalance;
@@ -1496,7 +1503,7 @@ async function submitBackendRun(finalScore) {
             }
         }
     } catch (err) {
-        console.warn("Backend submit failed:", err.message);
+        console.warn('[submit] failed:', err.message);
     } finally {
         clearTimeout(timeoutId);
     }
