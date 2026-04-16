@@ -1453,6 +1453,8 @@ async function submitBackendRun(finalScore) {
     if (backendRunSubmitted || !BACKEND_URL) return;
     backendRunSubmitted = true; // set immediately to prevent double-submit
     console.log('[submit] start, paid:', isPaidGame, 'sessionActive:', backendSessionActive, 'promise:', !!backendSessionPromise);
+    const statusEl = document.getElementById('game-over-submit-status');
+    if (statusEl) statusEl.textContent = 'saving…';
     // If session is still starting (slow mobile / Render cold start / paid-tx indexing),
     // wait up to BACKEND_TIMEOUT_MS for it — otherwise coins awarded this run are lost.
     if (!backendSessionActive && backendSessionPromise) {
@@ -1464,6 +1466,8 @@ async function submitBackendRun(finalScore) {
     console.log('[submit] after wait, sessionActive:', backendSessionActive, 'sessionId:', backendSessionId);
     if (!backendSessionActive) {
         console.warn('[submit] no active session, skipping');
+        const el = document.getElementById('game-over-submit-status');
+        if (el) el.textContent = 'session failed — coins not saved';
         return;
     }
     const gameElapsedMs = Math.round(performance.now() - backendSessionStartMs);
@@ -1492,6 +1496,7 @@ async function submitBackendRun(finalScore) {
         }
         const data = await response.json();
         console.log('[submit] response:', JSON.stringify(data));
+        const statusEl = document.getElementById('game-over-submit-status');
         if (data && data.ok) {
             if (Number.isFinite(data.coinBalance)) {
                 coinCount = data.coinBalance;
@@ -1501,9 +1506,14 @@ async function submitBackendRun(finalScore) {
                 bestScore = data.bestScore;
                 localStorage.setItem("baseapp_runner_best_score", String(bestScore));
             }
+            if (statusEl) statusEl.textContent = `+${data.coinsAwarded ?? 0} coins saved (balance: ${data.coinBalance ?? 0})`;
+        } else {
+            if (statusEl) statusEl.textContent = `submit error: ${data?.error || 'unknown'}`;
         }
     } catch (err) {
         console.warn('[submit] failed:', err.message);
+        const statusEl = document.getElementById('game-over-submit-status');
+        if (statusEl) statusEl.textContent = `submit failed: ${err.message}`;
     } finally {
         clearTimeout(timeoutId);
     }
