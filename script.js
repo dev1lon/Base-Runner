@@ -1398,6 +1398,8 @@ async function startPaidBackendSession(txHash) {
     } catch (err) {
         console.warn('[paid-session] failed:', err.message);
         backendSessionActive = false;
+        // Store error for game-over display
+        window._paidSessionError = err.message;
         // don't call resetBackendSession — preserves backendSessionPromise so submitBackendRun can detect completion
         return false;
     } finally {
@@ -1468,7 +1470,7 @@ async function submitBackendRun(finalScore) {
     console.log('[submit] after wait, sessionActive:', backendSessionActive, 'sessionId:', backendSessionId);
     if (!backendSessionActive) {
         console.warn('[submit] no active session, skipping');
-        _setStatus('session failed');
+        _setStatus('sess fail: ' + (window._paidSessionError || 'no session').slice(0, 50));
         return;
     }
     const gameElapsedMs = Math.round(performance.now() - backendSessionStartMs);
