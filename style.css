@@ -989,7 +989,10 @@ body.w3m-modal-open w3m-modal {
 .collection-card {
     max-width: 400px;
     width: 90%;
-    margin-top: 1.5rem;
+    max-height: calc(100svh - 80px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .collection-title {
@@ -1044,7 +1047,8 @@ body.w3m-modal-open w3m-modal {
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem;
-    max-height: 55vh;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
 }
 
