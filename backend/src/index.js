@@ -58,7 +58,7 @@ const usedPaidTxHashes = new Set();
 // USDC on Base mainnet
 const USDC_CONTRACT = (process.env.USDC_CONTRACT || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").toLowerCase();
 const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
-const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500]);
+const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000]);
 const USDC_TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
 const usedCoinPurchaseTxHashes = new Set();
 
