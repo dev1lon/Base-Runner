@@ -1043,7 +1043,7 @@ body.w3m-modal-open w3m-modal {
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem;
-    max-height: 60vh;
+    max-height: 45vh;
     overflow-y: auto;
 }
 
