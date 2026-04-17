@@ -3026,7 +3026,7 @@ async function handleBuyCoinsPackage(coins) {
     try {
         const provider = getEthereumProvider();
         const usdcIface = new ethers.Interface(["function transfer(address,uint256) returns (bool)"]);
-        const callData = usdcIface.encodeFunctionData("transfer", [gameConfig.treasuryAddress, usdcAmount]);
+        const callData = usdcIface.encodeFunctionData("transfer", [gameConfig.treasuryAddress, usdcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
         let txHash;
 
         // Try EIP-5792 wallet_sendCalls (with paymaster for gas sponsorship)
@@ -3061,7 +3061,9 @@ async function handleBuyCoinsPackage(coins) {
             const usdcContract = new ethers.Contract(USDC_CONTRACT,
                 ["function transfer(address,uint256) returns (bool)"], signer);
             if (statusEl) statusEl.textContent = 'Sending…';
-            const tx = await usdcContract.transfer(gameConfig.treasuryAddress, usdcAmount);
+            const populated = await usdcContract.transfer.populateTransaction(gameConfig.treasuryAddress, usdcAmount);
+            populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
+            const tx = await signer.sendTransaction(populated);
             if (statusEl) statusEl.textContent = 'Confirming…';
             const receipt = await tx.wait();
             txHash = receipt.hash;
