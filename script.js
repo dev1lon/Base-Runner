@@ -2782,7 +2782,7 @@ async function handlePayGame() {
                         version: '1.0',
                         chainId: '0x2105',
                         from: walletAddress,
-                        calls: [{ to: gameConfig.treasuryAddress, value: priceHex, data: BUILDER_CODE_SUFFIX }],
+                        calls: [{ to: gameConfig.treasuryAddress, value: priceHex, data: '0x' }],
                         capabilities: {}
                     }]
                 });
@@ -2804,7 +2804,7 @@ async function handlePayGame() {
         if (!txHash) {
             const ethersProvider = new ethers.BrowserProvider(provider);
             const signer = await ethersProvider.getSigner();
-            const tx = await signer.sendTransaction({ to: gameConfig.treasuryAddress, value: BigInt(gameConfig.paidGamePriceWei), data: BUILDER_CODE_SUFFIX });
+            const tx = await signer.sendTransaction({ to: gameConfig.treasuryAddress, value: BigInt(gameConfig.paidGamePriceWei) });
             if (payGameButton) payGameButton.textContent = "Confirming...";
             const receipt = await tx.wait();
             txHash = receipt.hash || tx.hash;
