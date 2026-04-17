@@ -2782,7 +2782,7 @@ async function handlePayGame() {
                         version: '1.0',
                         chainId: '0x2105',
                         from: walletAddress,
-                        calls: [{ to: gameConfig.treasuryAddress, value: priceHex, data: BUILDER_CODE_SUFFIX }],
+                        calls: [{ to: gameConfig.treasuryAddress, value: priceHex, data: '0x' }],
                         capabilities: {}
                     }]
                 });
