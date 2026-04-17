@@ -217,6 +217,10 @@ const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 25000;
 const ALLOW_GUEST_PLAY = false;
 
+// USDC on Base mainnet
+const USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const USDC_PER_COIN = 100_000n; // 0.1 USDC in 6-decimal units
+
 // NFT Contract ABI
 const NFT_ABI = [
     "function mintFreeCharacter() external",
@@ -2195,6 +2199,23 @@ window.onload = function() {
         }, { passive: false });
     }
     
+    // Buy Coins modal
+    const buyCoinsBtn = document.getElementById('buy-coins-btn');
+    const buyCoinsCloseBtn = document.getElementById('buy-coins-close-btn');
+    if (buyCoinsBtn) {
+        buyCoinsBtn.addEventListener('click', openBuyCoinsModal);
+        buyCoinsBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); openBuyCoinsModal(); }, { passive: false });
+    }
+    if (buyCoinsCloseBtn) {
+        buyCoinsCloseBtn.addEventListener('click', closeBuyCoinsModal);
+        buyCoinsCloseBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); closeBuyCoinsModal(); }, { passive: false });
+    }
+    document.querySelectorAll('.buy-coins-package').forEach(btn => {
+        const coins = parseInt(btn.dataset.coins);
+        btn.addEventListener('click', () => handleBuyCoinsPackage(coins));
+        btn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); handleBuyCoinsPackage(coins); }, { passive: false });
+    });
+
     // Character selection/purchase buttons (for all characters)
     document.querySelectorAll('.char-select-btn').forEach(btn => {
         const card = btn.closest('.character-card');
@@ -2965,6 +2986,120 @@ async function cancelPurchaseOnBackend(nonce) {
 // Check if user needs to claim free character before playing
 function needsFreeClaim() {
     return walletReady && !hasFreeMint;
+}
+
+// ── Buy Coins ────────────────────────────────────────────────────────────────
+
+function openBuyCoinsModal() {
+    const el = document.getElementById('overlay-buy-coins');
+    if (el) el.classList.remove('hidden');
+    const status = document.getElementById('buy-coins-status');
+    if (status) status.textContent = '';
+    document.querySelectorAll('.buy-coins-package').forEach(btn => {
+        btn.disabled = false;
+        const coins = btn.dataset.coins;
+        btn.querySelector('.pkg-coins').textContent = coins;
+    });
+}
+
+function closeBuyCoinsModal() {
+    const el = document.getElementById('overlay-buy-coins');
+    if (el) el.classList.add('hidden');
+}
+
+async function handleBuyCoinsPackage(coins) {
+    if (!walletReady || !walletAddress || !authToken) return;
+    if (!gameConfig.treasuryAddress) {
+        alert('Store not available yet.');
+        return;
+    }
+
+    const usdcAmount = USDC_PER_COIN * BigInt(coins);
+    const statusEl = document.getElementById('buy-coins-status');
+    const allPkgBtns = document.querySelectorAll('.buy-coins-package');
+    const closeBtn = document.getElementById('buy-coins-close-btn');
+
+    allPkgBtns.forEach(b => { b.disabled = true; });
+    if (closeBtn) closeBtn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Confirm in wallet…';
+
+    try {
+        const provider = getEthereumProvider();
+        const usdcIface = new ethers.Interface(["function transfer(address,uint256) returns (bool)"]);
+        const callData = usdcIface.encodeFunctionData("transfer", [gameConfig.treasuryAddress, usdcAmount]);
+        let txHash;
+
+        // Try EIP-5792 wallet_sendCalls (with paymaster for gas sponsorship)
+        if (provider?.request) {
+            try {
+                const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+                    ? { paymasterService: { url: PAYMASTER_URL } }
+                    : {};
+                const raw = await provider.request({
+                    method: 'wallet_sendCalls',
+                    params: [{
+                        version: '1.0',
+                        chainId: '0x2105',
+                        from: walletAddress,
+                        calls: [{ to: USDC_CONTRACT, value: '0x0', data: callData }],
+                        capabilities: pmCaps
+                    }]
+                });
+                const callsId = extractCallsId(raw);
+                if (!callsId) throw new Error('wallet_sendCalls returned no id');
+                if (statusEl) statusEl.textContent = 'Confirming…';
+                txHash = await waitForCallsTxHash(provider, callsId);
+            } catch (e) {
+                if (e.code !== -32601) throw e;
+            }
+        }
+
+        // Fallback: regular ethers USDC transfer
+        if (!txHash) {
+            const ethersProvider = new ethers.BrowserProvider(provider);
+            const signer = await ethersProvider.getSigner();
+            const usdcContract = new ethers.Contract(USDC_CONTRACT,
+                ["function transfer(address,uint256) returns (bool)"], signer);
+            if (statusEl) statusEl.textContent = 'Sending…';
+            const tx = await usdcContract.transfer(gameConfig.treasuryAddress, usdcAmount);
+            if (statusEl) statusEl.textContent = 'Confirming…';
+            const receipt = await tx.wait();
+            txHash = receipt.hash;
+        }
+
+        if (statusEl) statusEl.textContent = 'Saving…';
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/shop/buy-coins`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+                body: JSON.stringify({ coins, txHash }),
+                signal: controller.signal
+            });
+            const data = await response.json();
+            if (data.ok) {
+                coinCount = data.newBalance;
+                saveCoins();
+                updateCollectionCoins();
+                if (statusEl) statusEl.textContent = `+${data.coinsAdded} coins added!`;
+                setTimeout(closeBuyCoinsModal, 1500);
+            } else {
+                if (statusEl) statusEl.textContent = data.error || 'Failed to save coins';
+                allPkgBtns.forEach(b => { b.disabled = false; });
+            }
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    } catch (err) {
+        console.warn('Buy coins failed:', err);
+        const msg = err.code === 4001 || err.code === 'ACTION_REJECTED' ? 'Cancelled' : (err.shortMessage || err.message || 'Failed');
+        if (statusEl) statusEl.textContent = msg;
+        allPkgBtns.forEach(b => { b.disabled = false; });
+    } finally {
+        if (closeBtn) closeBtn.disabled = false;
+    }
 }
 
 // ============ Collection Functions ============

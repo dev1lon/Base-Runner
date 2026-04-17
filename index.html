@@ -218,9 +218,12 @@
             <div class="card-corner card-corner-br"></div>
             <div class="card-header">
                 <h1 class="card-title collection-title">COLLECTION</h1>
-                <div class="collection-coins">
-                    <img src="assets/eth.png" alt="coin" class="collection-coin-icon">
-                    <span id="collection-coins-count">0</span>
+                <div class="collection-header-row">
+                    <div class="collection-coins">
+                        <img src="assets/eth.png" alt="coin" class="collection-coin-icon">
+                        <span id="collection-coins-count">0</span>
+                    </div>
+                    <button id="buy-coins-btn" class="btn btn-primary btn-sm">+ Buy</button>
                 </div>
             </div>
             <div class="card-body collection-body">
@@ -359,6 +362,50 @@
                 <p class="collection-hint" id="collection-hint"></p>
             </div>
             <button id="collection-close-btn" class="btn btn-ghost">Close</button>
+            <div class="card-ground"></div>
+        </div>
+    </div>
+
+    <!-- BUY COINS MODAL -->
+    <div id="overlay-buy-coins" class="overlay overlay-dimmed hidden">
+        <div class="glass-card buy-coins-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h2 class="card-title">BUY COINS</h2>
+                <p class="buy-coins-subtitle">1 coin = $0.10 USDC</p>
+            </div>
+            <div class="buy-coins-grid">
+                <button class="buy-coins-package" data-coins="10">
+                    <span class="pkg-coins">10</span>
+                    <img src="assets/eth.png" alt="coins" class="pkg-icon">
+                    <span class="pkg-price">$1.00</span>
+                </button>
+                <button class="buy-coins-package" data-coins="20">
+                    <span class="pkg-coins">20</span>
+                    <img src="assets/eth.png" alt="coins" class="pkg-icon">
+                    <span class="pkg-price">$2.00</span>
+                </button>
+                <button class="buy-coins-package" data-coins="50">
+                    <span class="pkg-coins">50</span>
+                    <img src="assets/eth.png" alt="coins" class="pkg-icon">
+                    <span class="pkg-price">$5.00</span>
+                </button>
+                <button class="buy-coins-package" data-coins="100">
+                    <span class="pkg-coins">100</span>
+                    <img src="assets/eth.png" alt="coins" class="pkg-icon">
+                    <span class="pkg-price">$10.00</span>
+                </button>
+                <button class="buy-coins-package" data-coins="500">
+                    <span class="pkg-coins">500</span>
+                    <img src="assets/eth.png" alt="coins" class="pkg-icon">
+                    <span class="pkg-price">$50.00</span>
+                </button>
+            </div>
+            <p id="buy-coins-status" class="buy-coins-status"></p>
+            <button id="buy-coins-close-btn" class="btn btn-ghost">Cancel</button>
             <div class="card-ground"></div>
         </div>
     </div>

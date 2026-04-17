@@ -24,7 +24,7 @@ const {
   markSessionUsed,
   cleanupSessions
 } = require("./modules/session/sessionStore");
-const { getOrCreateUser } = require("./modules/user/userRepo");
+const { getOrCreateUser, addCoins } = require("./modules/user/userRepo");
 const { applyScore } = require("./modules/user/userService");
 const {
   getCharacters,
@@ -54,6 +54,13 @@ const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "300000000
 
 // In-memory set to prevent reusing the same tx for multiple paid sessions
 const usedPaidTxHashes = new Set();
+
+// USDC on Base mainnet
+const USDC_CONTRACT = (process.env.USDC_CONTRACT || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").toLowerCase();
+const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
+const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500]);
+const USDC_TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
+const usedCoinPurchaseTxHashes = new Set();
 
 if (ALLOWED_ORIGIN === "*") {
   console.warn("⚠️  ALLOWED_ORIGIN is '*' — set a specific domain for production!");
@@ -468,6 +475,60 @@ app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Claim free error:", err);
     res.status(500).json({ ok: false, error: "Failed to mark claim" });
+  }
+});
+
+// Buy coins with USDC
+app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
+  const { coins, txHash } = req.body || {};
+  if (!coins || !txHash) {
+    return res.status(400).json({ ok: false, error: "Missing coins or txHash" });
+  }
+  if (!VALID_COIN_PACKAGES.has(Number(coins))) {
+    return res.status(400).json({ ok: false, error: "Invalid coin package" });
+  }
+  if (!TREASURY_ADDRESS) {
+    return res.status(503).json({ ok: false, error: "Store not configured" });
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ ok: false, error: "Invalid txHash" });
+  }
+  if (usedCoinPurchaseTxHashes.has(txHash)) {
+    return res.status(400).json({ ok: false, error: "Transaction already used" });
+  }
+
+  try {
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
+    let receipt = null;
+    for (let i = 0; i < 5; i++) {
+      receipt = await provider.getTransactionReceipt(txHash);
+      if (receipt) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    if (!receipt) return res.status(400).json({ ok: false, error: "Transaction not found on chain" });
+    if (receipt.status !== 1) return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
+
+    // Verify USDC Transfer to treasury for expected amount
+    const expectedAmount = USDC_PER_COIN * BigInt(coins);
+    const treasuryTopic = "0x" + TREASURY_ADDRESS.slice(2).padStart(64, "0");
+    const transferLog = receipt.logs.find(log =>
+      log.address.toLowerCase() === USDC_CONTRACT &&
+      log.topics[0] === USDC_TRANSFER_TOPIC &&
+      log.topics[2]?.toLowerCase() === treasuryTopic
+    );
+    if (!transferLog) {
+      return res.status(400).json({ ok: false, error: "USDC transfer to treasury not found" });
+    }
+    if (BigInt(transferLog.data) < expectedAmount) {
+      return res.status(400).json({ ok: false, error: "Insufficient USDC payment" });
+    }
+
+    usedCoinPurchaseTxHashes.add(txHash);
+    const updatedUser = await addCoins(req.user.address, Number(coins));
+    res.json({ ok: true, coinsAdded: Number(coins), newBalance: updatedUser?.coins ?? 0 });
+  } catch (err) {
+    console.error("Buy coins error:", err);
+    res.status(500).json({ ok: false, error: "Failed to process purchase" });
   }
 });
 

@@ -996,6 +996,24 @@ body.w3m-modal-open w3m-modal {
     margin-bottom: 0.25rem !important;
 }
 
+.collection-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.btn-sm {
+    padding: 0.3rem 0.75rem;
+    font-size: var(--font-size-sm);
+    border-radius: var(--radius-lg);
+    min-height: unset;
+    height: auto;
+    line-height: 1.4;
+}
+
 .collection-coins {
     display: flex;
     align-items: center;
@@ -1307,4 +1325,83 @@ body.w3m-modal-open w3m-modal {
 #start-button.btn-locked::after,
 #pay-game-button.btn-locked::after {
     content: ' 🔒';
+}
+
+/* ============================================
+   BUY COINS MODAL
+   ============================================ */
+
+.buy-coins-card {
+    max-width: 360px;
+    width: 90%;
+}
+
+.buy-coins-subtitle {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    margin: 0.25rem 0 0;
+}
+
+.buy-coins-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.65rem;
+    padding: 0.5rem 1rem 0.25rem;
+    width: 100%;
+}
+
+.buy-coins-package {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    background: var(--color-white);
+    border: 2px solid rgba(74, 144, 217, 0.25);
+    border-radius: 1rem;
+    padding: 0.65rem 0.5rem;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    box-shadow: var(--shadow-sm);
+}
+
+.buy-coins-package:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.buy-coins-package:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.buy-coins-package:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.buy-coins-package .pkg-coins {
+    font-weight: 800;
+    font-size: var(--font-size-lg);
+    color: var(--color-text);
+    line-height: 1;
+}
+
+.buy-coins-package .pkg-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.buy-coins-package .pkg-price {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    font-weight: 600;
+}
+
+.buy-coins-status {
+    min-height: 1.25rem;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    text-align: center;
+    padding: 0.25rem 1rem 0;
+    margin: 0;
 }
