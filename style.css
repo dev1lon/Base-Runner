@@ -1006,7 +1006,7 @@ body.w3m-modal-open w3m-modal {
 }
 
 .btn-sm {
-    padding: 0.315rem 0.75rem;
+    padding: 0.331rem 0.75rem;
     font-size: var(--font-size-sm);
     border-radius: var(--radius-lg);
     min-height: unset;
