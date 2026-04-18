@@ -50,8 +50,7 @@ async function verifySignature(address, message, signature) {
 function signJwt(address) {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET is missing");
-  const expiresIn = process.env.JWT_EXPIRES || "7d";
-  return jwt.sign({ address }, secret, { expiresIn });
+  return jwt.sign({ address }, secret);
 }
 
 function verifyJwt(token) {
