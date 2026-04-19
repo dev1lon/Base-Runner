@@ -320,6 +320,7 @@ let walletAddress = null;
 let walletChainId = null;
 let walletReady = false;
 let isConnectingWallet = false;
+let connectAttemptId = 0;
 let isDetectingWallet = true; // Start true, set false after provider check
 let walletErrorMessage = "";
 let walletInfoMessage = "";
@@ -955,15 +956,14 @@ async function connectWithInjected(eip6963Provider) {
         return;
     }
 
+    const myAttempt = ++connectAttemptId;
     try {
         activeWalletType = 'injected';
         isConnectingWallet = true;
         updateWalletUI();
 
-        const accounts = await Promise.race([
-            provider.request({ method: "eth_requestAccounts" }),
-            new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('Connection timeout'), { code: 'TIMEOUT' })), 60000))
-        ]);
+        const accounts = await provider.request({ method: "eth_requestAccounts" });
+        if (myAttempt !== connectAttemptId) return; // user clicked connect again, ignore this stale response
         walletAddress = accounts[0] || null;
 
         // Get chain id
@@ -1005,11 +1005,10 @@ async function connectWithInjected(eip6963Provider) {
         isConnectingWallet = false;
         updateWalletUI();
     } catch (err) {
+        if (myAttempt !== connectAttemptId) return; // stale — a newer attempt is already running
         console.error("Injected wallet connect error:", err);
         if (err.code === 4001 || (err.message && err.message.toLowerCase().includes('reject'))) {
             setWalletError("Cancelled in wallet.");
-        } else if (err.code === 'TIMEOUT') {
-            setWalletError("Timed out. Try again.");
         } else {
             setWalletError(err.message || "Connection failed");
         }
@@ -1808,9 +1807,16 @@ async function connectWallet() {
         await handleNetworkSwitch();
         return;
     }
-    
-    // Show wallet selector (Coinbase recommended)
-    if (isConnectingWallet) return;
+
+    // If a previous attempt is still pending (e.g. wallet never fired reject),
+    // invalidate it and let the user try again immediately.
+    if (isConnectingWallet) {
+        connectAttemptId++;
+        isConnectingWallet = false;
+        activeWalletType = null;
+        clearWalletMessages();
+        updateWalletUI();
+    }
     showWalletSelector();
 }
 
