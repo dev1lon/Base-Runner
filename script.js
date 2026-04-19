@@ -571,9 +571,74 @@ function discoverEIP6963Providers() {
     });
 }
 
-// Show wallet selection modal
+// Show wallet type selection first (Smart Wallet vs Standard), then wallet picker
 async function showWalletSelector() {
-    // Remove existing modal if any
+    const existingModal = document.getElementById('wallet-modal');
+    if (existingModal) existingModal.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'wallet-modal';
+    modal.innerHTML = `
+        <div class="wallet-modal-backdrop"></div>
+        <div class="wallet-modal-content">
+            <h3>Connect Wallet</h3>
+            <div class="wallet-options">
+                <button type="button" class="wallet-option" id="btn-smart-wallet">
+                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
+                    <span>Smart Wallet</span>
+                    <span class="wallet-badge">Gas free</span>
+                </button>
+                <button type="button" class="wallet-option" id="btn-standard-wallet">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Standard" width="32" height="32">
+                    <span>Standard Wallet</span>
+                    <span class="wallet-badge-secondary">MetaMask & others</span>
+                </button>
+            </div>
+            <button type="button" class="wallet-modal-close">Cancel</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    if (!document.getElementById('wallet-modal-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'wallet-modal-styles';
+        styles.textContent = `
+            #wallet-modal { position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;display:flex;align-items:center;justify-content:center; }
+            .wallet-modal-backdrop { position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:1; }
+            .wallet-modal-content { position:relative;z-index:2;background:linear-gradient(180deg,#1a1a2e 0%,#16213e 100%);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;min-width:320px;max-width:90%;box-shadow:0 20px 40px rgba(0,0,0,0.4); }
+            .wallet-modal-content h3 { color:white;margin:0 0 20px 0;text-align:center;font-size:18px; }
+            .wallet-options { display:flex;flex-direction:column;gap:12px; }
+            .wallet-option { display:flex;align-items:center;gap:12px;padding:16px 18px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:white;cursor:pointer;font-size:16px;width:100%;text-align:left;touch-action:manipulation; }
+            .wallet-option:hover,.wallet-option:active { background:rgba(255,255,255,0.15);border-color:#0052ff; }
+            .wallet-option img { border-radius:8px;width:32px;height:32px; }
+            .wallet-badge { margin-left:auto;font-size:11px;padding:3px 8px;background:#0052ff;border-radius:4px;color:white; }
+            .wallet-badge-secondary { margin-left:auto;font-size:11px;padding:3px 8px;background:rgba(255,255,255,0.2);border-radius:4px;color:white; }
+            .wallet-modal-close { width:100%;margin-top:16px;padding:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:rgba(255,255,255,0.7);cursor:pointer;font-size:15px;touch-action:manipulation; }
+            .wallet-modal-close:hover,.wallet-modal-close:active { background:rgba(255,255,255,0.1); }
+        `;
+        document.head.appendChild(styles);
+    }
+
+    const closeModal = (e) => { if (e) { e.preventDefault(); e.stopPropagation(); } modal.remove(); };
+    modal.querySelector('.wallet-modal-backdrop').addEventListener('click', closeModal);
+    modal.querySelector('.wallet-modal-close').addEventListener('click', closeModal);
+    modal.querySelector('.wallet-modal-close').addEventListener('touchend', closeModal);
+
+    // Smart Wallet button
+    const smartBtn = modal.querySelector('#btn-smart-wallet');
+    const handleSmart = (e) => { e.preventDefault(); e.stopPropagation(); modal.remove(); connectWithCoinbaseSmartWallet(); };
+    smartBtn.addEventListener('click', handleSmart);
+    smartBtn.addEventListener('touchend', handleSmart);
+
+    // Standard Wallet button — show full wallet picker
+    const standardBtn = modal.querySelector('#btn-standard-wallet');
+    const handleStandard = (e) => { e.preventDefault(); e.stopPropagation(); modal.remove(); showStandardWalletPicker(); };
+    standardBtn.addEventListener('click', handleStandard);
+    standardBtn.addEventListener('touchend', handleStandard);
+}
+
+// Full wallet picker (MetaMask, WalletConnect, etc.)
+async function showStandardWalletPicker() {
     const existingModal = document.getElementById('wallet-modal');
     if (existingModal) existingModal.remove();
 
@@ -1569,21 +1634,20 @@ function updateWalletUI() {
     walletReady = walletConnected && walletAuthenticated;
     const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
 
-    // Update connect buttons state
-    const connectBusy = isDetectingWallet || isConnectingWallet || authInProgress;
+    // Update connect button state and text - always enabled (we have universal options)
     if (connectButton) {
-        connectButton.disabled = connectBusy;
+        connectButton.disabled = isDetectingWallet || isConnectingWallet || authInProgress;
         if (isDetectingWallet) {
             setConnectButtonText("Loading...");
-        } else if (isConnectingWallet || authInProgress) {
+        } else if (isConnectingWallet) {
             setConnectButtonText("Connecting...");
+        } else if (authInProgress) {
+            setConnectButtonText("Signing...");
+        } else if (isConnected && !isOnBase) {
+            setConnectButtonText("Switch Network");
         } else {
-            setConnectButtonText("Smart Wallet");
+            setConnectButtonText("Connect Wallet");
         }
-    }
-    if (connectStandardBtn) {
-        connectStandardBtn.disabled = connectBusy;
-        connectStandardBtn.textContent = connectBusy ? "Connecting..." : "Standard Wallet";
     }
 
     // Update status message
@@ -2083,7 +2147,7 @@ window.onload = function() {
     overlayMenu = document.getElementById("overlay-menu");
     overlayPause = document.getElementById("overlay-pause");
     pauseButton = document.getElementById("pause-button");
-    connectButton = document.getElementById("connect-smart-btn");
+    connectButton = document.getElementById("connect-button");
     connectStandardBtn = document.getElementById("connect-standard-btn");
     walletStatus = document.getElementById("wallet-status");
     walletAddressDisplay = document.getElementById("wallet-address");
@@ -2242,16 +2306,12 @@ window.onload = function() {
         }, { passive: false });
     }
     if (connectButton) {
-        // Smart Wallet — direct Coinbase Smart Wallet connection
-        const handleSmartWallet = (e) => { e.stopPropagation(); e.preventDefault(); if (!connectButton.disabled) connectWithCoinbaseSmartWallet(); };
-        connectButton.addEventListener("click", handleSmartWallet);
-        connectButton.addEventListener("touchstart", handleSmartWallet, { passive: false });
-    }
-    if (connectStandardBtn) {
-        // Standard Wallet — opens wallet selector modal
-        const handleStandardWallet = (e) => { e.stopPropagation(); e.preventDefault(); connectWallet(); };
-        connectStandardBtn.addEventListener("click", handleStandardWallet);
-        connectStandardBtn.addEventListener("touchstart", handleStandardWallet, { passive: false });
+        connectButton.addEventListener("click", connectWallet);
+        connectButton.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            connectWallet();
+        }, { passive: false });
     }
     if (checkinButton) {
         checkinButton.addEventListener("click", handleCheckin);
