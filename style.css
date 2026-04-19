@@ -720,6 +720,26 @@ body {
     text-align: center;
 }
 
+.connect-wallet-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.connect-wallet-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+}
+
+.connect-wallet-hint {
+    margin: -0.25rem 0 0.5rem;
+    font-size: var(--font-size-xs);
+    color: var(--color-gray-400);
+    text-align: center;
+}
+
 .helper-text {
     margin: 0;
     font-size: var(--font-size-sm);

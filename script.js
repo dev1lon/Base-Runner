@@ -282,6 +282,7 @@ let overlayPause;
 let overlayCollection;
 let pauseButton;
 let connectButton;
+let connectStandardBtn;
 let walletStatus;
 let walletAddressDisplay;
 let startButton;
@@ -1568,20 +1569,21 @@ function updateWalletUI() {
     walletReady = walletConnected && walletAuthenticated;
     const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
 
-    // Update connect button state and text - always enabled (we have universal options)
+    // Update connect buttons state
+    const connectBusy = isDetectingWallet || isConnectingWallet || authInProgress;
     if (connectButton) {
-        connectButton.disabled = isDetectingWallet || isConnectingWallet || authInProgress;
+        connectButton.disabled = connectBusy;
         if (isDetectingWallet) {
             setConnectButtonText("Loading...");
-        } else if (isConnectingWallet) {
+        } else if (isConnectingWallet || authInProgress) {
             setConnectButtonText("Connecting...");
-        } else if (authInProgress) {
-            setConnectButtonText("Signing...");
-        } else if (isConnected && !isOnBase) {
-            setConnectButtonText("Switch Network");
         } else {
-            setConnectButtonText("Connect Wallet");
+            setConnectButtonText("Smart Wallet");
         }
+    }
+    if (connectStandardBtn) {
+        connectStandardBtn.disabled = connectBusy;
+        connectStandardBtn.textContent = connectBusy ? "Connecting..." : "Standard Wallet";
     }
 
     // Update status message
@@ -2081,7 +2083,8 @@ window.onload = function() {
     overlayMenu = document.getElementById("overlay-menu");
     overlayPause = document.getElementById("overlay-pause");
     pauseButton = document.getElementById("pause-button");
-    connectButton = document.getElementById("connect-button");
+    connectButton = document.getElementById("connect-smart-btn");
+    connectStandardBtn = document.getElementById("connect-standard-btn");
     walletStatus = document.getElementById("wallet-status");
     walletAddressDisplay = document.getElementById("wallet-address");
     startButton = document.getElementById("start-button");
@@ -2239,12 +2242,16 @@ window.onload = function() {
         }, { passive: false });
     }
     if (connectButton) {
-        connectButton.addEventListener("click", connectWallet);
-        connectButton.addEventListener("touchstart", function(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            connectWallet();
-        }, { passive: false });
+        // Smart Wallet — direct Coinbase Smart Wallet connection
+        const handleSmartWallet = (e) => { e.stopPropagation(); e.preventDefault(); if (!connectButton.disabled) connectWithCoinbaseSmartWallet(); };
+        connectButton.addEventListener("click", handleSmartWallet);
+        connectButton.addEventListener("touchstart", handleSmartWallet, { passive: false });
+    }
+    if (connectStandardBtn) {
+        // Standard Wallet — opens wallet selector modal
+        const handleStandardWallet = (e) => { e.stopPropagation(); e.preventDefault(); connectWallet(); };
+        connectStandardBtn.addEventListener("click", handleStandardWallet);
+        connectStandardBtn.addEventListener("touchstart", handleStandardWallet, { passive: false });
     }
     if (checkinButton) {
         checkinButton.addEventListener("click", handleCheckin);
