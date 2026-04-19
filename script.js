@@ -960,7 +960,10 @@ async function connectWithInjected(eip6963Provider) {
         isConnectingWallet = true;
         updateWalletUI();
 
-        const accounts = await provider.request({ method: "eth_requestAccounts" });
+        const accounts = await Promise.race([
+            provider.request({ method: "eth_requestAccounts" }),
+            new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('Connection timeout'), { code: 'TIMEOUT' })), 60000))
+        ]);
         walletAddress = accounts[0] || null;
 
         // Get chain id
@@ -1003,7 +1006,13 @@ async function connectWithInjected(eip6963Provider) {
         updateWalletUI();
     } catch (err) {
         console.error("Injected wallet connect error:", err);
-        setWalletError(err.message || "Connection failed");
+        if (err.code === 4001 || (err.message && err.message.toLowerCase().includes('reject'))) {
+            setWalletError("Cancelled in wallet.");
+        } else if (err.code === 'TIMEOUT') {
+            setWalletError("Timed out. Try again.");
+        } else {
+            setWalletError(err.message || "Connection failed");
+        }
         isConnectingWallet = false;
         activeWalletType = null;
         updateWalletUI();
