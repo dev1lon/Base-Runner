@@ -586,12 +586,10 @@ async function showWalletSelector() {
                 <button type="button" class="wallet-option" id="btn-smart-wallet">
                     <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
                     <span>Smart Wallet</span>
-                    <span class="wallet-badge">Gas free</span>
                 </button>
                 <button type="button" class="wallet-option" id="btn-standard-wallet">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Standard" width="32" height="32">
                     <span>Standard Wallet</span>
-                    <span class="wallet-badge-secondary">MetaMask & others</span>
                 </button>
             </div>
             <button type="button" class="wallet-modal-close">Cancel</button>
@@ -940,11 +938,11 @@ async function connectWithCoinbaseSmartWallet() {
             appName: 'Rug Pull Run',
             appLogoUrl: 'https://rugpullrun.app/assets/coin.png',
         });
-        // preference: 'smartWalletOnly' — opens Coinbase Smart Wallet popup, no extension needed
         const cbProvider = sdk.makeWeb3Provider({ options: 'smartWalletOnly' });
         await connectWithInjected(cbProvider);
     } catch (err) {
         console.error('Coinbase Smart Wallet error:', err);
+        isConnectingWallet = false;
         setWalletError('Failed to connect Coinbase Wallet');
         updateWalletUI();
     }
