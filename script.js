@@ -220,6 +220,7 @@ const ALLOW_GUEST_PLAY = false;
 // USDC on Base mainnet
 const USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_PER_COIN = 100_000n; // 0.1 USDC in 6-decimal units
+const COIN_PACKAGE_USDC = new Map([[5000, 400_000_000n]]); // $400.00 for 5000 coins
 
 // NFT Contract ABI
 const NFT_ABI = [
@@ -3094,7 +3095,7 @@ async function handleBuyCoinsPackage(coins) {
         return;
     }
 
-    const usdcAmount = USDC_PER_COIN * BigInt(coins);
+    const usdcAmount = COIN_PACKAGE_USDC.get(coins) ?? (USDC_PER_COIN * BigInt(coins));
     const statusEl = document.getElementById('buy-coins-status');
     const allPkgBtns = document.querySelectorAll('.buy-coins-package');
     const closeBtn = document.getElementById('buy-coins-close-btn');

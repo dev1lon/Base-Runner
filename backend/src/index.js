@@ -58,7 +58,11 @@ const usedPaidTxHashes = new Set();
 // USDC on Base mainnet
 const USDC_CONTRACT = (process.env.USDC_CONTRACT || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").toLowerCase();
 const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
-const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000]);
+const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000, 5000]);
+// Custom USDC price overrides (6 decimals). Default: USDC_PER_COIN * coins.
+const COIN_PACKAGE_USDC = new Map([
+  [5000, BigInt(400_000_000)] // $400.00
+]);
 const USDC_TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
 const usedCoinPurchaseTxHashes = new Set();
 
@@ -509,7 +513,7 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
     if (receipt.status !== 1) return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
 
     // Verify USDC Transfer to treasury for expected amount
-    const expectedAmount = USDC_PER_COIN * BigInt(coins);
+    const expectedAmount = COIN_PACKAGE_USDC.get(Number(coins)) ?? (USDC_PER_COIN * BigInt(coins));
     const treasuryTopic = "0x" + TREASURY_ADDRESS.slice(2).padStart(64, "0");
     const transferLog = receipt.logs.find(log =>
       log.address.toLowerCase() === USDC_CONTRACT &&
