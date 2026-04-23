@@ -75,6 +75,7 @@ export function ConnectModal({ onReady }) {
 
   // Inside wallet app — show minimal loading screen while auto-connecting/signing
   if (isWalletApp()) {
+    const hasError = siweStatus === 'cancelled' || siweStatus === 'error' || !!error
     return (
       <div className="rpr-overlay">
         <div className="rpr-card">
@@ -85,15 +86,25 @@ export function ConnectModal({ onReady }) {
           <div className="card-header">
             <h1 className="card-title">RUG PULL RUN</h1>
             <p className="card-subtitle">
-              {!isConnected ? 'Connecting…' : siweStatus === 'pending' ? 'Signing…' : 'Sign to continue'}
+              {!isConnected
+                ? 'Connecting…'
+                : siweStatus === 'pending'
+                ? 'Signing…'
+                : hasError
+                ? 'Sign in to play'
+                : 'Sign to continue'}
             </p>
           </div>
           <div className="card-body">
-            {(siweStatus === 'cancelled' || siweStatus === 'error' || error) && (
+            {hasError && (
               <>
-                {error && <p className="rpr-error">{error}</p>}
-                <button className="btn btn-primary btn-large" onClick={handleSignIn}>
-                  Sign In
+                {error && <p className="rpr-error" style={{ marginBottom: 12 }}>{error}</p>}
+                <button
+                  className="btn btn-primary btn-large"
+                  onClick={handleSignIn}
+                  disabled={siweStatus === 'pending'}
+                >
+                  {siweStatus === 'pending' ? 'Signing…' : 'Sign In'}
                 </button>
               </>
             )}

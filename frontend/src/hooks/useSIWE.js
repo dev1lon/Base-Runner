@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useSignMessage } from 'wagmi'
 import { SiweMessage } from 'siwe'
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL ?? ''
+const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://api.rugpullrun.app'
 const AUTH_KEY = 'runner_auth_token'
 
 function storeToken(address, token) {
@@ -20,6 +20,7 @@ export function useSIWE() {
     setStatus('pending')
     try {
       // 1. Get nonce
+      console.log('[SIWE] backend:', BACKEND, 'address:', address, 'chainId:', chainId)
       const nr = await fetch(`${BACKEND}/auth/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,7 +67,7 @@ export function useSIWE() {
       setStatus('done')
       return vr
     } catch (err) {
-      console.error('SIWE error:', err)
+      console.error('[SIWE] error:', err.message, err)
       const isCancel = err.code === 4001 || err.message?.toLowerCase().includes('reject')
       setStatus(isCancel ? 'cancelled' : 'error')
       throw err
