@@ -161,7 +161,7 @@ app.post("/auth/siwe-verify", async (req, res) => {
     const addressNorm = normalizeAddress(address);
     if (!addressNorm) return res.status(400).json({ ok: false, error: "Invalid address in SIWE message" });
 
-    const result = await verifyNonce({ address: addressNorm, signature, originalAddress: address });
+    const result = await verifyNonce({ address: addressNorm, signature, originalAddress: address, signedMessage: message });
     if (!result.ok) {
       console.warn(`[auth/siwe-verify] FAILED address=${addressNorm} error=${result.error}`);
       return res.status(400).json({ ok: false, error: result.error });

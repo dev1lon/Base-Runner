@@ -24,7 +24,7 @@ async function issueNonce(address, chainId, originalAddress) {
   };
 }
 
-async function verifyNonce({ address, signature, originalAddress }) {
+async function verifyNonce({ address, signature, originalAddress, signedMessage }) {
   const record = await getNonce(address);
   if (!record) {
     return { ok: false, error: "Nonce not found" };
@@ -33,9 +33,9 @@ async function verifyNonce({ address, signature, originalAddress }) {
     await deleteNonce(address);
     return { ok: false, error: "Nonce expired" };
   }
-  // Use original address (checksum) for message so it matches what frontend signed
+  // Use signedMessage if provided (SIWE), otherwise rebuild with legacy format
   const msgAddress = record.original_address || originalAddress || address;
-  const message = buildAuthMessage({
+  const message = signedMessage || buildAuthMessage({
     address: msgAddress,
     nonce: record.nonce,
     chainId: record.chain_id,
