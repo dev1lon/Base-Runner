@@ -1738,7 +1738,7 @@ async function disconnectWallet() {
 async function applyWalletBridge(detail) {
     // Called when React (wagmi) has already connected + authed the wallet
     walletAddress = detail.address;
-    walletChainId = detail.chainId || BASE_CHAIN_ID;
+    walletChainId = BASE_CHAIN_ID; // wagmi only connects to Base; use string format "0x2105"
     activeWalletType = 'injected';
     window._activeProvider = detail.provider;
     authToken = detail.token;
