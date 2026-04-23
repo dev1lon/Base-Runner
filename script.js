@@ -1753,6 +1753,11 @@ async function applyWalletBridge(detail) {
     }
 }
 
+function isReactBridgePresent() {
+    // React mounts into #wallet-root. If it exists, React handles wallet/auth.
+    return !!document.getElementById('wallet-root');
+}
+
 async function initWalletState() {
     // If React bridge already fired before DOMContentLoaded, use it
     if (window.__walletBridge?.token) {
@@ -1765,10 +1770,18 @@ async function initWalletState() {
         await applyWalletBridge(e.detail);
     }, { once: true });
 
+    // If React is present, skip script.js's own connect/auth flow entirely
+    // (React handles: wallet selection, SIWE sign, session restore).
+    if (isReactBridgePresent()) {
+        isDetectingWallet = false;
+        updateWalletUI();
+        return;
+    }
+
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();
-    
+
     const provider = await waitForEthereumProvider(3000);
     isDetectingWallet = false;
     
