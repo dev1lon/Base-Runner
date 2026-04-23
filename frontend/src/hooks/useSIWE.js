@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react'
-import { useSignMessage } from 'wagmi'
 import { SiweMessage } from 'siwe'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
@@ -12,39 +11,48 @@ function storeToken(address, token) {
   localStorage.setItem(AUTH_KEY, JSON.stringify(map))
 }
 
+// Sign via window.ethereum directly — bypasses wagmi walletClient timing issues
+async function signWithProvider(message, address) {
+  const provider = window._activeProvider || window.ethereum
+  if (!provider) throw new Error('No wallet provider')
+  // personal_sign: params are [message, address]
+  return provider.request({ method: 'personal_sign', params: [message, address] })
+}
+
 export function useSIWE() {
-  const { signMessageAsync } = useSignMessage()
-  const [status, setStatus] = useState('idle') // idle | pending | done | error | cancelled
+  const [status, setStatus] = useState('idle')
 
   const signIn = useCallback(async (address, chainId) => {
     setStatus('pending')
     try {
+      const effectiveChainId = chainId || 8453
+      console.log('[SIWE] backend:', BACKEND, 'address:', address, 'chainId:', effectiveChainId)
+
       // 1. Get nonce
-      console.log('[SIWE] backend:', BACKEND, 'address:', address, 'chainId:', chainId)
       const nr = await fetch(`${BACKEND}/auth/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, chainId }),
+        body: JSON.stringify({ address, chainId: effectiveChainId }),
       }).then(r => r.json())
       if (!nr.ok) throw new Error(nr.error ?? 'Nonce failed')
 
-      // 2. Build EIP-4361 SIWE message
+      // 2. Build SIWE message
       const msg = new SiweMessage({
         domain: window.location.host,
         address,
         statement: 'Sign in to Rug Pull Run',
         uri: window.location.origin,
         version: '1',
-        chainId,
+        chainId: effectiveChainId,
         nonce: nr.nonce,
         issuedAt: nr.issuedAt,
       })
       const prepared = msg.prepareMessage()
 
-      // 3. Sign
-      const signature = await signMessageAsync({ message: prepared })
+      // 3. Sign directly via provider (avoids wagmi walletClient timing issues)
+      const signature = await signWithProvider(prepared, address)
 
-      // 4. Verify — try SIWE endpoint first, fallback to legacy
+      // 4. Verify
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -52,7 +60,6 @@ export function useSIWE() {
       }).then(r => r.json()).catch(() => ({ ok: false }))
 
       if (!vr.ok) {
-        // Legacy fallback: send address+signature to old endpoint
         vr = await fetch(`${BACKEND}/auth/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -62,7 +69,6 @@ export function useSIWE() {
 
       if (!vr.ok) throw new Error(vr.error ?? 'Auth failed')
 
-      // 5. Store token in same format script.js expects
       storeToken(address, vr.token)
       setStatus('done')
       return vr
@@ -72,7 +78,7 @@ export function useSIWE() {
       setStatus(isCancel ? 'cancelled' : 'error')
       throw err
     }
-  }, [signMessageAsync])
+  }, [])
 
   const reset = useCallback(() => setStatus('idle'), [])
 
