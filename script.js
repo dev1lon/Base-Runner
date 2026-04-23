@@ -1736,21 +1736,43 @@ async function disconnectWallet() {
 }
 
 async function applyWalletBridge(detail) {
-    // Called when React (wagmi) has already connected + authed the wallet
+    console.log('[bridge] applyWalletBridge:', detail.address);
     walletAddress = detail.address;
-    walletChainId = BASE_CHAIN_ID; // wagmi only connects to Base; use string format "0x2105"
+    walletChainId = BASE_CHAIN_ID;
     activeWalletType = 'injected';
     window._activeProvider = detail.provider;
     authToken = detail.token;
     walletAuthenticated = true;
     isDetectingWallet = false;
     isConnectingWallet = false;
-    const restored = await restoreAuthSession();
-    if (!restored) {
-        // JWT was just issued by React — apply profile minimally and transition to menu
-        walletAuthenticated = true;
-        updateWalletUI();
+
+    // Try to load profile from backend (but don't let failure wipe the session)
+    try {
+        if (BACKEND_URL && authToken) {
+            const response = await fetch(`${BACKEND_URL}/api/user/me`, {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data?.ok) {
+                    await applyProfileData(data);
+                    resolveBasename(walletAddress);
+                }
+            } else {
+                console.warn('[bridge] /api/user/me returned', response.status);
+            }
+        }
+    } catch (err) {
+        console.warn('[bridge] profile fetch failed:', err.message);
     }
+
+    // Always ensure authenticated state + force UI transition to menu
+    walletAuthenticated = true;
+    if (currentUIState === UI_STATE.CONNECT) {
+        currentUIState = UI_STATE.MENU;
+    }
+    updateWalletUI();
+    updateUIState();
 }
 
 function isReactBridgePresent() {
