@@ -270,6 +270,12 @@ export function ConnectModal({ open, onClose, onReady }) {
             <li>Free: 1 coin / 1,000 pts · Paid: 5 coins / 1,000 pts</li>
           </ul>
         </div>
+        <button
+          onClick={onClose}
+          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', marginTop: 8, padding: '4px 12px' }}
+        >
+          Cancel
+        </button>
         <div className="card-ground" />
       </div>
     </div>
