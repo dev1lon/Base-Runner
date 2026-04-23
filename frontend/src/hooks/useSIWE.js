@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useSignMessage } from 'wagmi'
 import { SiweMessage } from 'siwe'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
@@ -11,15 +12,8 @@ function storeToken(address, token) {
   localStorage.setItem(AUTH_KEY, JSON.stringify(map))
 }
 
-// Sign via window.ethereum directly — bypasses wagmi walletClient timing issues
-async function signWithProvider(message, address) {
-  const provider = window._activeProvider || window.ethereum
-  if (!provider) throw new Error('No wallet provider')
-  // personal_sign: params are [message, address]
-  return provider.request({ method: 'personal_sign', params: [message, address] })
-}
-
 export function useSIWE() {
+  const { signMessageAsync } = useSignMessage()
   const [status, setStatus] = useState('idle')
 
   const signIn = useCallback(async (address, chainId) => {
@@ -49,8 +43,8 @@ export function useSIWE() {
       })
       const prepared = msg.prepareMessage()
 
-      // 3. Sign directly via provider (avoids wagmi walletClient timing issues)
-      const signature = await signWithProvider(prepared, address)
+      // 3. Sign via wagmi
+      const signature = await signMessageAsync({ message: prepared })
 
       // 4. Verify
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
@@ -78,7 +72,7 @@ export function useSIWE() {
       setStatus(isCancel ? 'cancelled' : 'error')
       throw err
     }
-  }, [])
+  }, [signMessageAsync])
 
   const reset = useCallback(() => setStatus('idle'), [])
 

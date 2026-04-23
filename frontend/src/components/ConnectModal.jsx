@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useConnect, useAccount } from 'wagmi'
+import { useConnect, useAccount, useWalletClient } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { useSIWE } from '../hooks/useSIWE'
 import { useGameBridge } from '../hooks/useGameBridge'
@@ -17,6 +17,7 @@ function isWalletApp() {
 export function ConnectModal({ onReady }) {
   const { connect, connectors, isPending } = useConnect()
   const { address, chainId, isConnected } = useAccount()
+  const { data: walletClient } = useWalletClient()
   const { signIn, status: siweStatus, reset: siweReset } = useSIWE()
   const [token, setToken] = useState(null)
   const [error, setError] = useState('')
@@ -58,14 +59,15 @@ export function ConnectModal({ onReady }) {
     }
   }
 
-  // Auto-sign SIWE when inside wallet app and just connected
+  // Auto-sign SIWE when inside wallet app — wait for walletClient to be ready
   useEffect(() => {
     if (!isConnected || !address || token) return
     if (!isWalletApp()) return
+    if (!walletClient) return // wagmi walletClient must be ready before signing
     if (autoSignAttempted.current) return
     autoSignAttempted.current = true
     handleSignIn()
-  }, [isConnected, address]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isConnected, address, walletClient]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
   const injectedConnectors = connectors.filter(c => c.id !== 'coinbaseWalletSDK')
