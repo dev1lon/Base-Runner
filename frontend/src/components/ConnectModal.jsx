@@ -1,18 +1,28 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useConnect, useAccount } from 'wagmi'
+import { injected } from 'wagmi/connectors'
 import { useSIWE } from '../hooks/useSIWE'
 import { useGameBridge } from '../hooks/useGameBridge'
 
 const BASE_CHAIN_ID = 8453
+
+function isWalletApp() {
+  const ua = navigator.userAgent.toLowerCase()
+  if (ua.includes('coinbase') || ua.includes('metamask') || ua.includes('trust') || ua.includes('rainbow')) return true
+  const eth = window.ethereum
+  if (eth && (eth.isCoinbaseWallet || eth.isCoinbaseBrowser || eth.isMetaMask || eth.isTrust)) return true
+  return false
+}
 
 export function ConnectModal({ onReady }) {
   const { connect, connectors, isPending } = useConnect()
   const { address, chainId, isConnected } = useAccount()
   const { signIn, status: siweStatus, reset: siweReset } = useSIWE()
   const [token, setToken] = useState(null)
-  const [authData, setAuthData] = useState(null)
   const [error, setError] = useState('')
   const [showStandard, setShowStandard] = useState(false)
+  const autoConnectAttempted = useRef(false)
+  const autoSignAttempted = useRef(false)
 
   useGameBridge({
     address,
@@ -20,20 +30,26 @@ export function ConnectModal({ onReady }) {
     token,
     onDisconnect: () => {
       setToken(null)
-      setAuthData(null)
       setShowStandard(false)
+      autoSignAttempted.current = false
       siweReset()
     },
   })
 
-  // Auto-trigger SIWE once wallet is connected but not yet authed
+  // Auto-connect when inside Base App / mobile wallet browser
+  useEffect(() => {
+    if (autoConnectAttempted.current || isConnected) return
+    if (!isWalletApp()) return
+    autoConnectAttempted.current = true
+    connect({ connector: injected() })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSignIn = async () => {
     if (!address) return
     setError('')
     try {
       const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
       setToken(data.token)
-      setAuthData(data)
       onReady?.(data)
     } catch (err) {
       if (!err.message?.toLowerCase().includes('reject')) {
@@ -42,13 +58,53 @@ export function ConnectModal({ onReady }) {
     }
   }
 
+  // Auto-sign SIWE when inside wallet app and just connected
+  useEffect(() => {
+    if (!isConnected || !address || token) return
+    if (!isWalletApp()) return
+    if (autoSignAttempted.current) return
+    autoSignAttempted.current = true
+    handleSignIn()
+  }, [isConnected, address]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
   const injectedConnectors = connectors.filter(c => c.id !== 'coinbaseWalletSDK')
 
-  // Phase 3: authenticated — bridge is active, hide this modal
+  // Authenticated — hide modal
   if (token) return null
 
-  // Phase 2: connected, need to sign
+  // Inside wallet app — show minimal loading screen while auto-connecting/signing
+  if (isWalletApp()) {
+    return (
+      <div className="rpr-overlay">
+        <div className="rpr-card">
+          <div className="card-corner card-corner-tl" />
+          <div className="card-corner card-corner-tr" />
+          <div className="card-corner card-corner-bl" />
+          <div className="card-corner card-corner-br" />
+          <div className="card-header">
+            <h1 className="card-title">RUG PULL RUN</h1>
+            <p className="card-subtitle">
+              {!isConnected ? 'Connecting…' : siweStatus === 'pending' ? 'Signing…' : 'Sign to continue'}
+            </p>
+          </div>
+          <div className="card-body">
+            {(siweStatus === 'cancelled' || siweStatus === 'error' || error) && (
+              <>
+                {error && <p className="rpr-error">{error}</p>}
+                <button className="btn btn-primary btn-large" onClick={handleSignIn}>
+                  Sign In
+                </button>
+              </>
+            )}
+          </div>
+          <div className="card-ground" />
+        </div>
+      </div>
+    )
+  }
+
+  // Desktop / external browser — Phase 2: connected, need to sign
   if (isConnected && address) {
     return (
       <div className="rpr-overlay">
@@ -83,7 +139,7 @@ export function ConnectModal({ onReady }) {
     )
   }
 
-  // Phase 1: not connected — show wallet selector
+  // Desktop — Phase 1: wallet selector
   return (
     <div className="rpr-overlay">
       <div className="rpr-card">
