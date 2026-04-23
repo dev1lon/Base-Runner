@@ -1854,7 +1854,8 @@ async function connectWallet() {
         clearWalletMessages();
         updateWalletUI();
     }
-    showWalletSelector();
+    // Delegate to React/wagmi modal if available, otherwise fallback
+    window.dispatchEvent(new CustomEvent('wallet:openModal'));
 }
 
 // Handle network switch after wallet is connected

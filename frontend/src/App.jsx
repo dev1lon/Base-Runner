@@ -1,13 +1,25 @@
+import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import { ConnectModal } from './components/ConnectModal'
-import { useState } from 'react'
 
 export default function App() {
+  const [open, setOpen] = useState(false)
   const { isConnected } = useAccount()
-  const [ready, setReady] = useState(false)
 
-  // Once authed, game takes over — React just stays mounted silently
-  if (ready) return null
+  useEffect(() => {
+    // script.js dispatches this when user clicks Connect Wallet
+    const handler = () => setOpen(true)
+    window.addEventListener('wallet:openModal', handler)
+    return () => window.removeEventListener('wallet:openModal', handler)
+  }, [])
 
-  return <ConnectModal onReady={() => setReady(true)} />
+  // Always render ConnectModal so useGameBridge hook stays alive (bridge persists after auth)
+  // Pass open prop to control visibility — modal hides when open=false AND token is set
+  return (
+    <ConnectModal
+      open={open}
+      onClose={() => setOpen(false)}
+      onReady={() => setOpen(false)}
+    />
+  )
 }

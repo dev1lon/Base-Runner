@@ -40,7 +40,7 @@ function isWalletApp() {
   return false
 }
 
-export function ConnectModal({ onReady }) {
+export function ConnectModal({ open, onClose, onReady }) {
   const { connect, connectors, isPending } = useConnect()
   const { address, chainId, isConnected } = useAccount()
   const { data: walletClient } = useWalletClient()
@@ -86,7 +86,7 @@ export function ConnectModal({ onReady }) {
     try {
       const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
       setToken(data.token)
-      onReady?.(data)
+      onReady?.()
     } catch (err) {
       if (!err.message?.toLowerCase().includes('reject')) {
         setError(err.message ?? 'Sign-in failed')
@@ -107,7 +107,7 @@ export function ConnectModal({ onReady }) {
       validateToken(stored).then(data => {
         if (data) {
           setToken(stored)
-          onReady?.(data)
+          onReady?.()
         } else if (isWalletApp()) {
           // Token expired/invalid — auto-sign in wallet app
           handleSignIn()
@@ -124,8 +124,9 @@ export function ConnectModal({ onReady }) {
   const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
   const injectedConnectors = connectors.filter(c => c.id !== 'coinbaseWalletSDK')
 
-  // Authenticated — hide modal
-  if (token) return null
+  // Hooks always run (bridge must stay alive) — only hide rendering when not needed
+  if (token) return null       // authenticated: bridge active, no UI needed
+  if (!open && !isWalletApp()) return null  // desktop: wait for explicit open
 
   // Inside wallet app — show minimal loading screen while auto-connecting/signing
   if (isWalletApp()) {
