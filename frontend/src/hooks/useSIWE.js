@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useSignMessage } from 'wagmi'
 import { SiweMessage } from 'siwe'
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://api.rugpullrun.app'
+const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
 const AUTH_KEY = 'runner_auth_token'
 
 function storeToken(address, token) {
