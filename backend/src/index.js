@@ -719,6 +719,47 @@ app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
 });
 
 
+// Farcaster mini-app webhook endpoint
+// Receives events: miniapp_added, miniapp_removed, notifications_enabled, notifications_disabled
+// Stores notification token + url per user for later push notifications
+const notificationTokens = new Map(); // fid → { token, url }
+
+app.post("/api/notifications", async (req, res) => {
+  try {
+    let event;
+    try {
+      const { parseWebhookEvent, verifyAppKeyWithNeynar } = require("@farcaster/miniapp-node");
+      event = await parseWebhookEvent(req.body, verifyAppKeyWithNeynar);
+    } catch (e) {
+      // If SDK unavailable, accept the raw body (best-effort)
+      console.warn("[notifications] SDK parse failed, using raw body:", e.message);
+      event = req.body;
+    }
+    const fid = event?.fid || event?.event?.fid;
+    const data = event?.event || event;
+    const type = data?.event;
+
+    if (type === "miniapp_added" || type === "notifications_enabled") {
+      const token = data?.notificationDetails?.token;
+      const url = data?.notificationDetails?.url;
+      if (fid && token && url) {
+        notificationTokens.set(String(fid), { token, url });
+        console.log(`[notifications] registered fid=${fid}`);
+      }
+    } else if (type === "miniapp_removed" || type === "notifications_disabled") {
+      if (fid) {
+        notificationTokens.delete(String(fid));
+        console.log(`[notifications] removed fid=${fid}`);
+      }
+    }
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error("[notifications] error:", err);
+    res.status(200).json({ ok: true }); // respond 200 even on error to avoid retries
+  }
+});
+
 setInterval(cleanupSessions, 60 * 1000);
 
 async function startServer() {

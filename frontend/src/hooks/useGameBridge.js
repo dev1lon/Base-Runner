@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useWalletClient, useDisconnect } from 'wagmi'
+import { useCapabilities } from './useCapabilities'
 
 /**
  * Bridges wagmi wallet state → window.__walletBridge so script.js can use it.
@@ -9,11 +10,11 @@ import { useWalletClient, useDisconnect } from 'wagmi'
 export function useGameBridge({ address, chainId, token, onDisconnect }) {
   const { data: walletClient } = useWalletClient()
   const { disconnect } = useDisconnect()
+  const capabilities = useCapabilities(address && token ? address : null)
 
   useEffect(() => {
     if (!address || !token) return
 
-    // Expose EIP-1193 provider from wagmi walletClient for script.js
     const provider = walletClient?.transport?.request
       ? {
           request: (args) => walletClient.transport.request(args),
@@ -27,17 +28,17 @@ export function useGameBridge({ address, chainId, token, onDisconnect }) {
       chainId,
       token,
       provider,
+      capabilities,
       disconnect: () => {
         disconnect()
         onDisconnect?.()
       },
     }
 
-    // script.js listens for this to init wallet state from bridge
     window.dispatchEvent(new CustomEvent('walletBridgeReady', {
-      detail: { address, chainId, token, provider }
+      detail: { address, chainId, token, provider, capabilities }
     }))
-  }, [address, chainId, token, walletClient]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [address, chainId, token, walletClient, capabilities]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clean up bridge on unmount / disconnect
   useEffect(() => {

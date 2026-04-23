@@ -7,8 +7,19 @@
   "miniapp": {
     "version": "1",
     "name": "Rug Pull Run",
+    "subtitle": "Run from the rug pull",
+    "description": "Run from red candles, unlock your favorite crypto legends, and try not to get rugged. Built on Base.",
     "iconUrl": "https://rugpullrun.app/assets/icon.png",
     "homeUrl": "https://rugpullrun.app/",
-    "splashBackgroundColor": "#0f0f1a"
+    "splashImageUrl": "https://rugpullrun.app/assets/icon.png",
+    "splashBackgroundColor": "#0f0f1a",
+    "heroImageUrl": "https://rugpullrun.app/assets/cover.jpg",
+    "ogTitle": "Rug Pull Run",
+    "ogDescription": "Run from red candles, unlock crypto legends, don't get rugged.",
+    "ogImageUrl": "https://rugpullrun.app/assets/cover.jpg",
+    "primaryCategory": "games",
+    "tags": ["runner", "game", "crypto", "base", "nft"],
+    "requiredChains": ["eip155:8453"],
+    "webhookUrl": "https://base-runner-k9oj.onrender.com/api/notifications"
   }
 }
