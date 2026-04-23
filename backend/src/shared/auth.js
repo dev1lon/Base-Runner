@@ -26,8 +26,11 @@ async function verifySignature(address, message, signature) {
   // 1. Try EOA first (fast, no RPC)
   try {
     const recovered = ethersVerifyMessage(message, signature);
+    console.log(`[verify] EOA recovered=${recovered} expected=${address} match=${normalizeAddress(recovered) === normalizeAddress(address)}`);
     if (normalizeAddress(recovered) === normalizeAddress(address)) return true;
-  } catch (err) {}
+  } catch (err) {
+    console.warn("[verify] EOA failed:", err.message);
+  }
 
   // 2. Use viem client.verifyMessage — handles EIP-1271 and ERC-6492 (counterfactual wallets)
   try {
@@ -39,11 +42,14 @@ async function verifySignature(address, message, signature) {
       message,
       signature
     });
+    console.log(`[verify] viem result=${valid} address=${checksumAddress}`);
     if (valid) return true;
   } catch (err) {
-    console.warn("viem verifyMessage failed:", err.message);
+    console.warn("[verify] viem failed:", err.message);
   }
 
+  console.warn(`[verify] FAILED address=${address} msgLen=${message?.length} sigLen=${signature?.length}`);
+  console.warn(`[verify] message first 100: ${message?.slice(0, 100)}`);
   return false;
 }
 
