@@ -27,7 +27,12 @@ async function validateToken(token) {
   } catch { return null }
 }
 
+function isMobile() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+}
+
 function isWalletApp() {
+  if (!isMobile()) return false  // desktop extensions don't count
   const ua = navigator.userAgent.toLowerCase()
   if (ua.includes('coinbase') || ua.includes('metamask') || ua.includes('trust') || ua.includes('rainbow')) return true
   const eth = window.ethereum
@@ -53,10 +58,19 @@ export function ConnectModal({ onReady }) {
     onDisconnect: () => {
       setToken(null)
       setShowStandard(false)
+      autoConnectAttempted.current = false
       autoSignAttempted.current = false
       siweReset()
     },
   })
+
+  // Reset auth attempt when wallet disconnects so user can retry
+  useEffect(() => {
+    if (!isConnected) {
+      autoSignAttempted.current = false
+      setError('')
+    }
+  }, [isConnected])
 
   // Auto-connect when inside Base App / mobile wallet browser
   useEffect(() => {
