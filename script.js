@@ -403,6 +403,8 @@ function isMobile() {
 }
 
 function getEthereumProvider() {
+    // Prefer wagmi bridge provider when React wallet is active
+    if (window.__walletBridge?.provider) return window.__walletBridge.provider;
     // Return Web3Modal provider if connected via WalletConnect
     if (activeWalletType === 'walletconnect' && window.web3modalProvider) {
         return window.web3modalProvider;
@@ -1711,6 +1713,11 @@ function updateWalletUI() {
 }
 
 async function disconnectWallet() {
+    // Notify wagmi bridge to disconnect (React side)
+    if (window.__walletBridge?.disconnect) {
+        try { window.__walletBridge.disconnect(); } catch (e) { /* ignore */ }
+        window.__walletBridge = null;
+    }
     // Disconnect WalletConnect modal if active
     if (activeWalletType === 'walletconnect' && window.web3modal) {
         try { await window.web3modal.disconnect(); } catch (e) { /* ignore */ }
@@ -1728,7 +1735,36 @@ async function disconnectWallet() {
     updateWalletUI();
 }
 
+async function applyWalletBridge(detail) {
+    // Called when React (wagmi) has already connected + authed the wallet
+    walletAddress = detail.address;
+    walletChainId = detail.chainId || BASE_CHAIN_ID;
+    activeWalletType = 'injected';
+    window._activeProvider = detail.provider;
+    authToken = detail.token;
+    walletAuthenticated = true;
+    isDetectingWallet = false;
+    isConnectingWallet = false;
+    const restored = await restoreAuthSession();
+    if (!restored) {
+        // JWT was just issued by React — apply profile minimally and transition to menu
+        walletAuthenticated = true;
+        updateWalletUI();
+    }
+}
+
 async function initWalletState() {
+    // If React bridge already fired before DOMContentLoaded, use it
+    if (window.__walletBridge?.token) {
+        await applyWalletBridge(window.__walletBridge);
+        return;
+    }
+
+    // Listen for React bridge event (fires when wagmi + SIWE auth complete)
+    window.addEventListener('walletBridgeReady', async (e) => {
+        await applyWalletBridge(e.detail);
+    }, { once: true });
+
     // Wait for provider to be injected (some wallets load asynchronously)
     isDetectingWallet = true;
     updateWalletUI();

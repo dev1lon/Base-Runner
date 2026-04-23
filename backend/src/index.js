@@ -148,6 +148,42 @@ app.post("/auth/verify", async (req, res) => {
   });
 });
 
+// SIWE verify — parses EIP-4361 message to extract address, then reuses existing nonce/JWT flow
+app.post("/auth/siwe-verify", async (req, res) => {
+  const { message, signature } = req.body || {};
+  if (!message || !signature) {
+    return res.status(400).json({ ok: false, error: "Missing message or signature" });
+  }
+  try {
+    const { SiweMessage } = require("siwe");
+    const siwe = new SiweMessage(message);
+    const address = siwe.address;
+    const addressNorm = normalizeAddress(address);
+    if (!addressNorm) return res.status(400).json({ ok: false, error: "Invalid address in SIWE message" });
+
+    const result = await verifyNonce({ address: addressNorm, signature, originalAddress: address });
+    if (!result.ok) {
+      console.warn(`[auth/siwe-verify] FAILED address=${addressNorm} error=${result.error}`);
+      return res.status(400).json({ ok: false, error: result.error });
+    }
+    const checkin = await getCheckinStatus(addressNorm);
+    res.json({
+      ok: true,
+      token: result.token,
+      address: result.user.address,
+      coinBalance: result.user.coins,
+      bestScore: result.user.best_score,
+      hasFreeMint: result.user.has_claimed_free || false,
+      ownedCharacters: result.user.owned_characters || [],
+      selectedCharacter: result.user.selected_character || 0,
+      checkin
+    });
+  } catch (err) {
+    console.error("[auth/siwe-verify] error:", err);
+    res.status(500).json({ ok: false, error: "Verification failed" });
+  }
+});
+
 app.post("/api/session/start", requireAuth, (req, res) => {
   const addressNorm = req.user.address;
   const seed = randomSeed();

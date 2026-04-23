@@ -1,0 +1,37 @@
+/* React wallet overlay — sits above game, uses same design tokens as style.css */
+.rpr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+.rpr-card {
+  position: relative;
+  width: min(380px, 92vw);
+  background: rgba(15, 15, 25, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 2rem 1.5rem 1.5rem;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.rpr-address {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  margin-bottom: 16px;
+  font-family: monospace;
+}
+
+.rpr-error {
+  font-size: 12px;
+  color: #ff6b6b;
+  text-align: center;
+  margin-top: 10px;
+}

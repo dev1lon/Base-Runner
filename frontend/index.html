@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <title>Rug Pull Run</title>
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <meta name="base:app_id" content="69c6ca460fc9d441dd5179fb" />
+    <meta property="og:title" content="Rug Pull Run">
+    <meta property="og:description" content="Run from red candles, unlock your favorite crypto legends, and try not to get rugged. Built on Base.">
+    <meta property="og:image" content="https://rugpullrun.app/assets/cover.png">
+    <meta property="og:url" content="https://rugpullrun.app">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
+    <script src="/script.js"></script>
+    <script type="module" src="/src/main.jsx"></script>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="game-ui" style="display:none">
+                <div class="game-ui-left">
+                    <button id="pause-button" class="pause-btn hidden" aria-label="Pause">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+                            <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <div class="ui-badge ui-badge-coins">
+                        <img src="/assets/eth.png" alt="ETH" class="ui-badge-icon-img">
+                        <span class="ui-badge-text">COINS:</span>
+                        <span id="game-coins" class="ui-badge-value">0</span>
+                    </div>
+                </div>
+                <div class="game-ui-right">
+                    <div class="ui-best-text">
+                        <span id="new-record-label" style="display:none">NEW</span>
+                        <svg class="ui-best-icon" viewBox="0 0 24 24" fill="#FFD700" stroke="black" stroke-width="0.8" stroke-linejoin="round">
+                            <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
+                        </svg>
+                        <span class="best-label">BEST:</span>
+                        <span id="game-best">0</span>
+                    </div>
+                    <div class="ui-badge ui-badge-score">
+                        <span class="ui-badge-text">SCORE:</span>
+                        <span id="game-score" class="ui-badge-value">0</span>
+                    </div>
+                </div>
+            </div>
+            <canvas id="board"></canvas>
+            <div class="game-platform"><div class="platform-glow"></div></div>
+            <div id="game-over-overlay" class="game-over-overlay hidden">
+                <div class="game-over-content">
+                    <div class="game-over-text">GAME OVER</div>
+                    <div id="game-over-submit-status" style="font-size:11px;color:#888;margin:4px 0;min-height:16px;"></div>
+                    <div class="game-over-restart">TAP to restart</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connect screen hidden — React renders its own modal -->
+    <div id="overlay-connect" class="overlay hidden" data-state="connect">
+        <div class="overlay-bg"></div>
+        <div class="glass-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h1 class="card-title">RUG PULL RUN</h1>
+                <p class="card-subtitle">Run. Earn. Unlock.</p>
+            </div>
+            <div class="card-body">
+                <button id="connect-button" class="btn btn-primary btn-large">Connect Wallet</button>
+            </div>
+            <div class="card-rules">
+                <p class="rules-title">How to play:</p>
+                <ul class="rules-list">
+                    <li>Jump: Space / Arrow Up (tap left on mobile)</li>
+                    <li>Duck: Arrow Down / S (hold right on mobile)</li>
+                    <li>Avoid coins and birds as obstacles</li>
+                    <li>Free: 1 coin per 1,000 pts · Paid: 5 coins per 1,000 pts</li>
+                </ul>
+            </div>
+            <div class="card-ground"></div>
+            <div class="card-footer">
+                <p class="helper-text">Wallet is required to play in Base App.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="overlay-menu" class="overlay hidden" data-state="menu">
+        <div class="overlay-bg"></div>
+        <div class="glass-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h1 class="card-title">RUG PULL RUN</h1>
+                <div class="wallet-header-row">
+                    <p id="wallet-address" class="wallet-badge">0x1234…abcd</p>
+                    <button id="disconnect-button" class="btn-disconnect" title="Disconnect wallet">✕</button>
+                </div>
+            </div>
+            <div class="card-body menu-body">
+                <div class="checkin-section">
+                    <button id="checkin-button" class="btn btn-secondary btn-small">Check-in</button>
+                    <span id="checkin-status" class="checkin-badge"></span>
+                </div>
+                <button id="start-button" class="btn btn-ghost btn-large">Free Game</button>
+                <button id="pay-game-button" class="btn btn-primary btn-large">Pay Game · $0.01</button>
+                <button id="collection-button" class="btn btn-ghost btn-large">Collection</button>
+                <button id="leaderboard-button" class="btn btn-ghost btn-large" disabled>
+                    Leaderboard <span class="coming-soon">Coming soon</span>
+                </button>
+            </div>
+            <div class="card-rules">
+                <p class="rules-title">How to play:</p>
+                <ul class="rules-list">
+                    <li>Jump: Space / Arrow Up (tap left on mobile)</li>
+                    <li>Duck: Arrow Down / S (hold right on mobile)</li>
+                    <li>Avoid coins and birds as obstacles</li>
+                    <li>Free: 1 coin per 1,000 pts · Paid: 5 coins per 1,000 pts</li>
+                </ul>
+            </div>
+            <div class="card-ground"></div>
+        </div>
+    </div>
+
+    <!-- PAUSE MENU -->
+    <div id="overlay-pause" class="overlay overlay-dimmed hidden" data-state="paused">
+        <div class="glass-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h1 class="card-title card-title-pause">PAUSED</h1>
+                <div class="wallet-header-row">
+                    <p id="wallet-address-pause" class="wallet-badge">0x1234…abcd</p>
+                    <button id="disconnect-button-pause" class="btn-disconnect" title="Disconnect wallet">✕</button>
+                </div>
+            </div>
+            <div class="card-body menu-body">
+                <div class="checkin-section">
+                    <button id="checkin-button-pause" class="btn btn-secondary btn-small">Check-in</button>
+                    <span id="checkin-status-pause" class="checkin-badge"></span>
+                </div>
+                <button id="resume-button" class="btn btn-primary btn-large">Resume</button>
+                <button id="home-button-pause" class="btn btn-ghost btn-large">Home</button>
+                <button id="collection-button-pause" class="btn btn-ghost btn-large">Collection</button>
+                <button class="btn btn-ghost btn-large" disabled>
+                    Leaderboard <span class="coming-soon">Coming soon</span>
+                </button>
+            </div>
+            <div class="card-rules">
+                <p class="rules-title">How to play:</p>
+                <ul class="rules-list">
+                    <li>Jump: Space / Arrow Up (tap left on mobile)</li>
+                    <li>Duck: Arrow Down / S (hold right on mobile)</li>
+                    <li>Avoid coins and birds as obstacles</li>
+                    <li>Free: 1 coin per 1,000 pts · Paid: 5 coins per 1,000 pts</li>
+                </ul>
+            </div>
+            <div class="card-ground"></div>
+        </div>
+    </div>
+
+    <!-- COLLECTION OVERLAY -->
+    <div id="overlay-collection" class="overlay overlay-dimmed hidden">
+        <div class="glass-card collection-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h1 class="card-title collection-title">COLLECTION</h1>
+                <div class="collection-header-row">
+                    <div class="collection-coins">
+                        <img src="/assets/eth.png" alt="coin" class="collection-coin-icon">
+                        <span id="collection-coins-count">0</span>
+                    </div>
+                    <button id="buy-coins-btn" class="btn btn-primary btn-sm">+ Buy</button>
+                </div>
+            </div>
+            <div class="card-body collection-body">
+                <div class="collection-grid">
+                    <div class="character-card locked" data-char-id="0" data-price="0"><div class="character-image"><img src="" alt="Vitalik" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Vitalik</span><span class="character-rarity rarity-common">COMMON</span></div><button class="btn btn-primary character-btn char-select-btn">Free Mint</button></div>
+                    <div class="character-card locked" data-char-id="1" data-price="10"><div class="character-image"><img src="" alt="Doge" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Doge</span><span class="character-rarity rarity-common">COMMON</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>10 Coins</button></div>
+                    <div class="character-card locked" data-char-id="2" data-price="10"><div class="character-image"><img src="" alt="Hamaha" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Hamaha</span><span class="character-rarity rarity-common">COMMON</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>10 Coins</button></div>
+                    <div class="character-card locked" data-char-id="3" data-price="25"><div class="character-image"><img src="" alt="Hayes" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Hayes</span><span class="character-rarity rarity-rare">RARE</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>25 Coins</button></div>
+                    <div class="character-card locked" data-char-id="4" data-price="25"><div class="character-image"><img src="" alt="Pepe" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Pepe</span><span class="character-rarity rarity-rare">RARE</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>25 Coins</button></div>
+                    <div class="character-card locked" data-char-id="5" data-price="50"><div class="character-image"><img src="" alt="Elon Mask" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Elon Mask</span><span class="character-rarity rarity-epic">EPIC</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>50 Coins</button></div>
+                    <div class="character-card locked" data-char-id="6" data-price="50"><div class="character-image"><img src="" alt="Sam Bankman" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Sam Bankman</span><span class="character-rarity rarity-epic">EPIC</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>50 Coins</button></div>
+                    <div class="character-card locked" data-char-id="7" data-price="50"><div class="character-image"><img src="" alt="Vladimir Novakovski" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Vladimir Novakovski</span><span class="character-rarity rarity-epic">EPIC</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>50 Coins</button></div>
+                    <div class="character-card locked" data-char-id="8" data-price="100"><div class="character-image"><img src="" alt="CZ" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">CZ</span><span class="character-rarity rarity-legendary">LEGENDARY</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>100 Coins</button></div>
+                    <div class="character-card locked" data-char-id="9" data-price="100"><div class="character-image"><img src="" alt="Trump" style="display:none"><img class="char-silhouette" src="" alt=""><div class="silhouette-glow"></div></div><div class="character-info"><span class="character-name">Trump</span><span class="character-rarity rarity-legendary">LEGENDARY</span></div><button class="btn btn-secondary character-btn char-select-btn" disabled>100 Coins</button></div>
+                </div>
+                <p class="collection-hint" id="collection-hint"></p>
+            </div>
+            <button id="collection-close-btn" class="btn btn-ghost">Close</button>
+            <div class="card-ground"></div>
+        </div>
+    </div>
+
+    <!-- BUY COINS MODAL -->
+    <div id="overlay-buy-coins" class="overlay overlay-dimmed hidden">
+        <div class="glass-card buy-coins-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h2 class="card-title">BUY COINS</h2>
+                <p class="buy-coins-subtitle">1 coin = $0.10 USDC</p>
+            </div>
+            <div class="buy-coins-grid">
+                <button class="buy-coins-package" data-coins="10"><span class="pkg-coins">10</span><img src="/assets/eth.png" alt="coins" class="pkg-icon"><span class="pkg-price">$1.00</span></button>
+                <button class="buy-coins-package" data-coins="20"><span class="pkg-coins">20</span><img src="/assets/eth.png" alt="coins" class="pkg-icon"><span class="pkg-price">$2.00</span></button>
+                <button class="buy-coins-package" data-coins="50"><span class="pkg-coins">50</span><img src="/assets/eth.png" alt="coins" class="pkg-icon"><span class="pkg-price">$5.00</span></button>
+                <button class="buy-coins-package" data-coins="100"><span class="pkg-coins">100</span><img src="/assets/eth.png" alt="coins" class="pkg-icon"><span class="pkg-price">$10.00</span></button>
+                <button class="buy-coins-package" data-coins="500"><span class="pkg-coins">500</span><img src="/assets/eth.png" alt="coins" class="pkg-icon"><span class="pkg-price">$50.00</span></button>
+                <button class="buy-coins-package" data-coins="1000"><span class="pkg-coins">1000</span><img src="/assets/eth.png" alt="coins" class="pkg-icon"><span class="pkg-price">$100.00</span></button>
+                <button class="buy-coins-package" data-coins="5000"><span class="pkg-coins">5000</span><img src="/assets/eth.png" alt="coins" class="pkg-icon"><span class="pkg-price">$400.00</span></button>
+            </div>
+            <p id="buy-coins-status" class="buy-coins-status"></p>
+            <button id="buy-coins-close-btn" class="btn btn-ghost">Cancel</button>
+            <div class="card-ground"></div>
+        </div>
+    </div>
+
+    <!-- React wallet UI mounts here (above everything) -->
+    <div id="wallet-root"></div>
+</body>
+</html>
