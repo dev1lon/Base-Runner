@@ -5,6 +5,27 @@ import { useSIWE } from '../hooks/useSIWE'
 import { useGameBridge } from '../hooks/useGameBridge'
 
 const BASE_CHAIN_ID = 8453
+const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
+const AUTH_KEY = 'runner_auth_token'
+
+function getStoredToken(address) {
+  if (!address) return null
+  try {
+    const map = JSON.parse(localStorage.getItem(AUTH_KEY) ?? '{}')
+    return map[address.toLowerCase()] || null
+  } catch { return null }
+}
+
+async function validateToken(token) {
+  try {
+    const r = await fetch(`${BACKEND}/api/user/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (!r.ok) return null
+    const data = await r.json()
+    return data?.ok ? data : null
+  } catch { return null }
+}
 
 function isWalletApp() {
   const ua = navigator.userAgent.toLowerCase()
@@ -59,14 +80,31 @@ export function ConnectModal({ onReady }) {
     }
   }
 
-  // Auto-sign SIWE when inside wallet app — wait for walletClient to be ready
+  // Try to restore existing session, then auto-sign if needed
   useEffect(() => {
     if (!isConnected || !address || token) return
-    if (!isWalletApp()) return
-    if (!walletClient) return // wagmi walletClient must be ready before signing
+    if (!walletClient) return
     if (autoSignAttempted.current) return
     autoSignAttempted.current = true
-    handleSignIn()
+
+    const stored = getStoredToken(address)
+    if (stored) {
+      // Validate existing JWT before asking to sign again
+      validateToken(stored).then(data => {
+        if (data) {
+          setToken(stored)
+          onReady?.(data)
+        } else if (isWalletApp()) {
+          // Token expired/invalid — auto-sign in wallet app
+          handleSignIn()
+        }
+        // On desktop with invalid token: show Sign In button
+      })
+    } else if (isWalletApp()) {
+      // No stored token — auto-sign in wallet app
+      handleSignIn()
+    }
+    // On desktop with no token: show Sign In button
   }, [isConnected, address, walletClient]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
