@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useConnect, useAccount, useWalletClient } from 'wagmi'
+import { useConnect, useAccount, useWalletClient, useDisconnect } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { useSIWE } from '../hooks/useSIWE'
 import { useGameBridge } from '../hooks/useGameBridge'
@@ -44,6 +44,7 @@ export function ConnectModal({ open, onClose, onReady }) {
   const { connect, connectors, isPending } = useConnect()
   const { address, chainId, isConnected } = useAccount()
   const { data: walletClient } = useWalletClient()
+  const { disconnect: wagmiDisconnect } = useDisconnect()
   const { signIn, status: siweStatus, reset: siweReset } = useSIWE()
   const [token, setToken] = useState(null)
   const [error, setError] = useState('')
@@ -124,6 +125,40 @@ export function ConnectModal({ open, onClose, onReady }) {
   const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
   const injectedConnectors = connectors.filter(c => c.id !== 'coinbaseWalletSDK')
 
+  // Unified cancel: in wallet app disconnects the wallet (only way to "close"),
+  // on desktop closes the modal.
+  const handleCancel = () => {
+    if (isWalletApp() || isConnected) {
+      wagmiDisconnect()
+      siweReset()
+      setError('')
+      autoSignAttempted.current = false
+      autoConnectAttempted.current = false
+    }
+    onClose?.()
+  }
+
+  const CancelBtn = () => (
+    <button
+      className="btn btn-ghost btn-sm"
+      onClick={handleCancel}
+      style={{ marginTop: 10, alignSelf: 'center', width: 'auto', minWidth: 0 }}
+    >
+      Cancel
+    </button>
+  )
+
+  const DisconnectX = () => (
+    <button
+      className="btn-disconnect"
+      onClick={handleCancel}
+      title="Disconnect wallet"
+      style={{ marginLeft: 8 }}
+    >
+      ✕
+    </button>
+  )
+
   // Hooks always run (bridge must stay alive) — only hide rendering when not needed
   if (token) return null       // authenticated: bridge active, no UI needed
   if (!open && !isWalletApp()) return null  // desktop: wait for explicit open
@@ -164,15 +199,7 @@ export function ConnectModal({ open, onClose, onReady }) {
               </>
             )}
           </div>
-          {hasError && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={onClose}
-              style={{ marginTop: 10, alignSelf: 'center' }}
-            >
-              Cancel
-            </button>
-          )}
+          <CancelBtn />
           <div className="card-ground" />
         </div>
       </div>
@@ -191,7 +218,10 @@ export function ConnectModal({ open, onClose, onReady }) {
           <div className="card-header">
             <h1 className="card-title">RUG PULL RUN</h1>
             <p className="card-subtitle">Sign to verify ownership</p>
-            <p className="rpr-address-pill">{address.slice(0, 6)}…{address.slice(-4)}</p>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
+              <p className="rpr-address-pill" style={{ margin: '14px 0 0' }}>{address.slice(0, 6)}…{address.slice(-4)}</p>
+              <DisconnectX />
+            </div>
           </div>
           <div className="card-body">
             <button
@@ -203,13 +233,7 @@ export function ConnectModal({ open, onClose, onReady }) {
             </button>
             {error && <p className="rpr-error">{error}</p>}
           </div>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={onClose}
-            style={{ marginTop: 10, alignSelf: 'center' }}
-          >
-            Cancel
-          </button>
+          <CancelBtn />
           <div className="card-ground" />
         </div>
       </div>
@@ -281,12 +305,7 @@ export function ConnectModal({ open, onClose, onReady }) {
             <li>Free: 1 coin / 1,000 pts · Paid: 5 coins / 1,000 pts</li>
           </ul>
         </div>
-        <button
-          onClick={onClose}
-          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', marginTop: 8, padding: '4px 12px' }}
-        >
-          Cancel
-        </button>
+        <CancelBtn />
         <div className="card-ground" />
       </div>
     </div>
