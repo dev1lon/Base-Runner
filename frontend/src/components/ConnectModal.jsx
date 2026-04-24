@@ -96,8 +96,16 @@ export function ConnectModal({ open, onClose, onReady }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignIn = async () => {
-    if (!address) return
     setError('')
+    siweReset()
+    // If wallet got disconnected or address is stale, reconnect first (Base App)
+    if (!address || !isConnected) {
+      try {
+        await new Promise(r => setTimeout(r, 100))
+        connect({ connector: injected() })
+        return // user will click Sign In again after reconnect OR auto-sign useEffect fires
+      } catch (e) { setError('Reconnect failed'); return }
+    }
     try {
       const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
       setToken(data.token)
@@ -214,7 +222,7 @@ export function ConnectModal({ open, onClose, onReady }) {
               </>
             )}
           </div>
-          {hasError && <CancelBtn />}
+          {/* No Cancel in wallet app — user can't exit Base App browser anyway */}
           <div className="card-ground" />
         </div>
       </div>
