@@ -96,15 +96,13 @@ export function ConnectModal({ open, onClose, onReady }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignIn = async () => {
+    console.log('[ConnectModal] Sign In clicked. isConnected:', isConnected, 'address:', address)
     setError('')
-    siweReset()
-    // If wallet got disconnected or address is stale, reconnect first (Base App)
+    // If wallet lost connection, reconnect first (Base App can do this after rejection)
     if (!address || !isConnected) {
-      try {
-        await new Promise(r => setTimeout(r, 100))
-        connect({ connector: injected() })
-        return // user will click Sign In again after reconnect OR auto-sign useEffect fires
-      } catch (e) { setError('Reconnect failed'); return }
+      console.log('[ConnectModal] not connected, reconnecting')
+      connect({ connector: injected() })
+      return
     }
     try {
       const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
@@ -210,16 +208,14 @@ export function ConnectModal({ open, onClose, onReady }) {
             </p>
           </div>
           <div className="card-body">
-            {hasError && (
-              <>
-                {error && <p className="rpr-error" style={{ marginBottom: 12 }}>{error}</p>}
-                <button
-                  className="btn btn-primary btn-large"
-                  onClick={handleSignIn}
-                >
-                  Sign In
-                </button>
-              </>
+            {error && <p className="rpr-error" style={{ marginBottom: 12 }}>{error}</p>}
+            {isConnected && siweStatus !== 'pending' && (
+              <button
+                className="btn btn-primary btn-large"
+                onClick={handleSignIn}
+              >
+                Sign In
+              </button>
             )}
           </div>
           {/* No Cancel in wallet app — user can't exit Base App browser anyway */}

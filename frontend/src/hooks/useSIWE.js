@@ -57,22 +57,17 @@ export function useSIWE() {
       })
       console.log('[SIWE] message built, signing...')
 
-      // 3. Sign — try wagmi first; fall back to direct provider call if that fails
-      // (helps when wagmi walletClient gets into a stale state after user rejects once)
+      // 3. Sign — prefer direct provider call (more reliable in Base App across retries).
+      // Fall back to wagmi if no provider is available.
       let signature
-      try {
-        signature = await signMessageAsync({ message })
-      } catch (wagmiErr) {
-        if (wagmiErr.code === 4001 || wagmiErr.message?.toLowerCase().includes('reject')) {
-          throw wagmiErr // user actually rejected — don't retry
-        }
-        console.warn('[SIWE] wagmi sign failed, trying provider directly:', wagmiErr.message)
-        const provider = window.ethereum
-        if (!provider) throw wagmiErr
+      const provider = window.__walletBridge?.provider || window.ethereum
+      if (provider?.request) {
         signature = await provider.request({
           method: 'personal_sign',
           params: [message, address]
         })
+      } else {
+        signature = await signMessageAsync({ message })
       }
       console.log('[SIWE] signed, verifying...')
 
