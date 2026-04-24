@@ -2944,6 +2944,9 @@ async function handlePayGame() {
 
         if (provider?.request) {
             try {
+                const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+                    ? { paymasterService: { url: PAYMASTER_URL } }
+                    : {};
                 const raw = await provider.request({
                     method: 'wallet_sendCalls',
                     params: [{
@@ -2951,7 +2954,7 @@ async function handlePayGame() {
                         chainId: '0x2105',
                         from: walletAddress,
                         calls: [{ to: PAYMENTS_CONTRACT, value: priceHex, data: playCalldata }],
-                        capabilities: {}
+                        capabilities: pmCaps
                     }]
                 });
                 const callsId = extractCallsId(raw);
