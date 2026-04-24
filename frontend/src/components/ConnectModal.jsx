@@ -73,9 +73,11 @@ export function ConnectModal({ open, onClose, onReady }) {
     }
   }, [isConnected])
 
-  // Auto-close modal if user rejected the signature in their wallet
+  // Auto-close modal on wallet rejection — but only on desktop.
+  // In wallet app (Base App) the modal is always rendered; keep status='cancelled'
+  // so the Sign In retry button stays visible.
   useEffect(() => {
-    if (siweStatus === 'cancelled') {
+    if (siweStatus === 'cancelled' && !isWalletApp()) {
       wagmiDisconnect()
       siweReset()
       setError('')
