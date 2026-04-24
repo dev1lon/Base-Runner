@@ -55,15 +55,18 @@ const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "300000000
 // In-memory set to prevent reusing the same tx for multiple paid sessions
 const usedPaidTxHashes = new Set();
 
-// USDC on Base mainnet
+// Payments contract (RugPullRunPayments) — handles paid game + coin purchases
+const PAYMENTS_CONTRACT = (process.env.PAYMENTS_CONTRACT || "").toLowerCase();
+const PAID_GAME_EVENT_TOPIC   = ethers.id("PaidGame(address,uint256,uint256,uint256)");
+const COINS_PURCHASED_TOPIC   = ethers.id("CoinsPurchased(address,uint256,uint256,uint256,uint256)");
+
+// USDC on Base mainnet (kept for reference / fallback)
 const USDC_CONTRACT = (process.env.USDC_CONTRACT || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").toLowerCase();
 const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
 const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000, 5000]);
-// Custom USDC price overrides (6 decimals). Default: USDC_PER_COIN * coins.
 const COIN_PACKAGE_USDC = new Map([
   [5000, BigInt(400_000_000)] // $400.00
 ]);
-const USDC_TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
 const usedCoinPurchaseTxHashes = new Set();
 
 if (ALLOWED_ORIGIN === "*") {
@@ -235,6 +238,25 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
     }
     if (receipt.status !== 1) {
       return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
+    }
+
+    // Verify PaidGame event from payments contract
+    if (PAYMENTS_CONTRACT) {
+      const playerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
+      const paidLog = receipt.logs.find(log =>
+        log.address.toLowerCase() === PAYMENTS_CONTRACT &&
+        log.topics[0] === PAID_GAME_EVENT_TOPIC &&
+        log.topics[1]?.toLowerCase() === playerTopic
+      );
+      if (!paidLog) {
+        return res.status(400).json({ ok: false, error: "PaidGame event not found in transaction" });
+      }
+      const [value] = ethers.AbiCoder.defaultAbiCoder().decode(
+        ["uint256", "uint256", "uint256"], paidLog.data
+      );
+      if (BigInt(value) < PAID_GAME_PRICE_WEI) {
+        return res.status(400).json({ ok: false, error: "Insufficient payment value" });
+      }
     }
 
     usedPaidTxHashes.add(txHash);
@@ -548,19 +570,27 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
     if (!receipt) return res.status(400).json({ ok: false, error: "Transaction not found on chain" });
     if (receipt.status !== 1) return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
 
-    // Verify USDC Transfer to treasury for expected amount
-    const expectedAmount = COIN_PACKAGE_USDC.get(Number(coins)) ?? (USDC_PER_COIN * BigInt(coins));
-    const treasuryTopic = "0x" + TREASURY_ADDRESS.slice(2).padStart(64, "0");
-    const transferLog = receipt.logs.find(log =>
-      log.address.toLowerCase() === USDC_CONTRACT &&
-      log.topics[0] === USDC_TRANSFER_TOPIC &&
-      log.topics[2]?.toLowerCase() === treasuryTopic
-    );
-    if (!transferLog) {
-      return res.status(400).json({ ok: false, error: "USDC transfer to treasury not found" });
-    }
-    if (BigInt(transferLog.data) < expectedAmount) {
-      return res.status(400).json({ ok: false, error: "Insufficient USDC payment" });
+    // Verify CoinsPurchased event from payments contract
+    const expectedUSDC = COIN_PACKAGE_USDC.get(Number(coins)) ?? (USDC_PER_COIN * BigInt(coins));
+    if (PAYMENTS_CONTRACT) {
+      const buyerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
+      const coinsLog = receipt.logs.find(log =>
+        log.address.toLowerCase() === PAYMENTS_CONTRACT &&
+        log.topics[0] === COINS_PURCHASED_TOPIC &&
+        log.topics[1]?.toLowerCase() === buyerTopic
+      );
+      if (!coinsLog) {
+        return res.status(400).json({ ok: false, error: "CoinsPurchased event not found" });
+      }
+      const [coinsAmt, usdcAmt] = ethers.AbiCoder.defaultAbiCoder().decode(
+        ["uint256", "uint256", "uint256", "uint256"], coinsLog.data
+      );
+      if (Number(coinsAmt) !== Number(coins)) {
+        return res.status(400).json({ ok: false, error: "Coins amount mismatch" });
+      }
+      if (BigInt(usdcAmt) < expectedUSDC) {
+        return res.status(400).json({ ok: false, error: "Insufficient USDC payment" });
+      }
     }
 
     usedCoinPurchaseTxHashes.add(txHash);

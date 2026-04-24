@@ -1,5 +1,6 @@
+import { getConnectorClient } from '@wagmi/core'
 import { useState, useCallback } from 'react'
-import { useSignMessage } from 'wagmi'
+import { config } from '../wagmi.config'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
 const AUTH_KEY = 'runner_auth_token'
@@ -11,7 +12,6 @@ function storeToken(address, token) {
   localStorage.setItem(AUTH_KEY, JSON.stringify(map))
 }
 
-// EIP-4361 SIWE message — built manually to avoid siwe/apg-js Buffer dependency in browser
 function buildSiweMessage({ domain, address, statement, uri, chainId, nonce, issuedAt }) {
   return [
     `${domain} wants you to sign in with your Ethereum account:`,
@@ -28,17 +28,14 @@ function buildSiweMessage({ domain, address, statement, uri, chainId, nonce, iss
 }
 
 export function useSIWE() {
-  const { signMessageAsync, reset: resetSignMutation } = useSignMessage()
-  const [status, setStatus] = useState('idle') // idle | pending | done | error | cancelled
+  const [status, setStatus] = useState('idle')
 
   const signIn = useCallback(async (address, chainId) => {
     setStatus('pending')
-    // Reset wagmi mutation state from any previous failed attempt
-    try { resetSignMutation() } catch {}
     try {
       const effectiveChainId = chainId || 8453
 
-      // 1. Fetch nonce
+      // 1. Nonce
       const nr = await fetch(`${BACKEND}/auth/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,7 +43,7 @@ export function useSIWE() {
       }).then(r => r.json())
       if (!nr.ok) throw new Error(nr.error ?? 'Nonce failed')
 
-      // 2. Build EIP-4361 message
+      // 2. EIP-4361 message
       const message = buildSiweMessage({
         domain: window.location.host,
         address,
@@ -57,10 +54,11 @@ export function useSIWE() {
         issuedAt: nr.issuedAt,
       })
 
-      // 3. Sign via wagmi useSignMessage (Base's recommended path)
-      const signature = await signMessageAsync({ message, account: address })
+      // 3. Sign via getConnectorClient — fresh connector each call, no stale hook state
+      const client = await getConnectorClient(config)
+      const signature = await client.signMessage({ message, account: address })
 
-      // 4. Verify on backend — SIWE endpoint first, legacy fallback for older flows
+      // 4. Verify
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,7 +82,7 @@ export function useSIWE() {
       setStatus(isCancel ? 'cancelled' : 'error')
       throw err
     }
-  }, [signMessageAsync, resetSignMutation])
+  }, [])
 
   const reset = useCallback(() => setStatus('idle'), [])
 

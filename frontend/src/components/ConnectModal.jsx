@@ -204,30 +204,12 @@ export function ConnectModal({ open, onClose, onReady }) {
           <div className="card-body">
             {error && <p className="rpr-error" style={{ marginBottom: 12 }}>{error}</p>}
             {isConnected && siweStatus !== 'pending' && (
-              <>
-                <button
-                  className="btn btn-primary btn-large"
-                  onClick={handleSignIn}
-                >
-                  Sign In
-                </button>
-                {hasError && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      wagmiDisconnect()
-                      siweReset()
-                      setError('')
-                      autoSignAttempted.current = false
-                      autoConnectAttempted.current = false
-                      setTimeout(() => connect({ connector: injected() }), 300)
-                    }}
-                    style={{ marginTop: 10, width: 'auto', minWidth: 0, alignSelf: 'center' }}
-                  >
-                    Reset Session
-                  </button>
-                )}
-              </>
+              <button
+                className="btn btn-primary btn-large"
+                onClick={handleSignIn}
+              >
+                Sign In
+              </button>
             )}
           </div>
           <div className="card-ground" />

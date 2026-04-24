@@ -222,6 +222,13 @@ const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 25000;
 const ALLOW_GUEST_PLAY = false;
 
+// Payments contract (RugPullRunPayments on Base mainnet)
+const PAYMENTS_CONTRACT = "0x3B6bEB28118b7DAA7cEA851e1A258F55c3032109";
+const PAYMENTS_ABI = [
+    "function playPaidGame() payable",
+    "function buyCoins(uint256 coinsAmount, uint256 usdcAmount)"
+];
+
 // USDC on Base mainnet
 const USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_PER_COIN = 100_000n; // 0.1 USDC in 6-decimal units
@@ -2932,6 +2939,9 @@ async function handlePayGame() {
         let txHash;
 
         // Try EIP-5792 wallet_sendCalls first (Base App / Coinbase Smart Wallet)
+        const paymentsIface = new ethers.Interface(PAYMENTS_ABI);
+        const playCalldata = paymentsIface.encodeFunctionData("playPaidGame") + BUILDER_CODE_SUFFIX.slice(2);
+
         if (provider?.request) {
             try {
                 const raw = await provider.request({
@@ -2940,14 +2950,13 @@ async function handlePayGame() {
                         version: '1.0',
                         chainId: '0x2105',
                         from: walletAddress,
-                        calls: [{ to: gameConfig.treasuryAddress, value: priceHex, data: '0x' }],
+                        calls: [{ to: PAYMENTS_CONTRACT, value: priceHex, data: playCalldata }],
                         capabilities: {}
                     }]
                 });
                 const callsId = extractCallsId(raw);
                 if (!callsId) throw new Error('wallet_sendCalls returned no id');
                 if (payGameButton) payGameButton.textContent = "Confirming...";
-                // Block until we have a real on-chain transactionHash — backend verifies it.
                 txHash = await waitForCallsTxHash(provider, callsId);
             } catch (e) {
                 if (e.code === -32601) {
@@ -2958,11 +2967,14 @@ async function handlePayGame() {
             }
         }
 
-        // Fallback: regular ethers sendTransaction
+        // Fallback: ethers contract call
         if (!txHash) {
             const ethersProvider = new ethers.BrowserProvider(provider);
             const signer = await ethersProvider.getSigner();
-            const tx = await signer.sendTransaction({ to: gameConfig.treasuryAddress, value: BigInt(gameConfig.paidGamePriceWei), data: BUILDER_CODE_SUFFIX });
+            const paymentsContract = new ethers.Contract(PAYMENTS_CONTRACT, PAYMENTS_ABI, signer);
+            const populated = await paymentsContract.playPaidGame.populateTransaction({ value: BigInt(gameConfig.paidGamePriceWei) });
+            populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
+            const tx = await signer.sendTransaction(populated);
             if (payGameButton) payGameButton.textContent = "Confirming...";
             const receipt = await tx.wait();
             txHash = receipt.hash || tx.hash;
@@ -3183,11 +3195,15 @@ async function handleBuyCoinsPackage(coins) {
 
     try {
         const provider = getEthereumProvider();
-        const usdcIface = new ethers.Interface(["function transfer(address,uint256) returns (bool)"]);
-        const callData = usdcIface.encodeFunctionData("transfer", [gameConfig.treasuryAddress, usdcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
+        const usdcIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
+        const paymentsIface = new ethers.Interface(PAYMENTS_ABI);
+
+        // approve(paymentsContract, usdcAmount) + buyCoins(coins, usdcAmount) — batched in one tx
+        const approveData = usdcIface.encodeFunctionData("approve", [PAYMENTS_CONTRACT, usdcAmount]);
+        const buyData = paymentsIface.encodeFunctionData("buyCoins", [coins, usdcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
         let txHash;
 
-        // Try EIP-5792 wallet_sendCalls (with paymaster for gas sponsorship)
+        // Try EIP-5792 wallet_sendCalls (batches approve + buyCoins atomically, paymaster for gas)
         if (provider?.request) {
             try {
                 const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
@@ -3199,7 +3215,10 @@ async function handleBuyCoinsPackage(coins) {
                         version: '1.0',
                         chainId: '0x2105',
                         from: walletAddress,
-                        calls: [{ to: USDC_CONTRACT, value: '0x0', data: callData }],
+                        calls: [
+                            { to: USDC_CONTRACT, value: '0x0', data: approveData },
+                            { to: PAYMENTS_CONTRACT, value: '0x0', data: buyData }
+                        ],
                         capabilities: pmCaps
                     }]
                 });
@@ -3212,18 +3231,20 @@ async function handleBuyCoinsPackage(coins) {
             }
         }
 
-        // Fallback: regular ethers USDC transfer
+        // Fallback: two separate transactions (approve then buyCoins)
         if (!txHash) {
             const ethersProvider = new ethers.BrowserProvider(provider);
             const signer = await ethersProvider.getSigner();
             const usdcContract = new ethers.Contract(USDC_CONTRACT,
-                ["function transfer(address,uint256) returns (bool)"], signer);
-            if (statusEl) statusEl.textContent = 'Sending…';
-            const populated = await usdcContract.transfer.populateTransaction(gameConfig.treasuryAddress, usdcAmount);
-            populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
-            const tx = await signer.sendTransaction(populated);
+                ["function approve(address,uint256) returns (bool)"], signer);
+            const paymentsContract = new ethers.Contract(PAYMENTS_CONTRACT, PAYMENTS_ABI, signer);
+            if (statusEl) statusEl.textContent = 'Approve USDC…';
+            const approveTx = await usdcContract.approve(PAYMENTS_CONTRACT, usdcAmount);
+            await approveTx.wait();
+            if (statusEl) statusEl.textContent = 'Buying coins…';
+            const buyTx = await paymentsContract.buyCoins(coins, usdcAmount);
             if (statusEl) statusEl.textContent = 'Confirming…';
-            const receipt = await tx.wait();
+            const receipt = await buyTx.wait();
             txHash = receipt.hash;
         }
 
