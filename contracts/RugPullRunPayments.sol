@@ -1,44 +1,124 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// ============================================
+// Minimal interfaces
+// ============================================
+
+interface IERC20 {
+    function transfer(address to, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+}
+
+// ============================================
+// Minimal access / safety primitives (no external deps — BaseScan friendly)
+// ============================================
+
+abstract contract Ownable {
+    address private _owner;
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    error NotOwner();
+    error ZeroOwner();
+
+    constructor(address initialOwner) {
+        if (initialOwner == address(0)) revert ZeroOwner();
+        _owner = initialOwner;
+        emit OwnershipTransferred(address(0), initialOwner);
+    }
+
+    modifier onlyOwner() {
+        if (msg.sender != _owner) revert NotOwner();
+        _;
+    }
+
+    function owner() public view returns (address) { return _owner; }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroOwner();
+        address old = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(old, newOwner);
+    }
+}
+
+abstract contract Pausable {
+    bool private _paused;
+    event Paused(address account);
+    event Unpaused(address account);
+    error IsPaused();
+    error NotPaused();
+
+    modifier whenNotPaused() {
+        if (_paused) revert IsPaused();
+        _;
+    }
+
+    function paused() public view returns (bool) { return _paused; }
+
+    function _pause() internal {
+        if (_paused) revert IsPaused();
+        _paused = true;
+        emit Paused(msg.sender);
+    }
+
+    function _unpause() internal {
+        if (!_paused) revert NotPaused();
+        _paused = false;
+        emit Unpaused(msg.sender);
+    }
+}
+
+abstract contract ReentrancyGuard {
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+    uint256 private _status = _NOT_ENTERED;
+    error Reentrant();
+
+    modifier nonReentrant() {
+        if (_status == _ENTERED) revert Reentrant();
+        _status = _ENTERED;
+        _;
+        _status = _NOT_ENTERED;
+    }
+}
+
+// ============================================
+// Rug Pull Run Payments
+// ============================================
 
 /**
  * @title Rug Pull Run Payments
  * @notice Handles on-chain payments for paid games (ETH) and coin purchases (USDC).
- *         All payments emit events for backend indexing (no backend polling needed).
- * @dev    Funds stay in the contract until owner calls withdraw*. Idempotent via nonce.
+ *         All payments emit events for backend indexing (no transfer-topic scraping).
+ * @dev    Funds stay in the contract until owner calls withdraw*. Per-user nonce.
  */
 contract RugPullRunPayments is Ownable, Pausable, ReentrancyGuard {
-    using SafeERC20 for IERC20;
-
-    // USDC on Base mainnet
     IERC20 public immutable usdc;
 
-    // Paid game price in wei (owner can update)
+    // Paid game price in wei (owner updatable)
     uint256 public paidGamePriceWei;
 
-    // Price per coin in USDC (6 decimals)
+    // Default USDC price per coin (6 decimals)
     uint256 public usdcPerCoin;
 
-    // Package-specific overrides (e.g. discounted 5000-pack). 0 = use default price.
+    // Package-specific USDC prices (0 = use default formula)
     mapping(uint256 => uint256) public coinPackagePrice;
 
-    // Per-user monotonic nonce prevents replay/accidental double-credit on retry
+    // Per-user monotonic counter — replay/retry dedupe on backend
     mapping(address => uint256) public userNonce;
 
-    // ============================================
-    // Events — indexed for backend/Dune queries
-    // ============================================
+    // Custom errors (gas-efficient)
+    error InsufficientPayment();
+    error ZeroCoins();
+    error InsufficientUSDC();
+    error ZeroAddress();
+    error NoBalance();
+    error EthTransferFailed();
+    error USDCTransferFailed();
 
-    /// @notice Emitted when user pays ETH to play a single paid run.
+    // Events — indexed for backend / Dune / Base Analytics
     event PaidGame(address indexed player, uint256 value, uint256 nonce, uint256 timestamp);
-
-    /// @notice Emitted when user buys coins with USDC.
     event CoinsPurchased(
         address indexed buyer,
         uint256 coinsAmount,
@@ -46,11 +126,7 @@ contract RugPullRunPayments is Ownable, Pausable, ReentrancyGuard {
         uint256 nonce,
         uint256 timestamp
     );
-
-    /// @notice Emitted when owner withdraws contract balance.
     event Withdrawn(address indexed to, uint256 ethAmount, uint256 usdcAmount);
-
-    /// @notice Emitted when admin params update.
     event PriceUpdated(string kind, uint256 newValue);
 
     constructor(
@@ -58,45 +134,35 @@ contract RugPullRunPayments is Ownable, Pausable, ReentrancyGuard {
         uint256 _paidGamePriceWei,
         uint256 _usdcPerCoin
     ) Ownable(msg.sender) {
-        require(_usdc != address(0), "USDC zero");
+        if (_usdc == address(0)) revert ZeroAddress();
         usdc = IERC20(_usdc);
         paidGamePriceWei = _paidGamePriceWei;
         usdcPerCoin = _usdcPerCoin;
     }
 
     // ============================================
-    // User-facing payment functions
+    // User payments
     // ============================================
 
-    /**
-     * @notice Pay ETH to unlock one paid game run.
-     * @dev Emits PaidGame. Overpayment is kept in contract (for future withdrawal).
-     *      Builder Code attribution happens via calldata suffix — untouched here.
-     */
     function playPaidGame() external payable whenNotPaused nonReentrant {
-        require(msg.value >= paidGamePriceWei, "Insufficient payment");
+        if (msg.value < paidGamePriceWei) revert InsufficientPayment();
         uint256 nonce = ++userNonce[msg.sender];
         emit PaidGame(msg.sender, msg.value, nonce, block.timestamp);
     }
 
-    /**
-     * @notice Buy an in-game coin package with USDC.
-     * @param coinsAmount Number of coins to credit (backend trusts the event).
-     * @param usdcAmount  USDC (6-decimal) being paid.
-     * @dev Caller must approve USDC to this contract first.
-     *      Validates amount matches either the package override or the default price.
-     */
     function buyCoins(uint256 coinsAmount, uint256 usdcAmount)
         external
         whenNotPaused
         nonReentrant
     {
-        require(coinsAmount > 0, "Zero coins");
+        if (coinsAmount == 0) revert ZeroCoins();
         uint256 expected = coinPackagePrice[coinsAmount];
         if (expected == 0) expected = usdcPerCoin * coinsAmount;
-        require(usdcAmount >= expected, "Insufficient USDC");
+        if (usdcAmount < expected) revert InsufficientUSDC();
 
-        usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
+        bool ok = usdc.transferFrom(msg.sender, address(this), usdcAmount);
+        if (!ok) revert USDCTransferFailed();
+
         uint256 nonce = ++userNonce[msg.sender];
         emit CoinsPurchased(msg.sender, coinsAmount, usdcAmount, nonce, block.timestamp);
     }
@@ -105,22 +171,21 @@ contract RugPullRunPayments is Ownable, Pausable, ReentrancyGuard {
     // Owner / admin
     // ============================================
 
-    /// @notice Withdraw all ETH to a given address.
     function withdrawETH(address payable to) external onlyOwner nonReentrant {
-        require(to != address(0), "Zero address");
+        if (to == address(0)) revert ZeroAddress();
         uint256 bal = address(this).balance;
-        require(bal > 0, "No ETH");
+        if (bal == 0) revert NoBalance();
         (bool ok, ) = to.call{value: bal}("");
-        require(ok, "ETH transfer failed");
+        if (!ok) revert EthTransferFailed();
         emit Withdrawn(to, bal, 0);
     }
 
-    /// @notice Withdraw all USDC to a given address.
     function withdrawUSDC(address to) external onlyOwner nonReentrant {
-        require(to != address(0), "Zero address");
+        if (to == address(0)) revert ZeroAddress();
         uint256 bal = usdc.balanceOf(address(this));
-        require(bal > 0, "No USDC");
-        usdc.safeTransfer(to, bal);
+        if (bal == 0) revert NoBalance();
+        bool ok = usdc.transfer(to, bal);
+        if (!ok) revert USDCTransferFailed();
         emit Withdrawn(to, 0, bal);
     }
 
@@ -134,33 +199,13 @@ contract RugPullRunPayments is Ownable, Pausable, ReentrancyGuard {
         emit PriceUpdated("usdcPerCoin", v);
     }
 
-    /// @notice Set a custom USDC price for a specific coin-pack size (e.g. 5000-pack discount).
-    ///         Set to 0 to revert to default formula.
     function setCoinPackagePrice(uint256 coinsAmount, uint256 usdcAmount) external onlyOwner {
         coinPackagePrice[coinsAmount] = usdcAmount;
-        emit PriceUpdated(
-            string(abi.encodePacked("package_", _u2s(coinsAmount))),
-            usdcAmount
-        );
+        emit PriceUpdated("coinPackagePrice", usdcAmount);
     }
 
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
 
-    // ============================================
-    // Internal
-    // ============================================
-
-    function _u2s(uint256 v) private pure returns (string memory) {
-        if (v == 0) return "0";
-        uint256 tmp = v;
-        uint256 len;
-        while (tmp != 0) { len++; tmp /= 10; }
-        bytes memory buf = new bytes(len);
-        while (v != 0) { len--; buf[len] = bytes1(uint8(48 + v % 10)); v /= 10; }
-        return string(buf);
-    }
-
-    // Allow contract to receive ETH directly (rare, but keep funds safe)
     receive() external payable {}
 }
