@@ -73,6 +73,18 @@ export function ConnectModal({ open, onClose, onReady }) {
     }
   }, [isConnected])
 
+  // Auto-close modal if user rejected the signature in their wallet
+  useEffect(() => {
+    if (siweStatus === 'cancelled') {
+      wagmiDisconnect()
+      siweReset()
+      setError('')
+      autoSignAttempted.current = false
+      autoConnectAttempted.current = false
+      onClose?.()
+    }
+  }, [siweStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-connect when inside Base App / mobile wallet browser
   useEffect(() => {
     if (autoConnectAttempted.current || isConnected) return
@@ -139,13 +151,15 @@ export function ConnectModal({ open, onClose, onReady }) {
   }
 
   const CancelBtn = () => (
-    <button
-      className="btn btn-ghost btn-sm"
-      onClick={handleCancel}
-      style={{ marginTop: 10, alignSelf: 'center', width: 'auto', minWidth: 0 }}
-    >
-      Cancel
-    </button>
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+      <button
+        className="btn btn-ghost btn-sm"
+        onClick={handleCancel}
+        style={{ width: 'auto', minWidth: 0 }}
+      >
+        Cancel
+      </button>
+    </div>
   )
 
   const DisconnectX = () => (
@@ -192,14 +206,13 @@ export function ConnectModal({ open, onClose, onReady }) {
                 <button
                   className="btn btn-primary btn-large"
                   onClick={handleSignIn}
-                  disabled={siweStatus === 'pending'}
                 >
-                  {siweStatus === 'pending' ? 'Signing…' : 'Sign In'}
+                  Sign In
                 </button>
               </>
             )}
           </div>
-          <CancelBtn />
+          {hasError && <CancelBtn />}
           <div className="card-ground" />
         </div>
       </div>
@@ -233,7 +246,7 @@ export function ConnectModal({ open, onClose, onReady }) {
             </button>
             {error && <p className="rpr-error">{error}</p>}
           </div>
-          <CancelBtn />
+          {siweStatus !== 'pending' && <CancelBtn />}
           <div className="card-ground" />
         </div>
       </div>
