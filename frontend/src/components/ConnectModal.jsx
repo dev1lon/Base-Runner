@@ -164,6 +164,15 @@ export function ConnectModal({ open, onClose, onReady }) {
               </>
             )}
           </div>
+          {hasError && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={onClose}
+              style={{ marginTop: 10, alignSelf: 'center' }}
+            >
+              Cancel
+            </button>
+          )}
           <div className="card-ground" />
         </div>
       </div>
@@ -195,8 +204,9 @@ export function ConnectModal({ open, onClose, onReady }) {
             {error && <p className="rpr-error">{error}</p>}
           </div>
           <button
+            className="btn btn-ghost btn-sm"
             onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', marginTop: 8, padding: '4px 12px' }}
+            style={{ marginTop: 10, alignSelf: 'center' }}
           >
             Cancel
           </button>
