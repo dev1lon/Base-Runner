@@ -223,7 +223,7 @@ const BACKEND_TIMEOUT_MS = 25000;
 const ALLOW_GUEST_PLAY = false;
 
 // Payments contract (RugPullRunPayments on Base mainnet)
-const PAYMENTS_CONTRACT = "0x3B6bEB28118b7DAA7cEA851e1A258F55c3032109";
+const PAYMENTS_CONTRACT = "0x33e269ae12e0d1E4226A199fd6042d2fe9742855";
 const PAYMENTS_ABI = [
     "function playPaidGame() payable",
     "function buyCoins(uint256 coinsAmount, uint256 usdcAmount)"
