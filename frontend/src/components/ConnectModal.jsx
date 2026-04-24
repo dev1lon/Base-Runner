@@ -96,14 +96,8 @@ export function ConnectModal({ open, onClose, onReady }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignIn = async () => {
-    console.log('[ConnectModal] Sign In clicked. isConnected:', isConnected, 'address:', address)
+    if (!address || !isConnected) return
     setError('')
-    // If wallet lost connection, reconnect first (Base App can do this after rejection)
-    if (!address || !isConnected) {
-      console.log('[ConnectModal] not connected, reconnecting')
-      connect({ connector: injected() })
-      return
-    }
     try {
       const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
       setToken(data.token)

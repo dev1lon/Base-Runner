@@ -11,7 +11,7 @@ function storeToken(address, token) {
   localStorage.setItem(AUTH_KEY, JSON.stringify(map))
 }
 
-// Build EIP-4361 SIWE message without any library (avoids Buffer.from issue from apg-js)
+// EIP-4361 SIWE message — built manually to avoid siwe/apg-js Buffer dependency in browser
 function buildSiweMessage({ domain, address, statement, uri, chainId, nonce, issuedAt }) {
   return [
     `${domain} wants you to sign in with your Ethereum account:`,
@@ -29,15 +29,14 @@ function buildSiweMessage({ domain, address, statement, uri, chainId, nonce, iss
 
 export function useSIWE() {
   const { signMessageAsync } = useSignMessage()
-  const [status, setStatus] = useState('idle')
+  const [status, setStatus] = useState('idle') // idle | pending | done | error | cancelled
 
   const signIn = useCallback(async (address, chainId) => {
     setStatus('pending')
     try {
       const effectiveChainId = chainId || 8453
-      console.log('[SIWE] backend:', BACKEND, 'address:', address, 'chainId:', effectiveChainId)
 
-      // 1. Get nonce
+      // 1. Fetch nonce
       const nr = await fetch(`${BACKEND}/auth/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -45,7 +44,7 @@ export function useSIWE() {
       }).then(r => r.json())
       if (!nr.ok) throw new Error(nr.error ?? 'Nonce failed')
 
-      // 2. Build SIWE message string manually (EIP-4361) — no Buffer dependency
+      // 2. Build EIP-4361 message
       const message = buildSiweMessage({
         domain: window.location.host,
         address,
@@ -55,23 +54,11 @@ export function useSIWE() {
         nonce: nr.nonce,
         issuedAt: nr.issuedAt,
       })
-      console.log('[SIWE] message built, signing...')
 
-      // 3. Sign — prefer direct provider call (more reliable in Base App across retries).
-      // Fall back to wagmi if no provider is available.
-      let signature
-      const provider = window.__walletBridge?.provider || window.ethereum
-      if (provider?.request) {
-        signature = await provider.request({
-          method: 'personal_sign',
-          params: [message, address]
-        })
-      } else {
-        signature = await signMessageAsync({ message })
-      }
-      console.log('[SIWE] signed, verifying...')
+      // 3. Sign via wagmi useSignMessage (Base's recommended path)
+      const signature = await signMessageAsync({ message, account: address })
 
-      // 4. Verify — try SIWE endpoint, fallback to legacy
+      // 4. Verify on backend — SIWE endpoint first, legacy fallback for older flows
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -85,14 +72,12 @@ export function useSIWE() {
           body: JSON.stringify({ address, signature }),
         }).then(r => r.json())
       }
-
       if (!vr.ok) throw new Error(vr.error ?? 'Auth failed')
 
       storeToken(address, vr.token)
       setStatus('done')
       return vr
     } catch (err) {
-      console.error('[SIWE] error:', err.message, err)
       const isCancel = err.code === 4001 || err.message?.toLowerCase().includes('reject')
       setStatus(isCancel ? 'cancelled' : 'error')
       throw err
