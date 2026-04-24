@@ -28,11 +28,13 @@ function buildSiweMessage({ domain, address, statement, uri, chainId, nonce, iss
 }
 
 export function useSIWE() {
-  const { signMessageAsync } = useSignMessage()
+  const { signMessageAsync, reset: resetSignMutation } = useSignMessage()
   const [status, setStatus] = useState('idle') // idle | pending | done | error | cancelled
 
   const signIn = useCallback(async (address, chainId) => {
     setStatus('pending')
+    // Reset wagmi mutation state from any previous failed attempt
+    try { resetSignMutation() } catch {}
     try {
       const effectiveChainId = chainId || 8453
 
@@ -82,7 +84,7 @@ export function useSIWE() {
       setStatus(isCancel ? 'cancelled' : 'error')
       throw err
     }
-  }, [signMessageAsync])
+  }, [signMessageAsync, resetSignMutation])
 
   const reset = useCallback(() => setStatus('idle'), [])
 

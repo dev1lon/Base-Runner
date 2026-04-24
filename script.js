@@ -204,6 +204,11 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                 wait: async () => ({ hash: await waitForCallsTxHash(_provider, callsId) })
             };
         } catch (err) {
+            // User rejected the paymaster-sponsored tx — don't silently fall back to gas-paying tx
+            if (err.code === 4001 || err.message?.toLowerCase().includes('reject') || err.message?.toLowerCase().includes('denied')) {
+                throw err;
+            }
+            // Method not supported (-32601) → fallback is OK (wallet doesn't support wallet_sendCalls)
             if (err.code !== -32601) {
                 console.warn('[pm] wallet_sendCalls failed:', err.code, err.message, err.data || '');
             }
