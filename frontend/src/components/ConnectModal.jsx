@@ -182,9 +182,9 @@ export function ConnectModal({ open, onClose, onReady }) {
           <div className="card-header">
             <h1 className="card-title">RUG PULL RUN</h1>
             <p className="card-subtitle">Sign to verify ownership</p>
+            <p className="rpr-address-pill">{address.slice(0, 6)}…{address.slice(-4)}</p>
           </div>
           <div className="card-body">
-            <p className="rpr-address">{address.slice(0, 6)}…{address.slice(-4)}</p>
             <button
               className="btn btn-primary btn-large"
               onClick={handleSignIn}
@@ -192,13 +192,14 @@ export function ConnectModal({ open, onClose, onReady }) {
             >
               {siweStatus === 'pending' ? 'Signing…' : 'Sign In'}
             </button>
-            {(siweStatus === 'cancelled' || siweStatus === 'error') && (
-              <button className="btn btn-ghost" onClick={handleSignIn} style={{ marginTop: 8 }}>
-                Try Again
-              </button>
-            )}
             {error && <p className="rpr-error">{error}</p>}
           </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', marginTop: 8, padding: '4px 12px' }}
+          >
+            Cancel
+          </button>
           <div className="card-ground" />
         </div>
       </div>
