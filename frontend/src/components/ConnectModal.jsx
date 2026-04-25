@@ -109,7 +109,7 @@ export function ConnectModal({ open, onClose, onReady }) {
     }
   }
 
-  // Try to restore existing session, then auto-sign if needed
+  // Restore existing session silently — no auto-sign, user taps Sign In themselves
   useEffect(() => {
     if (!isConnected || !address || token) return
     if (!walletClient) return
@@ -118,22 +118,15 @@ export function ConnectModal({ open, onClose, onReady }) {
 
     const stored = getStoredToken(address)
     if (stored) {
-      // Validate existing JWT before asking to sign again
       validateToken(stored).then(data => {
         if (data) {
           setToken(stored)
           onReady?.()
-        } else if (isWalletApp()) {
-          // Token expired/invalid — auto-sign in wallet app
-          handleSignIn()
         }
-        // On desktop with invalid token: show Sign In button
+        // No auto-sign — user taps Sign In
       })
-    } else if (isWalletApp()) {
-      // No stored token — auto-sign in wallet app
-      handleSignIn()
     }
-    // On desktop with no token: show Sign In button
+    // No auto-sign in any case — user taps Sign In button
   }, [isConnected, address, walletClient]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
