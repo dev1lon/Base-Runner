@@ -96,11 +96,11 @@ export function ConnectModal({ open, onClose, onReady }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignIn = async () => {
-    if (!isConnected) { setError('Wallet not connected'); return }
-    if (!address) { setError('No address'); return }
+    if (!isConnected || !address) return
     setError('')
     try {
-      const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
+      // Pass walletClient directly — avoids re-fetching connector which can hang
+      const data = await signIn(address, chainId ?? BASE_CHAIN_ID, walletClient)
       setToken(data.token)
       onReady?.()
     } catch (err) {

@@ -1,6 +1,4 @@
-import { signMessage as wagmiSignMessage } from '@wagmi/core'
 import { useState, useCallback } from 'react'
-import { config } from '../wagmi.config'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
 const AUTH_KEY = 'runner_auth_token'
@@ -30,7 +28,8 @@ function buildSiweMessage({ domain, address, statement, uri, chainId, nonce, iss
 export function useSIWE() {
   const [status, setStatus] = useState('idle')
 
-  const signIn = useCallback(async (address, chainId) => {
+  // walletClient is passed in so we use the already-ready client (avoids re-fetching connector)
+  const signIn = useCallback(async (address, chainId, walletClient) => {
     setStatus('pending')
     try {
       const effectiveChainId = chainId || 8453
@@ -54,8 +53,16 @@ export function useSIWE() {
         issuedAt: nr.issuedAt,
       })
 
-      // 3. Sign via @wagmi/core signMessage action (no account param — connector uses current account)
-      const signature = await wagmiSignMessage(config, { message })
+      // 3. Sign using already-ready walletClient (no extra getConnectorClient call)
+      let signature
+      if (walletClient?.signMessage) {
+        signature = await walletClient.signMessage({ account: address, message })
+      } else {
+        // Fallback: direct provider call
+        const provider = window.ethereum
+        if (!provider) throw new Error('No wallet provider')
+        signature = await provider.request({ method: 'personal_sign', params: [message, address] })
+      }
 
       // 4. Verify
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
@@ -74,21 +81,6 @@ export function useSIWE() {
       if (!vr.ok) throw new Error(vr.error ?? 'Auth failed')
 
       storeToken(address, vr.token)
-
-      // If running in Base App / Farcaster, link FID for push notifications (best-effort)
-      try {
-        const { sdk } = await import('@farcaster/miniapp-sdk')
-        const ctx = await sdk.context
-        const fid = ctx?.user?.fid
-        if (fid) {
-          fetch(`${BACKEND}/api/user/link-fid`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${vr.token}` },
-            body: JSON.stringify({ fid }),
-          }).catch(() => {})
-        }
-      } catch (_) { /* not in mini-app context — noop */ }
-
       setStatus('done')
       return vr
     } catch (err) {
