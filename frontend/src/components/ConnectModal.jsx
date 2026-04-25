@@ -109,7 +109,7 @@ export function ConnectModal({ open, onClose, onReady }) {
     }
   }
 
-  // Restore existing session silently — no auto-sign, user taps Sign In themselves
+  // Restore existing session OR auto-sign in Base App
   useEffect(() => {
     if (!isConnected || !address || token) return
     if (!walletClient) return
@@ -122,11 +122,16 @@ export function ConnectModal({ open, onClose, onReady }) {
         if (data) {
           setToken(stored)
           onReady?.()
+        } else if (isWalletApp()) {
+          // Stored token invalid in Base App — auto-sign new one
+          handleSignIn()
         }
-        // No auto-sign — user taps Sign In
       })
+    } else if (isWalletApp()) {
+      // No stored token in Base App — auto-sign
+      handleSignIn()
     }
-    // No auto-sign in any case — user taps Sign In button
+    // Desktop without token: shows Sign In button (no auto-sign)
   }, [isConnected, address, walletClient]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
@@ -196,27 +201,14 @@ export function ConnectModal({ open, onClose, onReady }) {
           </div>
           <div className="card-body">
             {error && <p className="rpr-error" style={{ marginBottom: 12 }}>{error}</p>}
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: '0 0 8px' }}>
-              {address ? address.slice(0, 8) + '…' : 'no addr'} · {isConnected ? 'connected' : 'disconnected'}
-            </p>
             {isConnected && siweStatus !== 'pending' && (
               <button
                 className="btn btn-primary btn-large"
-                style={{ touchAction: 'manipulation', cursor: 'pointer' }}
+                style={{ touchAction: 'manipulation' }}
                 onClick={handleSignIn}
                 onTouchEnd={e => { e.preventDefault(); handleSignIn(); }}
               >
                 Sign In
-              </button>
-            )}
-            {!isConnected && (
-              <button
-                className="btn btn-primary btn-large"
-                style={{ touchAction: 'manipulation' }}
-                onClick={() => connect({ connector: injected() })}
-                onTouchEnd={e => { e.preventDefault(); connect({ connector: injected() }); }}
-              >
-                Connect
               </button>
             )}
           </div>
