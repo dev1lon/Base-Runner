@@ -1,3 +1,14 @@
+/* Ensure wallet-root is interactive */
+#wallet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none; /* let game through by default */
+}
+#wallet-root:not(:empty) {
+  pointer-events: auto; /* capture when modal is present */
+}
+
 /* React wallet overlay — sits above game, uses same design tokens as style.css */
 .rpr-overlay {
   position: fixed;
