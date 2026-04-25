@@ -54,8 +54,13 @@ export function useSIWE() {
         issuedAt: nr.issuedAt,
       })
 
-      // 3. Sign via @wagmi/core signMessage action — fresh call each time, no stale hook state
-      const signature = await wagmiSignMessage(config, { message, account: address })
+      // 3. Sign via @wagmi/core signMessage action — with 30s timeout so it never hangs forever
+      const signature = await Promise.race([
+        wagmiSignMessage(config, { message, account: address }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(Object.assign(new Error('Sign request timed out'), { code: 'TIMEOUT' })), 30_000)
+        ),
+      ])
 
       // 4. Verify
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
@@ -93,7 +98,8 @@ export function useSIWE() {
       return vr
     } catch (err) {
       const isCancel = err.code === 4001 || err.message?.toLowerCase().includes('reject')
-      setStatus(isCancel ? 'cancelled' : 'error')
+      const isTimeout = err.code === 'TIMEOUT'
+      setStatus(isCancel ? 'cancelled' : isTimeout ? 'idle' : 'error')
       throw err
     }
   }, [])
