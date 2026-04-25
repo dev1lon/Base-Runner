@@ -54,8 +54,8 @@ export function useSIWE() {
         issuedAt: nr.issuedAt,
       })
 
-      // 3. Sign via @wagmi/core signMessage action
-      const signature = await wagmiSignMessage(config, { message, account: address })
+      // 3. Sign via @wagmi/core signMessage action (no account param — connector uses current account)
+      const signature = await wagmiSignMessage(config, { message })
 
       // 4. Verify
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {

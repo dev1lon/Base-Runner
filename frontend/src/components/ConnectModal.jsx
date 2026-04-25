@@ -96,16 +96,16 @@ export function ConnectModal({ open, onClose, onReady }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignIn = async () => {
-    if (!address || !isConnected) return
+    if (!isConnected) { setError('Wallet not connected'); return }
+    if (!address) { setError('No address'); return }
     setError('')
     try {
       const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
       setToken(data.token)
       onReady?.()
     } catch (err) {
-      if (!err.message?.toLowerCase().includes('reject')) {
-        setError(err.message ?? 'Sign-in failed')
-      }
+      const isReject = err.code === 4001 || err.message?.toLowerCase().includes('reject')
+      if (!isReject) setError(err.message ?? 'Sign-in failed')
     }
   }
 
