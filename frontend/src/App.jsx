@@ -13,13 +13,21 @@ export default function App() {
     return () => window.removeEventListener('wallet:openModal', handler)
   }, [])
 
-  // Always render ConnectModal so useGameBridge hook stays alive (bridge persists after auth)
-  // Pass open prop to control visibility — modal hides when open=false AND token is set
+  const handleReady = () => {
+    setOpen(false)
+    // Direct DOM transition — most reliable way to show game menu
+    // regardless of bridge event timing
+    setTimeout(() => {
+      document.getElementById('overlay-connect')?.classList.add('hidden')
+      document.getElementById('overlay-menu')?.classList.remove('hidden')
+    }, 50)
+  }
+
   return (
     <ConnectModal
       open={open}
       onClose={() => setOpen(false)}
-      onReady={() => setOpen(false)}
+      onReady={handleReady}
     />
   )
 }
