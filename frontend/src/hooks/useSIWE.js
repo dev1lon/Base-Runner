@@ -1,4 +1,4 @@
-import { getConnectorClient } from '@wagmi/core'
+import { signMessage as wagmiSignMessage } from '@wagmi/core'
 import { useState, useCallback } from 'react'
 import { config } from '../wagmi.config'
 
@@ -54,9 +54,8 @@ export function useSIWE() {
         issuedAt: nr.issuedAt,
       })
 
-      // 3. Sign via getConnectorClient — fresh connector each call, no stale hook state
-      const client = await getConnectorClient(config)
-      const signature = await client.signMessage({ message, account: address })
+      // 3. Sign via @wagmi/core signMessage action — fresh call each time, no stale hook state
+      const signature = await wagmiSignMessage(config, { message, account: address })
 
       // 4. Verify
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
@@ -75,6 +74,21 @@ export function useSIWE() {
       if (!vr.ok) throw new Error(vr.error ?? 'Auth failed')
 
       storeToken(address, vr.token)
+
+      // If running in Base App / Farcaster, link FID for push notifications (best-effort)
+      try {
+        const { sdk } = await import('@farcaster/miniapp-sdk')
+        const ctx = await sdk.context
+        const fid = ctx?.user?.fid
+        if (fid) {
+          fetch(`${BACKEND}/api/user/link-fid`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${vr.token}` },
+            body: JSON.stringify({ fid }),
+          }).catch(() => {})
+        }
+      } catch (_) { /* not in mini-app context — noop */ }
+
       setStatus('done')
       return vr
     } catch (err) {

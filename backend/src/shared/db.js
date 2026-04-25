@@ -46,6 +46,13 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS checkin_count INTEGER NOT NULL DEFAULT 0;`);
+
+  // Mini-app notifications: link Farcaster FID + push-notification token to wallet address
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS fid BIGINT;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_url TEXT;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_token TEXT;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_fid ON users (fid);`);
   
   // Shop characters table
   await pool.query(`
