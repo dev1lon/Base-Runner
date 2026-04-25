@@ -53,15 +53,27 @@ export function useSIWE() {
         issuedAt: nr.issuedAt,
       })
 
-      // 3. Sign using already-ready walletClient (no extra getConnectorClient call)
+      // 3. Sign — use Farcaster SDK provider in mini-app context (proper channel for Base App)
+      // Fallback chain: sdk.wallet.ethProvider → walletClient.signMessage → window.ethereum
       let signature
-      if (walletClient?.signMessage) {
-        signature = await walletClient.signMessage({ account: address, message })
-      } else {
-        // Fallback: direct provider call
-        const provider = window.ethereum
-        if (!provider) throw new Error('No wallet provider')
-        signature = await provider.request({ method: 'personal_sign', params: [message, address] })
+      try {
+        const { sdk } = await import('@farcaster/miniapp-sdk')
+        const sdkProvider = sdk.wallet?.ethProvider
+        if (sdkProvider) {
+          signature = await sdkProvider.request({ method: 'personal_sign', params: [message, address] })
+        } else {
+          throw new Error('not in mini-app context')
+        }
+      } catch (sdkErr) {
+        if (sdkErr.code === 4001 || sdkErr.message?.toLowerCase().includes('reject')) throw sdkErr
+        // Not in mini-app context — use walletClient or window.ethereum
+        if (walletClient?.signMessage) {
+          signature = await walletClient.signMessage({ account: address, message })
+        } else {
+          const provider = window.ethereum
+          if (!provider) throw new Error('No wallet provider')
+          signature = await provider.request({ method: 'personal_sign', params: [message, address] })
+        }
       }
 
       // 4. Verify
