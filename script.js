@@ -1748,7 +1748,6 @@ async function disconnectWallet() {
 }
 
 async function applyWalletBridge(detail) {
-    console.log('[bridge] applyWalletBridge:', detail.address);
     walletAddress = detail.address;
     walletChainId = BASE_CHAIN_ID;
     activeWalletType = 'injected';
@@ -1758,33 +1757,23 @@ async function applyWalletBridge(detail) {
     isDetectingWallet = false;
     isConnectingWallet = false;
 
-    // Try to load profile from backend (but don't let failure wipe the session)
-    try {
-        if (BACKEND_URL && authToken) {
-            const response = await fetch(`${BACKEND_URL}/api/user/me`, {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                if (data?.ok) {
-                    await applyProfileData(data);
-                    resolveBasename(walletAddress);
-                }
-            } else {
-                console.warn('[bridge] /api/user/me returned', response.status);
-            }
-        }
-    } catch (err) {
-        console.warn('[bridge] profile fetch failed:', err.message);
-    }
-
-    // Always ensure authenticated state + force UI transition to menu
-    walletAuthenticated = true;
-    if (currentUIState === UI_STATE.CONNECT) {
-        currentUIState = UI_STATE.MENU;
-    }
-    updateWalletUI();
+    // Transition to MENU immediately — don't wait for profile fetch
+    currentUIState = UI_STATE.MENU;
     updateUIState();
+
+    // Load profile in background (coins, characters, checkin)
+    if (BACKEND_URL && authToken) {
+        fetch(`${BACKEND_URL}/api/user/me`, {
+            headers: { Authorization: `Bearer ${authToken}` }
+        }).then(r => r.ok ? r.json() : null)
+          .then(data => {
+              if (data?.ok) {
+                  applyProfileData(data);
+                  resolveBasename(walletAddress);
+              }
+          })
+          .catch(err => console.warn('[bridge] profile fetch failed:', err.message));
+    }
 }
 
 function isReactBridgePresent() {
@@ -1800,9 +1789,10 @@ async function initWalletState() {
     }
 
     // Listen for React bridge event (fires when wagmi + SIWE auth complete)
+    // NOT { once: true } — useGameBridge may re-dispatch when capabilities change
     window.addEventListener('walletBridgeReady', async (e) => {
-        await applyWalletBridge(e.detail);
-    }, { once: true });
+        if (e.detail?.token) await applyWalletBridge(e.detail);
+    });
 
     // If React is present, skip script.js's own connect/auth flow entirely
     // (React handles: wallet selection, SIWE sign, session restore).
