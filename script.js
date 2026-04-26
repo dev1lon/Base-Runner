@@ -2252,28 +2252,56 @@ window.onload = function() {
     // Notification bell button — show only when Farcaster SDK is available
     const notifBtn = document.getElementById("notif-button");
     if (notifBtn) {
+        // Visible on-screen debug banner (alert() may be suppressed in Base App webview)
+        let dbgBanner = document.getElementById('notif-dbg-banner');
+        if (!dbgBanner) {
+            dbgBanner = document.createElement('div');
+            dbgBanner.id = 'notif-dbg-banner';
+            dbgBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#000;color:#0f0;font:12px monospace;padding:6px;max-height:40vh;overflow:auto;white-space:pre-wrap;display:none;';
+            document.body.appendChild(dbgBanner);
+        }
+        function dbg(msg) {
+            const ts = new Date().toISOString().slice(11, 19);
+            dbgBanner.style.display = 'block';
+            dbgBanner.textContent = `[${ts}] ${msg}\n` + dbgBanner.textContent;
+        }
+        // Capture-phase listener at document level — confirms event reaches the page at all
+        document.addEventListener('click', function(e) {
+            if (e.target && (e.target.id === 'notif-button' || e.target.closest && e.target.closest('#notif-button'))) {
+                dbg('document captured click on notif-button');
+            }
+        }, true);
+        document.addEventListener('pointerdown', function(e) {
+            if (e.target && (e.target.id === 'notif-button' || e.target.closest && e.target.closest('#notif-button'))) {
+                dbg('pointerdown on notif-button');
+            }
+        }, true);
+
         async function handleEnableNotifications(e) {
+            dbg('handler fired. SDK=' + !!window.__farcasterSdk + ' addMiniApp=' + !!window.__farcasterSdk?.actions?.addMiniApp);
             if (e) { e.preventDefault(); e.stopPropagation(); }
-            alert('🔔 click fired. SDK present: ' + !!window.__farcasterSdk + ', addMiniApp: ' + !!window.__farcasterSdk?.actions?.addMiniApp);
             try {
                 const sdk = window.__farcasterSdk;
-                if (!sdk?.actions?.addMiniApp) { alert('SDK not ready'); return; }
+                if (!sdk?.actions?.addMiniApp) { dbg('SDK not ready'); return; }
                 const result = await sdk.actions.addMiniApp();
-                alert('addMiniApp returned: ' + JSON.stringify(result));
+                dbg('addMiniApp ok: ' + JSON.stringify(result));
             } catch (err) {
-                alert('addMiniApp error: ' + (err?.message || String(err)));
+                dbg('addMiniApp ERR: ' + (err?.message || String(err)));
             }
         }
-        // Make sure button is on top and clickable
+        // Force on top + ensure events reach it
         notifBtn.style.position = 'relative';
         notifBtn.style.zIndex = '100';
         notifBtn.style.pointerEvents = 'auto';
+        notifBtn.style.touchAction = 'manipulation';
         notifBtn.addEventListener('click', handleEnableNotifications);
-        notifBtn.addEventListener('touchend', function(e) { e.preventDefault(); e.stopPropagation(); handleEnableNotifications(e); }, { passive: false });
         // Show button when SDK is ready (Base App context)
         setTimeout(() => {
             if (window.__farcasterSdk?.actions?.addMiniApp) {
                 notifBtn.style.display = '';
+                dbg('btn shown, sdk ready');
+            } else {
+                dbg('btn NOT shown — sdk not on window');
             }
         }, 500);
     }
