@@ -2253,18 +2253,23 @@ window.onload = function() {
     const notifBtn = document.getElementById("notif-button");
     if (notifBtn) {
         async function handleEnableNotifications(e) {
-            e.preventDefault();
-            e.stopPropagation();
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            alert('🔔 click fired. SDK present: ' + !!window.__farcasterSdk + ', addMiniApp: ' + !!window.__farcasterSdk?.actions?.addMiniApp);
             try {
                 const sdk = window.__farcasterSdk;
-                if (!sdk?.actions?.addMiniApp) return;
-                await sdk.actions.addMiniApp();
+                if (!sdk?.actions?.addMiniApp) { alert('SDK not ready'); return; }
+                const result = await sdk.actions.addMiniApp();
+                alert('addMiniApp returned: ' + JSON.stringify(result));
             } catch (err) {
-                console.warn('Enable notifications failed:', err.message);
+                alert('addMiniApp error: ' + (err?.message || String(err)));
             }
         }
+        // Make sure button is on top and clickable
+        notifBtn.style.position = 'relative';
+        notifBtn.style.zIndex = '100';
+        notifBtn.style.pointerEvents = 'auto';
         notifBtn.addEventListener('click', handleEnableNotifications);
-        notifBtn.addEventListener('touchend', function(e) { e.preventDefault(); handleEnableNotifications(e); }, { passive: false });
+        notifBtn.addEventListener('touchend', function(e) { e.preventDefault(); e.stopPropagation(); handleEnableNotifications(e); }, { passive: false });
         // Show button when SDK is ready (Base App context)
         setTimeout(() => {
             if (window.__farcasterSdk?.actions?.addMiniApp) {
