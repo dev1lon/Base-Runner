@@ -2257,7 +2257,8 @@ window.onload = function() {
             e.preventDefault();
             e.stopPropagation();
             try {
-                const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk?bundle');
+                const sdk = window.__farcasterSdk;
+                if (!sdk?.actions?.addMiniApp) throw new Error('SDK not available');
                 await sdk.actions.addMiniApp();
             } catch (err) {
                 console.warn('Enable notifications failed:', err.message);

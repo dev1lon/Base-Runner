@@ -13,6 +13,9 @@ const queryClient = new QueryClient()
 // Must be called after the app has loaded; otherwise splash screen stays forever.
 sdk.actions.ready().catch(() => { /* not in a mini-app context — noop */ })
 
+// Expose SDK on window so script.js can call sdk.actions.addMiniApp()
+window.__farcasterSdk = sdk
+
 createRoot(document.getElementById('wallet-root')).render(
   <StrictMode>
     <WagmiProvider config={config}>
