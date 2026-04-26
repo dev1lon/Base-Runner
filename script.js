@@ -3258,8 +3258,8 @@ async function handleBuyCoinsPackage(coins) {
                 coinCount = data.newBalance;
                 saveCoins();
                 updateCollectionCoins();
-                if (statusEl) statusEl.textContent = `+${data.coinsAdded} coins added!`;
-                setTimeout(closeBuyCoinsModal, 1500);
+                if (statusEl) statusEl.textContent = `+${data.coinsAdded} coins! Total: ${data.newBalance}`;
+                allPkgBtns.forEach(b => { b.disabled = false; });
             } else {
                 if (statusEl) statusEl.textContent = data.error || 'Failed to save coins';
                 allPkgBtns.forEach(b => { b.disabled = false; });
