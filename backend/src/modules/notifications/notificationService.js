@@ -46,11 +46,20 @@ async function saveNotificationToken({ fid, address, url, token }) {
       [fid, url, token, address.toLowerCase()]
     );
   } else {
-    // No address yet → store on whichever user already has this fid
-    await query(
+    // Try to update by FID if user already linked
+    const res = await query(
       `UPDATE users SET notification_url=$1, notification_token=$2, updated_at=NOW() WHERE fid=$3`,
       [url, token, fid]
     );
+    // If no user has this FID yet, store in pending table until address is linked
+    if (res.rowCount === 0) {
+      await query(
+        `INSERT INTO pending_notification_tokens (fid, notification_url, notification_token)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (fid) DO UPDATE SET notification_url=$2, notification_token=$3, created_at=NOW()`,
+        [fid, url, token]
+      );
+    }
   }
 }
 

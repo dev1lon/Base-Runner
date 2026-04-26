@@ -53,6 +53,16 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_token TEXT;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_fid ON users (fid);`);
+
+  // Pending notification tokens — stores token by FID before address is known
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pending_notification_tokens (
+      fid BIGINT PRIMARY KEY,
+      notification_url TEXT NOT NULL,
+      notification_token TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
   
   // Shop characters table
   await pool.query(`
