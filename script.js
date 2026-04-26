@@ -2249,6 +2249,24 @@ window.onload = function() {
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
 
+    // Notification bell button — only show in Base App / Farcaster mini-app context
+    const notifBtn = document.getElementById("notif-button");
+    if (notifBtn && isWalletApp()) {
+        notifBtn.style.display = '';
+        async function handleEnableNotifications(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk?bundle');
+                await sdk.actions.addMiniApp();
+            } catch (err) {
+                console.warn('Enable notifications failed:', err.message);
+            }
+        }
+        notifBtn.addEventListener('click', handleEnableNotifications);
+        notifBtn.addEventListener('touchend', function(e) { e.preventDefault(); handleEnableNotifications(e); }, { passive: false });
+    }
+
     // Disconnect buttons — hide only inside mobile wallet apps (Base App, MetaMask mobile, etc.)
     const disconnectBtn = document.getElementById("disconnect-button");
     const disconnectBtnPause = document.getElementById("disconnect-button-pause");
