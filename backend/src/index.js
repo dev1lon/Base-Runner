@@ -829,6 +829,40 @@ app.post("/api/user/link-fid", requireAuth, async (req, res) => {
   }
 });
 
+// Test: manually trigger check-in reminder job (admin only via secret header)
+app.post("/api/admin/test-notifications", async (req, res) => {
+  const secret = req.headers["x-admin-secret"];
+  if (!secret || secret !== process.env.ADMIN_SECRET) {
+    return res.status(403).json({ ok: false, error: "Forbidden" });
+  }
+  await runCheckinReminderJob();
+  res.json({ ok: true, message: "Reminder job executed" });
+});
+
+// Test: send a single notification to the authenticated user
+app.post("/api/user/test-notification", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await require("./shared/db").query(
+      `SELECT notification_url, notification_token, fid FROM users WHERE address=$1`,
+      [req.user.address]
+    );
+    const u = rows[0];
+    if (!u?.notification_token) {
+      return res.status(400).json({ ok: false, error: "No notification token. Enable notifications in Base App first." });
+    }
+    const r = await sendNotification({
+      url: u.notification_url,
+      token: u.notification_token,
+      title: "Test notification",
+      body: "Rug Pull Run notifications work!",
+      targetUrl: process.env.APP_URL || "https://rugpullrun.app",
+    });
+    res.json({ ok: r.ok, fid: u.fid, result: r });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 setInterval(cleanupSessions, 60 * 1000);
 // Check-in reminder job: every hour, push notification to users whose 24h cooldown
 // just expired (so they can keep their streak alive).
