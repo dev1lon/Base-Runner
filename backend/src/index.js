@@ -822,6 +822,24 @@ app.post("/api/user/link-fid", requireAuth, async (req, res) => {
   }
   try {
     await linkFidToAddress({ address: req.user.address, fid: Number(fid) });
+
+    // Copy notification token from any other row that has this FID
+    // (webhook may have stored the token before address was known)
+    const { query } = require("./shared/db");
+    const { rows } = await query(
+      `SELECT notification_url, notification_token FROM users
+       WHERE fid=$1 AND notification_token IS NOT NULL AND address != $2
+       LIMIT 1`,
+      [Number(fid), req.user.address.toLowerCase()]
+    );
+    if (rows[0]?.notification_token) {
+      await query(
+        `UPDATE users SET notification_url=$1, notification_token=$2 WHERE address=$3`,
+        [rows[0].notification_url, rows[0].notification_token, req.user.address.toLowerCase()]
+      );
+      console.log(`[link-fid] copied notification token to ${req.user.address}`);
+    }
+
     res.json({ ok: true });
   } catch (e) {
     console.error("link-fid error:", e);
