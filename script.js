@@ -1759,7 +1759,8 @@ async function applyWalletBridge(detail) {
 
     // Transition to MENU immediately — don't wait for profile fetch
     currentUIState = UI_STATE.MENU;
-    updateUIState();
+    updateWalletUI();  // sets walletReady=true, enables buttons
+    updateUIState();   // shows overlay-menu
 
     // Load profile in background (coins, characters, checkin)
     if (BACKEND_URL && authToken) {
