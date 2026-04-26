@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react'
+import { useSignMessage } from 'wagmi'
+import { createSiweMessage, generateSiweNonce } from 'viem/siwe'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
 const AUTH_KEY = 'runner_auth_token'
@@ -10,31 +12,17 @@ function storeToken(address, token) {
   localStorage.setItem(AUTH_KEY, JSON.stringify(map))
 }
 
-function buildSiweMessage({ domain, address, statement, uri, chainId, nonce, issuedAt }) {
-  return [
-    `${domain} wants you to sign in with your Ethereum account:`,
-    address,
-    '',
-    statement,
-    '',
-    `URI: ${uri}`,
-    `Version: 1`,
-    `Chain ID: ${chainId}`,
-    `Nonce: ${nonce}`,
-    `Issued At: ${issuedAt}`,
-  ].join('\n')
-}
-
 export function useSIWE() {
+  const { signMessageAsync, reset: resetMutation } = useSignMessage()
   const [status, setStatus] = useState('idle')
 
-  // walletClient is passed in so we use the already-ready client (avoids re-fetching connector)
-  const signIn = useCallback(async (address, chainId, walletClient) => {
+  const signIn = useCallback(async (address, chainId) => {
     setStatus('pending')
+    resetMutation()
     try {
       const effectiveChainId = chainId || 8453
 
-      // 1. Nonce
+      // 1. Get nonce from backend
       const nr = await fetch(`${BACKEND}/auth/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -42,41 +30,22 @@ export function useSIWE() {
       }).then(r => r.json())
       if (!nr.ok) throw new Error(nr.error ?? 'Nonce failed')
 
-      // 2. EIP-4361 message
-      const message = buildSiweMessage({
+      // 2. Build EIP-4361 message using viem/siwe (per Base docs)
+      const message = createSiweMessage({
         domain: window.location.host,
         address,
         statement: 'Sign in to Rug Pull Run',
         uri: window.location.origin,
+        version: '1',
         chainId: effectiveChainId,
         nonce: nr.nonce,
-        issuedAt: nr.issuedAt,
+        issuedAt: new Date(nr.issuedAt),
       })
 
-      // 3. Sign — use Farcaster SDK provider in mini-app context (proper channel for Base App)
-      // Fallback chain: sdk.wallet.ethProvider → walletClient.signMessage → window.ethereum
-      let signature
-      try {
-        const { sdk } = await import('@farcaster/miniapp-sdk')
-        const sdkProvider = sdk.wallet?.ethProvider
-        if (sdkProvider) {
-          signature = await sdkProvider.request({ method: 'personal_sign', params: [message, address] })
-        } else {
-          throw new Error('not in mini-app context')
-        }
-      } catch (sdkErr) {
-        if (sdkErr.code === 4001 || sdkErr.message?.toLowerCase().includes('reject')) throw sdkErr
-        // Not in mini-app context — use walletClient or window.ethereum
-        if (walletClient?.signMessage) {
-          signature = await walletClient.signMessage({ account: address, message })
-        } else {
-          const provider = window.ethereum
-          if (!provider) throw new Error('No wallet provider')
-          signature = await provider.request({ method: 'personal_sign', params: [message, address] })
-        }
-      }
+      // 3. Sign via wagmi useSignMessage (per Base docs standard approach)
+      const signature = await signMessageAsync({ message })
 
-      // 4. Verify
+      // 4. Verify on backend
       let vr = await fetch(`${BACKEND}/auth/siwe-verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,7 +69,7 @@ export function useSIWE() {
       setStatus(isCancel ? 'cancelled' : 'error')
       throw err
     }
-  }, [])
+  }, [signMessageAsync, resetMutation])
 
   const reset = useCallback(() => setStatus('idle'), [])
 
