@@ -403,6 +403,16 @@ app.post("/api/checkin", requireAuth, async (req, res) => {
   try {
     const { txHash } = req.body || {};
     const result = await doCheckin(req.user.address, txHash);
+
+    if (result?.ok) {
+      sendNotification({
+        walletAddress: req.user.address,
+        title: result.streak >= 5 ? "🔥 Streak milestone!" : "Check-in done",
+        message: `+${result.reward || 1} coins earned. Come back in 24h to keep your streak.`,
+        targetPath: "/",
+      }).catch(() => {});
+    }
+
     res.json(result);
   } catch (err) {
     console.error("Checkin error:", err);
@@ -749,6 +759,20 @@ app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
 });
 
 
+const { sendNotification, runCheckinReminderJob } = require("./modules/notifications/notificationService");
+
+app.post("/api/user/test-notification", requireAuth, async (req, res) => {
+  const r = await sendNotification({
+    walletAddress: req.user.address,
+    title: "Test notification",
+    message: "Rug Pull Run notifications work!",
+    targetPath: "/",
+  });
+  res.json(r);
+});
+
+// Hourly job: remind users whose 24h cooldown expired before their streak times out
+setInterval(runCheckinReminderJob, 60 * 60 * 1000);
 setInterval(cleanupSessions, 60 * 1000);
 
 async function startServer() {
