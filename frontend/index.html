@@ -180,25 +180,29 @@
     </div>
 
     <!-- COLLECTION OVERLAY -->
-    <div id="overlay-collection" class="overlay overlay-dimmed hidden">
+    <div id="overlay-collection" class="overlay overlay-dimmed hidden" style="overflow:hidden">
         <div class="glass-card collection-card">
             <div class="card-corner card-corner-tl"></div>
             <div class="card-corner card-corner-tr"></div>
             <div class="card-corner card-corner-bl"></div>
             <div class="card-corner card-corner-br"></div>
-            <div class="card-header">
-                <h1 class="card-title collection-title">COLLECTION</h1>
-                <div class="collection-header-row">
-                    <div class="collection-coins">
-                        <img src="/assets/eth.png" alt="coin" class="collection-coin-icon">
-                        <span id="collection-coins-count">0</span>
+            <div class="card-header collection-header-compact">
+                <div class="collection-top-row">
+                    <h1 class="card-title collection-title">COLLECTION</h1>
+                    <div class="collection-balances">
+                        <div class="collection-coins">
+                            <img src="/assets/eth.png" alt="coin" class="collection-coin-icon">
+                            <span id="collection-coins-count">0</span>
+                        </div>
+                        <div class="collection-gc-pill">
+                            <span class="collection-gc-icon">GC</span>
+                            <span id="collection-gc-count">…</span>
+                        </div>
                     </div>
-                    <div class="collection-gc-pill">
-                        <span class="collection-gc-icon">GC</span>
-                        <span id="collection-gc-count">…</span>
-                    </div>
+                </div>
+                <div class="collection-action-btns">
                     <button id="mint-gc-btn" class="btn collection-gc-mint-btn" ontouchstart="event.stopPropagation();event.preventDefault();openMintGCModal()" onclick="openMintGCModal()">+ Mint GC</button>
-                    <button id="buy-coins-btn" class="btn btn-primary btn-sm">+ Buy</button>
+                    <button id="buy-coins-btn" class="btn btn-primary collection-buy-btn">+ Buy Coins</button>
                 </div>
             </div>
             <div class="card-body collection-body">

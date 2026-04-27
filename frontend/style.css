@@ -1025,6 +1025,71 @@ body.w3m-modal-open w3m-modal {
     margin-top: 0.5rem;
 }
 
+/* Compact collection header */
+.collection-header-compact {
+    padding-bottom: 0.5rem !important;
+}
+
+.collection-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+
+.collection-top-row .collection-title {
+    margin: 0;
+    font-size: var(--font-size-xl);
+}
+
+.collection-balances {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+/* Compact pills when in top row */
+.collection-top-row .collection-coins,
+.collection-top-row .collection-gc-pill {
+    padding: 0.25rem 0.6rem;
+    margin-top: 0;
+    gap: 0.3rem;
+}
+
+.collection-top-row #collection-coins-count,
+.collection-top-row #collection-gc-count {
+    font-size: var(--font-size-base);
+}
+
+.collection-top-row .collection-coin-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.collection-top-row .collection-gc-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 7px;
+}
+
+/* Stacked equal-size action buttons */
+.collection-action-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.collection-action-btns .collection-gc-mint-btn,
+.collection-action-btns .collection-buy-btn {
+    width: 100%;
+    margin-top: 0;
+    padding: 0.45rem 1rem;
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    border-radius: var(--radius-lg);
+}
+
 .btn-sm {
     padding: 0.331rem 0.75rem;
     font-size: var(--font-size-sm);
