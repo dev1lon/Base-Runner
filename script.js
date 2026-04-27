@@ -2283,6 +2283,13 @@ window.onload = function() {
             try {
                 const sdk = window.__farcasterSdk;
                 if (!sdk?.actions?.addMiniApp) { dbg('SDK not ready'); return; }
+                try {
+                    const ctx = await sdk.context;
+                    dbg('ctx.client: ' + JSON.stringify(ctx?.client));
+                    dbg('ctx.user fid: ' + (ctx?.user?.fid ?? 'none'));
+                } catch (ctxErr) {
+                    dbg('ctx ERR: ' + ctxErr.message);
+                }
                 dbg('calling addMiniApp...');
                 const result = await Promise.race([
                     sdk.actions.addMiniApp(),
