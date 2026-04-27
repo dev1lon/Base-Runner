@@ -43,7 +43,7 @@ const { getCheckinStatus, doCheckin } = require("./modules/checkin/checkinServic
 
 const { ethers } = require("ethers");
 
-const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "";
+const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "0x5A307DF5720cFb965C4F25d6fBFBed74Af153Ee5";
 
 // Minimal ABI for reading character XP on-chain
 const CHARACTER_UPGRADE_ABI = [
