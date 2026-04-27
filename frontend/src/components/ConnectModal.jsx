@@ -134,7 +134,11 @@ export function ConnectModal({ open, onClose, onReady }) {
     // Desktop without token: shows Sign In button (no auto-sign)
   }, [isConnected, address, walletClient]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const smartConnector = connectors.find(c => c.id === 'coinbaseWalletSDK')
+  const smartConnector = connectors.find(c =>
+    c.id === 'coinbaseWalletSDK' || c.id === 'coinbaseWallet' ||
+    c.name?.toLowerCase().includes('coinbase') || c.name?.toLowerCase().includes('smart wallet') ||
+    (c.id !== 'injected' && c.id !== 'metaMask')
+  )
   const injectedConnectors = connectors.filter(c => c.id !== 'coinbaseWalletSDK')
 
   // Unified cancel: in wallet app disconnects the wallet (only way to "close"),
