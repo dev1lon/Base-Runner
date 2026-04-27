@@ -247,11 +247,6 @@ const CHARACTER_UPGRADE_ABI = [
 ];
 
 const GC_PER_COIN = 5;  // 1 in-game coin = 5 GC
-const UPGRADE_PACKAGES = [
-    { label: '+50 XP',  xp: 50,   coins: 10  },
-    { label: '+150 XP', xp: 150,  coins: 30  },
-    { label: '+500 XP', xp: 500,  coins: 100 },
-];
 const XP_LEVELS     = [0, 100, 300, 700, 1500, 3000];
 const LEVEL_LABELS  = ['Lv.0', 'Lv.1', 'Lv.2', 'Lv.3', 'Lv.4', 'Lv.5'];
 const LEVEL_BONUS   = [
@@ -3531,67 +3526,138 @@ function openCollection(from = 'menu') {
 
 // ── Upgrade Modal ─────────────────────────────────────────────────────────────
 
-function openUpgradeModal(characterId) {
-    const char = CHARACTERS[characterId];
+async function openUpgradeModal(characterId) {
+    const char   = CHARACTERS[characterId];
     const lvlInfo = characterLevelCache[characterId] || { lvl: 0, xp: 0, xpNext: 100, xpPrev: 0 };
+
+    // Fetch player's on-chain GC balance
+    let gcBalance = 0;
+    if (GAMECOIN_ADDRESS) {
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const gc = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, provider);
+            gcBalance = Number(await gc.balanceOf(walletAddress));
+        } catch (e) { console.warn('[upgrade] gcBalance fetch failed', e.message); }
+    }
+
+    const isMaxLevel = lvlInfo.lvl >= 5;
+    const maxXP      = isMaxLevel ? 0 : XP_LEVELS[5] - lvlInfo.xp; // can't go past max
+    const sliderMax  = Math.min(gcBalance, maxXP);
+
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop';
     modal.innerHTML = `
       <div class="modal-box upgrade-modal">
-        <h2 class="modal-title">Upgrade ${char?.name || 'Character'}</h2>
-        <div class="upgrade-level-info">
-          <span class="upgrade-current-level">${LEVEL_LABELS[lvlInfo.lvl]}</span>
-          ${lvlInfo.lvl < 5 ? `<span class="upgrade-arrow">→</span><span class="upgrade-next-level">${LEVEL_LABELS[lvlInfo.lvl + 1]}</span>` : '<span class="upgrade-max">MAX LEVEL</span>'}
+        <h2 class="modal-title">Upgrade · ${char?.name || 'Character'}</h2>
+
+        <div class="upgrade-level-row">
+          <div class="upgrade-level-block current">
+            <span class="upgrade-lv-label">Current</span>
+            <span class="upgrade-lv-badge level-${lvlInfo.lvl}">${LEVEL_LABELS[lvlInfo.lvl]}</span>
+          </div>
+          <div class="upgrade-arrow-big">→</div>
+          <div class="upgrade-level-block next" id="upg-next-block">
+            <span class="upgrade-lv-label">After</span>
+            <span class="upgrade-lv-badge level-${lvlInfo.lvl}" id="upg-next-badge">${LEVEL_LABELS[lvlInfo.lvl]}</span>
+          </div>
         </div>
-        ${lvlInfo.lvl < 5 ? `
-        <div class="upgrade-xp-bar-wrap">
-          <div class="upgrade-xp-bar"><div class="upgrade-xp-fill" style="width:${Math.round((lvlInfo.xp - lvlInfo.xpPrev) / Math.max(1, lvlInfo.xpNext - lvlInfo.xpPrev) * 100)}%"></div></div>
-          <span class="upgrade-xp-text">${lvlInfo.xp} / ${lvlInfo.xpNext} XP</span>
+
+        <div class="upgrade-xp-track">
+          <div class="upgrade-xp-bar">
+            <div class="upgrade-xp-fill" id="upg-bar-current" style="width:${xpPct(lvlInfo)}%"></div>
+            <div class="upgrade-xp-fill upg-preview" id="upg-bar-preview" style="width:0%;left:${xpPct(lvlInfo)}%"></div>
+          </div>
+          <span class="upgrade-xp-text" id="upg-xp-text">${lvlInfo.xp} XP</span>
         </div>
-        <div class="upgrade-bonuses">
-          <p>Next level bonuses:</p>
-          <ul>
-            <li>+${LEVEL_BONUS[lvlInfo.lvl + 1].coins} coin per 1 000 pts</li>
-            <li>×${LEVEL_BONUS[lvlInfo.lvl + 1].mult} score multiplier</li>
-          </ul>
-        </div>
-        <div class="upgrade-packages">
-          ${UPGRADE_PACKAGES.map(p => `
-            <button class="btn btn-primary upgrade-pkg-btn" data-xp="${p.xp}" data-coins="${p.coins}">
-              ${p.label}<br><small>Mint ${p.xp} GC → burn for XP</small>
-            </button>
-          `).join('')}
+
+        ${isMaxLevel ? `<p class="upgrade-max-msg">MAX LEVEL REACHED</p>` : `
+        <div class="upgrade-slider-wrap">
+          <label class="upgrade-slider-label">
+            GC to spend: <strong id="upg-gc-val">0</strong>
+            <span class="upgrade-gc-balance">(balance: ${gcBalance} GC)</span>
+          </label>
+          <input type="range" class="upgrade-slider" id="upg-slider"
+            min="0" max="${sliderMax}" value="0" step="1" ${sliderMax === 0 ? 'disabled' : ''}>
+          <div class="upgrade-bonus-preview" id="upg-bonus">
+            <span id="upg-bonus-coins"></span>
+            <span id="upg-bonus-mult"></span>
+          </div>
+          ${sliderMax === 0 && !isMaxLevel ? `<p class="upgrade-no-gc">Mint GC first — or earn more in-game coins</p>` : ''}
         </div>
         <p id="upgrade-status" class="upgrade-status"></p>
-        ` : '<p style="text-align:center;color:#7fff7f">This character is at max level!</p>'}
+        <button class="btn btn-primary upgrade-confirm-btn" id="upg-confirm-btn" disabled>Upgrade</button>
+        `}
+
         <div class="upgrade-level-guide">
-          <p class="upgrade-guide-title">Level bonuses:</p>
+          <p class="upgrade-guide-title">All level bonuses:</p>
           <table class="upgrade-guide-table">
-            <tr><th>Level</th><th>XP needed</th><th>+coins/1k pts</th><th>Multiplier</th></tr>
-            ${[1,2,3,4,5].map(l => `<tr><td>Lv.${l}</td><td>${XP_LEVELS[l]}</td><td>+${LEVEL_BONUS[l].coins}</td><td>×${LEVEL_BONUS[l].mult}</td></tr>`).join('')}
+            <tr><th>Level</th><th>XP</th><th>+coins/1k</th><th>×score</th></tr>
+            ${[1,2,3,4,5].map(l => `<tr class="${lvlInfo.lvl >= l ? 'upg-row-done' : ''}"><td>Lv.${l}</td><td>${XP_LEVELS[l]}</td><td>+${LEVEL_BONUS[l].coins}</td><td>×${LEVEL_BONUS[l].mult}</td></tr>`).join('')}
           </table>
         </div>
+
         <button class="btn btn-ghost upgrade-close-btn">Close</button>
       </div>
     `;
     document.body.appendChild(modal);
 
-    modal.querySelector('.upgrade-close-btn').addEventListener('touchstart', (e) => { e.preventDefault(); modal.remove(); }, { passive: false });
-    modal.querySelector('.upgrade-close-btn').addEventListener('click', () => modal.remove());
+    const closeBtn = modal.querySelector('.upgrade-close-btn');
+    closeBtn.addEventListener('click', () => modal.remove());
+    closeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); modal.remove(); }, { passive: false });
 
-    modal.querySelectorAll('.upgrade-pkg-btn').forEach(btn => {
+    if (!isMaxLevel && sliderMax > 0) {
+        const slider     = modal.querySelector('#upg-slider');
+        const gcValEl    = modal.querySelector('#upg-gc-val');
+        const nextBadge  = modal.querySelector('#upg-next-badge');
+        const xpText     = modal.querySelector('#upg-xp-text');
+        const barPreview = modal.querySelector('#upg-bar-preview');
+        const bonusCoins = modal.querySelector('#upg-bonus-coins');
+        const bonusMult  = modal.querySelector('#upg-bonus-mult');
+        const confirmBtn = modal.querySelector('#upg-confirm-btn');
+
+        slider.addEventListener('input', () => {
+            const gc     = parseInt(slider.value);
+            const newXP  = lvlInfo.xp + gc;
+            const newLvl = getUpgradeLevel(newXP);
+            gcValEl.textContent   = gc;
+            xpText.textContent    = `${lvlInfo.xp} → ${newXP} XP`;
+            nextBadge.textContent = LEVEL_LABELS[newLvl];
+            nextBadge.className   = `upgrade-lv-badge level-${newLvl}`;
+            // progress bar preview
+            const startPct   = xpPct({ xp: lvlInfo.xp, lvl: newLvl });
+            const endPct     = xpPct({ xp: newXP,      lvl: newLvl });
+            barPreview.style.left  = startPct + '%';
+            barPreview.style.width = Math.max(0, endPct - startPct) + '%';
+            // bonus text
+            bonusCoins.textContent = gc > 0 ? `+${LEVEL_BONUS[newLvl].coins} coin/1k pts` : '';
+            bonusMult.textContent  = gc > 0 ? `×${LEVEL_BONUS[newLvl].mult} score`         : '';
+            confirmBtn.disabled    = gc === 0;
+        });
+
         const handler = async (e) => {
             if (e.type === 'touchstart') { e.preventDefault(); e.stopPropagation(); }
-            const xpAmount = parseInt(btn.dataset.xp);
-            const coinsNeeded = parseInt(btn.dataset.coins);
-            await executeUpgrade(characterId, xpAmount, coinsNeeded, modal);
+            const gc = parseInt(slider.value);
+            if (gc > 0) await executeUpgrade(characterId, gc, modal);
         };
-        btn.addEventListener('click', handler);
-        btn.addEventListener('touchstart', handler, { passive: false });
-    });
+        confirmBtn.addEventListener('click', handler);
+        confirmBtn.addEventListener('touchstart', handler, { passive: false });
+    }
 }
 
-async function executeUpgrade(characterId, xpAmount, coinsNeeded, modal) {
+function xpPct(info) {
+    const lvl  = info.lvl ?? getUpgradeLevel(info.xp);
+    const prev = XP_LEVELS[lvl]         || 0;
+    const next = XP_LEVELS[lvl + 1]     || XP_LEVELS[5];
+    if (lvl >= 5) return 100;
+    return Math.min(100, Math.round((info.xp - prev) / Math.max(1, next - prev) * 100));
+}
+
+function getUpgradeLevel(xp) {
+    for (let i = 5; i >= 1; i--) { if (xp >= XP_LEVELS[i]) return i; }
+    return 0;
+}
+
+async function executeUpgrade(characterId, gcAmount, modal) {
     const statusEl = modal.querySelector('#upgrade-status');
     const pkgBtns  = modal.querySelectorAll('.upgrade-pkg-btn');
     pkgBtns.forEach(b => b.disabled = true);
@@ -3601,7 +3667,6 @@ async function executeUpgrade(characterId, xpAmount, coinsNeeded, modal) {
     }
 
     try {
-        const gcAmount = xpAmount; // 1 GC = 1 XP
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer   = await provider.getSigner();
         const gcContract = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
