@@ -2389,9 +2389,14 @@ window.onload = function() {
     // Buy Coins modal
     const buyCoinsBtn = document.getElementById('buy-coins-btn');
     const buyCoinsCloseBtn = document.getElementById('buy-coins-close-btn');
+    const mintGcBtn = document.getElementById('mint-gc-btn');
     if (buyCoinsBtn) {
         buyCoinsBtn.addEventListener('click', openBuyCoinsModal);
         buyCoinsBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); openBuyCoinsModal(); }, { passive: false });
+    }
+    if (mintGcBtn) {
+        mintGcBtn.onclick = openMintGCModal;
+        mintGcBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); openMintGCModal(); }, { passive: false });
     }
     if (buyCoinsCloseBtn) {
         buyCoinsCloseBtn.addEventListener('click', closeBuyCoinsModal);
@@ -3384,31 +3389,35 @@ function updateCollectionUI() {
         }
         
         // Update card state
-        // ── Level badge & XP bar (owned characters) ──────────────────────────
         const lvlInfo = characterLevelCache[charId];
-        let lvlBadge = card.querySelector('.char-level-badge');
-        let xpBarWrap = card.querySelector('.char-xp-wrap');
-        if (!lvlBadge) {
-            lvlBadge = document.createElement('div');
-            lvlBadge.className = 'char-level-badge';
-            card.appendChild(lvlBadge);
-        }
-        if (!xpBarWrap) {
-            xpBarWrap = document.createElement('div');
-            xpBarWrap.className = 'char-xp-wrap';
-            xpBarWrap.innerHTML = '<div class="char-xp-bar"><div class="char-xp-fill"></div></div><span class="char-xp-text"></span>';
-            card.appendChild(xpBarWrap);
-        }
 
-        // ── Upgrade button (owned only) ───────────────────────────────────────
+        // ── Level badge — placed inside .character-info next to rarity ────────
+        const charInfo = card.querySelector('.character-info');
+        let metaRow = card.querySelector('.character-meta-row');
+        if (!metaRow && charInfo) {
+            const rarityEl = charInfo.querySelector('.character-rarity');
+            metaRow = document.createElement('div');
+            metaRow.className = 'character-meta-row';
+            if (rarityEl) {
+                charInfo.insertBefore(metaRow, rarityEl);
+                metaRow.appendChild(rarityEl);
+            } else {
+                charInfo.appendChild(metaRow);
+            }
+            const lvlBadge = document.createElement('span');
+            lvlBadge.className = 'char-level-badge';
+            metaRow.appendChild(lvlBadge);
+        }
+        const lvlBadge = card.querySelector('.char-level-badge');
+
+        // ── Upgrade button ────────────────────────────────────────────────────
         let upgradeBtn = card.querySelector('.char-upgrade-btn');
         if (!upgradeBtn) {
             upgradeBtn = document.createElement('button');
-            upgradeBtn.className = 'btn btn-small char-upgrade-btn';
-            upgradeBtn.textContent = 'Upgrade';
+            upgradeBtn.className = 'char-upgrade-btn';
+            upgradeBtn.textContent = 'Upgrade ⚡';
             card.appendChild(upgradeBtn);
-            upgradeBtn.addEventListener('click', (e) => { e.stopPropagation(); openUpgradeModal(charId); });
-            upgradeBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); openUpgradeModal(charId); }, { passive: false });
+            upgradeBtn.onclick = (e) => { e.stopPropagation(); openUpgradeModal(charId); };
         }
 
         if (isOwned) {
@@ -3416,23 +3425,16 @@ function updateCollectionUI() {
             card.classList.remove('locked');
 
             // Level display
-            if (lvlInfo) {
-                lvlBadge.textContent = LEVEL_LABELS[lvlInfo.lvl];
-                lvlBadge.className = `char-level-badge level-${lvlInfo.lvl}`;
-                const pct = lvlInfo.lvl >= 5 ? 100
-                    : lvlInfo.xpNext > lvlInfo.xpPrev
-                        ? Math.min(100, Math.round((lvlInfo.xp - lvlInfo.xpPrev) / (lvlInfo.xpNext - lvlInfo.xpPrev) * 100))
-                        : 0;
-                card.querySelector('.char-xp-fill').style.width = pct + '%';
-                card.querySelector('.char-xp-text').textContent =
-                    lvlInfo.lvl >= 5 ? 'MAX LEVEL' : `${lvlInfo.xp} / ${lvlInfo.xpNext} XP`;
-                xpBarWrap.style.display = CHARACTER_UPGRADE_ADDRESS ? '' : 'none';
-                upgradeBtn.style.display = (CHARACTER_UPGRADE_ADDRESS && lvlInfo.lvl < 5) ? '' : 'none';
-            } else {
-                lvlBadge.textContent = 'Lv.?';
-                xpBarWrap.style.display = 'none';
-                upgradeBtn.style.display = CHARACTER_UPGRADE_ADDRESS ? '' : 'none';
+            if (lvlBadge) {
+                if (lvlInfo) {
+                    lvlBadge.textContent = LEVEL_LABELS[lvlInfo.lvl];
+                    lvlBadge.className = `char-level-badge level-${lvlInfo.lvl}`;
+                    lvlBadge.style.display = '';
+                } else {
+                    lvlBadge.style.display = 'none';
+                }
             }
+            upgradeBtn.style.display = (CHARACTER_UPGRADE_ADDRESS && (!lvlInfo || lvlInfo.lvl < 5)) ? '' : 'none';
 
             if (selectedCharacter === charId) {
                 card.classList.add('selected');
@@ -3448,8 +3450,7 @@ function updateCollectionUI() {
                 btn.classList.add('btn-primary');
             }
         } else {
-            lvlBadge.style.display = 'none';
-            xpBarWrap.style.display = 'none';
+            if (lvlBadge) lvlBadge.style.display = 'none';
             upgradeBtn.style.display = 'none';
             card.classList.remove('owned', 'selected');
             card.classList.add('locked');
@@ -3522,6 +3523,79 @@ function openCollection(from = 'menu') {
     checkCollectionStatus();
     loadSilhouettes();
     loadCharacterLevels();
+    updateGCBalance();
+}
+
+let gcBalance = 0;
+
+async function updateGCBalance() {
+    const el = document.getElementById('collection-gc-count');
+    if (!el || !GAMECOIN_ADDRESS || !walletAddress) return;
+    try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const gc = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, provider);
+        gcBalance = Number(await gc.balanceOf(walletAddress));
+        el.textContent = gcBalance;
+    } catch (e) {
+        el.textContent = '?';
+    }
+}
+
+function openMintGCModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:300px;padding:20px">
+        <h2 class="modal-title">Mint GC</h2>
+        <p style="font-size:13px;color:rgba(255,255,255,0.6);margin:8px 0 14px">
+          GC is the on-chain upgrade token. Mint any amount — use it to upgrade characters.
+        </p>
+        <label style="font-size:13px;color:rgba(255,255,255,0.7);display:block;margin-bottom:6px">
+          Amount to mint:
+        </label>
+        <input id="mint-gc-input" type="number" min="1" value="100"
+          style="width:100%;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:16px;box-sizing:border-box">
+        <p id="mint-gc-status" style="font-size:12px;min-height:18px;margin:8px 0;color:#7fff7f;text-align:center"></p>
+        <button id="mint-gc-confirm" class="btn btn-primary" style="width:100%;margin-bottom:8px">Mint GC</button>
+        <button id="mint-gc-close" class="btn btn-ghost" style="width:100%">Cancel</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const statusEl = modal.querySelector('#mint-gc-status');
+    const closeBtn = modal.querySelector('#mint-gc-close');
+    const confirmBtn = modal.querySelector('#mint-gc-confirm');
+    const input = modal.querySelector('#mint-gc-input');
+
+    const close = () => modal.remove();
+    closeBtn.onclick = close;
+
+    const doMint = async () => {
+        const amount = parseInt(input.value);
+        if (!amount || amount < 1) { statusEl.textContent = 'Enter a valid amount'; statusEl.style.color = '#ff7f7f'; return; }
+        confirmBtn.disabled = true;
+        statusEl.style.color = '#7fff7f';
+        statusEl.textContent = 'Minting…';
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const gc = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
+            const tx = await gc.mint(amount);
+            statusEl.textContent = 'Waiting for confirmation…';
+            await tx.wait();
+            gcBalance += amount;
+            document.getElementById('collection-gc-count').textContent = gcBalance;
+            statusEl.textContent = `Minted ${amount} GC ✓`;
+            setTimeout(close, 1200);
+        } catch (e) {
+            statusEl.style.color = '#ff7f7f';
+            statusEl.textContent = e?.reason || e?.message?.slice(0, 60) || 'Failed';
+            confirmBtn.disabled = false;
+        }
+    };
+
+    confirmBtn.onclick = doMint;
+    confirmBtn.addEventListener('touchstart', (e) => { e.preventDefault(); doMint(); }, { passive: false });
 }
 
 // ── Upgrade Modal ─────────────────────────────────────────────────────────────

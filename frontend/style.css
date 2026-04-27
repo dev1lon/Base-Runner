@@ -1065,14 +1065,16 @@ body.w3m-modal-open w3m-modal {
     padding: 0.5rem;
     max-height: 60vh;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .collection-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 1fr;
     gap: 0.75rem;
     width: 100%;
+    align-items: start;
 }
 
 .character-card {
@@ -1082,12 +1084,11 @@ body.w3m-modal-open w3m-modal {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.25rem;
     box-shadow: var(--shadow-sm);
     border: 2px solid transparent;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
-    height: 100%;
-    contain: layout style;
+    position: relative;
 }
 
 .character-card.owned {
@@ -1111,8 +1112,7 @@ body.w3m-modal-open w3m-modal {
     border-color: rgba(255,255,255,0.07);
     border-radius: 1.5rem;
     position: relative;
-    overflow: hidden;
-    /* spotlight CSS vars */
+    overflow: visible;
     --x: 50;
     --y: 50;
     --card-x: 50%;
@@ -1250,7 +1250,17 @@ body.w3m-modal-open w3m-modal {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.2rem;
+    width: 100%;
+}
+
+/* Rarity + level on one row */
+.character-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: wrap;
 }
 
 .character-name {
@@ -1283,7 +1293,7 @@ body.w3m-modal-open w3m-modal {
 
 .rarity-epic {
     background: #8B5CF6;
-    color: white;
+    color: #f0e6ff;
 }
 
 .rarity-legendary {
@@ -1302,7 +1312,7 @@ body.w3m-modal-open w3m-modal {
 
 .character-btn {
     width: 100%;
-    padding: 0.5rem;
+    padding: 0.4rem 0.5rem;
     font-size: var(--font-size-sm);
 }
 
@@ -1430,23 +1440,21 @@ body.w3m-modal-open w3m-modal {
    Character Upgrade System
    ============================================ */
 
-/* Level badge on character card */
+/* Level badge — shown inline next to rarity */
 .char-level-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
+    display: inline-block;
     font-size: 10px;
     font-weight: 700;
     padding: 2px 6px;
     border-radius: 8px;
-    background: rgba(0,0,0,0.6);
-    color: #aaa;
+    background: rgba(0,0,0,0.15);
+    color: #888;
     pointer-events: none;
 }
-.char-level-badge.level-1 { background: #2a4a2a; color: #7fff7f; }
-.char-level-badge.level-2 { background: #1a3a5a; color: #7fd4ff; }
-.char-level-badge.level-3 { background: #4a2a5a; color: #d47fff; }
-.char-level-badge.level-4 { background: #5a3a1a; color: #ffd47f; }
+.char-level-badge.level-1 { background: #2a4a2a; color: #a0ffb0; }
+.char-level-badge.level-2 { background: #1a3a5a; color: #a0dfff; }
+.char-level-badge.level-3 { background: #5a3080; color: #e8b0ff; }
+.char-level-badge.level-4 { background: #5a3a1a; color: #ffe090; }
 .char-level-badge.level-5 { background: linear-gradient(135deg,#ff6b35,#f7931e); color: #fff; }
 
 /* XP bar on card */
@@ -1474,16 +1482,21 @@ body.w3m-modal-open w3m-modal {
     text-align: center;
 }
 
-/* Upgrade button on card */
+/* Upgrade button on card — same size as Select */
 .char-upgrade-btn {
-    font-size: 11px !important;
-    padding: 3px 10px !important;
-    width: calc(100% - 16px) !important;
-    margin: 0 8px 6px !important;
-    background: linear-gradient(135deg, #2a1a4a, #3a2a6a) !important;
-    color: #d47fff !important;
-    border: 1px solid rgba(180,100,255,0.3) !important;
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    font-size: var(--font-size-sm);
+    background: linear-gradient(135deg, #3a1a6a, #5a2a9a);
+    color: #e8b0ff;
+    border: 1px solid rgba(180,100,255,0.4);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    font-weight: 600;
+    transition: opacity 0.15s;
+    touch-action: manipulation;
 }
+.char-upgrade-btn:active { opacity: 0.75; }
 
 /* Info banner in collection */
 .upgrade-info-banner {
@@ -1646,3 +1659,21 @@ body.w3m-modal-open w3m-modal {
 .upgrade-max-msg { text-align: center; color: #ffd47f; font-size: 14px; font-weight: 600; margin: 12px 0; }
 .upgrade-confirm-btn { width: 100%; margin-top: 10px; }
 .upg-row-done td { color: rgba(255,255,255,0.3); text-decoration: line-through; }
+
+/* GC balance row in collection header */
+.collection-gc-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-gray-700);
+}
+.collection-gc-label { color: #8b5cf6; }
+.collection-gc-mint-btn {
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+    background: linear-gradient(135deg,#3a1a6a,#5a2a9a) !important;
+    color: #e8b0ff !important;
+    border: 1px solid rgba(180,100,255,0.4) !important;
+}
