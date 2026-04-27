@@ -10,7 +10,7 @@ pragma solidity ^0.8.20;
 contract XPToken {
 
     // ─── ERC-20 state ────────────────────────────────────────────────────────
-    string public constant name     = "Rug Pull XP";
+    string public constant name     = "Rug Pull Run XP";
     string public constant symbol   = "XP";
     uint8  public constant decimals = 0;
 
