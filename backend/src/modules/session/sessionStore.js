@@ -2,7 +2,7 @@ const crypto = require("crypto");
 
 const sessions = new Map();
 
-function createSession({ address, seed, ttlMs, paid = false }) {
+function createSession({ address, seed, ttlMs, paid = false, characterId = 0 }) {
   const sessionId = crypto.randomUUID();
   const issuedAt = Date.now();
   const expiresAt = issuedAt + ttlMs;
@@ -13,7 +13,8 @@ function createSession({ address, seed, ttlMs, paid = false }) {
     issuedAt,
     expiresAt,
     used: false,
-    paid
+    paid,
+    characterId,
   };
   sessions.set(sessionId, session);
   return session;

@@ -43,6 +43,31 @@ const { getCheckinStatus, doCheckin } = require("./modules/checkin/checkinServic
 
 const { ethers } = require("ethers");
 
+const GAMECOIN_ADDRESS         = process.env.GAMECOIN_ADDRESS || "";
+const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "";
+const GC_PER_COIN = 5; // 1 off-chain coin = 5 GC
+
+// Minimal ABI for reading character XP on-chain
+const CHARACTER_UPGRADE_ABI = [
+  "function getCharacterInfo(address player, uint256 characterId) view returns (uint256 lvl, uint256 xp, uint256 xpNext, uint256 xpPrev)"
+];
+
+const LEVEL_COIN_BONUS       = [0, 1, 2, 3, 4, 5];   // extra coins per 1000pts per level
+const LEVEL_SCORE_MULTIPLIER = [1.0, 1.1, 1.2, 1.3, 1.5, 2.0];
+
+async function getCharacterLevel(playerAddress, characterId) {
+  if (!CHARACTER_UPGRADE_ADDRESS) return 0;
+  try {
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
+    const contract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, provider);
+    const info = await contract.getCharacterInfo(playerAddress, characterId);
+    return Number(info.lvl);
+  } catch (e) {
+    console.warn("[level] Failed to read character level:", e.message);
+    return 0;
+  }
+}
+
 const app = express();
 
 const PORT = Number(process.env.PORT || 8787);
@@ -189,11 +214,13 @@ app.post("/auth/siwe-verify", async (req, res) => {
 
 app.post("/api/session/start", requireAuth, (req, res) => {
   const addressNorm = req.user.address;
+  const { characterId = 0 } = req.body || {};
   const seed = randomSeed();
   const session = createSession({
     address: addressNorm,
     seed,
-    ttlMs: SESSION_TTL_MS
+    ttlMs: SESSION_TTL_MS,
+    characterId: Number(characterId) || 0,
   });
   res.json({
     sessionId: session.sessionId,
@@ -355,9 +382,16 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   console.log("📊 Score info:", { reported, maxScore, gameDurationMs });
 
   const finalScore = Math.min(reported, maxScore);
-  const coinsPerScore = session.paid ? 5 : 1;
-  const coinsAwarded = Math.floor(finalScore / 1000) * coinsPerScore;
-  console.log("💰 Awarding:", { finalScore, coinsAwarded, paid: session.paid, address: addressNorm });
+
+  // Character level multiplier (reads on-chain — 0 if contract not deployed yet)
+  const charLevel = await getCharacterLevel(addressNorm, session.characterId || 0);
+  const scoreMultiplier  = LEVEL_SCORE_MULTIPLIER[charLevel] || 1.0;
+  const levelCoinBonus   = LEVEL_COIN_BONUS[charLevel] || 0;
+  const adjustedScore    = Math.floor(finalScore * scoreMultiplier);
+  const baseCoins        = session.paid ? 5 : 1;
+  const coinsAwarded     = Math.floor(adjustedScore / 1000) * (baseCoins + levelCoinBonus);
+
+  console.log("💰 Awarding:", { finalScore, adjustedScore, coinsAwarded, paid: session.paid, charLevel, address: addressNorm });
   markSessionUsed(sessionId);
   const result = await applyScore(addressNorm, finalScore, coinsAwarded);
 
@@ -367,7 +401,9 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     maxScore,
     coinsAwarded,
     coinBalance: result ? result.coins : 0,
-    bestScore: result ? result.best_score : finalScore
+    bestScore: result ? result.best_score : finalScore,
+    charLevel,
+    scoreMultiplier,
   });
 });
 
@@ -385,6 +421,50 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     ownedCharacters: user.owned_characters || [],
     selectedCharacter: user.selected_character || 0
   });
+});
+
+// ============ GameCoin Voucher ============
+
+app.post("/api/coins/gc-voucher", requireAuth, async (req, res) => {
+  const { coinsAmount } = req.body || {};
+  const amount = Number(coinsAmount);
+  if (!Number.isFinite(amount) || amount < 1) {
+    return res.status(400).json({ ok: false, error: "Invalid coinsAmount" });
+  }
+  if (!process.env.SIGNER_PRIVATE_KEY) {
+    return res.status(503).json({ ok: false, error: "Signer not configured" });
+  }
+  if (!GAMECOIN_ADDRESS) {
+    return res.status(503).json({ ok: false, error: "GameCoin contract not configured" });
+  }
+  try {
+    const { rows } = await require("./shared/db").query(
+      `SELECT coins FROM users WHERE address=$1`, [req.user.address]
+    );
+    const balance = rows[0]?.coins || 0;
+    if (balance < amount) {
+      return res.status(400).json({ ok: false, error: "Insufficient coins" });
+    }
+    // Deduct coins first (prevent double-spend)
+    await require("./shared/db").query(
+      `UPDATE users SET coins = coins - $1, updated_at = NOW() WHERE address = $2 AND coins >= $1`,
+      [amount, req.user.address]
+    );
+    const gcAmount = amount * GC_PER_COIN;
+    const nonce    = BigInt("0x" + require("crypto").randomBytes(32).toString("hex"));
+    const chainId  = BigInt(8453);
+    const wallet   = new ethers.Wallet(process.env.SIGNER_PRIVATE_KEY);
+    const hash     = ethers.solidityPackedKeccak256(
+      ["address", "uint256", "uint256", "uint256", "address"],
+      [req.user.address, gcAmount, nonce, chainId, GAMECOIN_ADDRESS]
+    );
+    const sig = await wallet.signMessage(ethers.getBytes(hash));
+    const { v, r, s } = ethers.Signature.from(sig);
+    res.json({ ok: true, to: req.user.address, gcAmount, nonce: nonce.toString(), v, r, s });
+  } catch (e) {
+    console.error("gc-voucher error:", e);
+    res.status(500).json({ ok: false, error: "Failed to issue voucher" });
+  }
 });
 
 // ============ Check-in API ============

@@ -229,6 +229,42 @@ const PAYMENTS_ABI = [
     "function buyCoins(uint256 coinsAmount, uint256 usdcAmount)"
 ];
 
+// Character upgrade contracts (set after deploy)
+const GAMECOIN_ADDRESS          = "";  // TODO: fill after deploy
+const CHARACTER_UPGRADE_ADDRESS = "";  // TODO: fill after deploy
+
+const GAMECOIN_ABI = [
+    "function balanceOf(address) view returns (uint256)",
+    "function allowance(address owner, address spender) view returns (uint256)",
+    "function approve(address spender, uint256 amount) returns (bool)",
+    "function mintWithVoucher(address to, uint256 amount, uint256 nonce, uint8 v, bytes32 r, bytes32 s)",
+    "function burn(uint256 amount)",
+];
+const CHARACTER_UPGRADE_ABI = [
+    "function upgrade(uint256 characterId, uint256 gcAmount)",
+    "function getCharacterInfo(address player, uint256 characterId) view returns (uint256 lvl, uint256 xp, uint256 xpNext, uint256 xpPrev)",
+    "function getCharacterLevels(address player, uint256[] characterIds) view returns (uint256[] levels, uint256[] xps)",
+];
+
+const GC_PER_COIN = 5;  // 1 in-game coin = 5 GC
+const UPGRADE_PACKAGES = [
+    { label: '+50 XP',  xp: 50,   coins: 10  },
+    { label: '+150 XP', xp: 150,  coins: 30  },
+    { label: '+500 XP', xp: 500,  coins: 100 },
+];
+const XP_LEVELS     = [0, 100, 300, 700, 1500, 3000];
+const LEVEL_LABELS  = ['Lv.0', 'Lv.1', 'Lv.2', 'Lv.3', 'Lv.4', 'Lv.5'];
+const LEVEL_BONUS   = [
+    { coins: 0, mult: 1.0 },
+    { coins: 1, mult: 1.1 },
+    { coins: 2, mult: 1.2 },
+    { coins: 3, mult: 1.3 },
+    { coins: 4, mult: 1.5 },
+    { coins: 5, mult: 2.0 },
+];
+
+let characterLevelCache = {};  // { [charId]: { lvl, xp, xpNext, xpPrev } }
+
 // USDC on Base mainnet
 const USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_PER_COIN = 100_000n; // 0.1 USDC in 6-decimal units
@@ -3279,9 +3315,30 @@ async function handleBuyCoinsPackage(coins) {
 
 // ============ Collection Functions ============
 
+async function loadCharacterLevels() {
+    if (!CHARACTER_UPGRADE_ADDRESS || !walletAddress) return;
+    try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const contract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, provider);
+        const ids = [0,1,2,3,4,5,6,7,8,9];
+        const [levels, xps] = await contract.getCharacterLevels(walletAddress, ids);
+        ids.forEach((id, i) => {
+            const lvl = Number(levels[i]);
+            const xp  = Number(xps[i]);
+            characterLevelCache[id] = {
+                lvl,
+                xp,
+                xpPrev: XP_LEVELS[lvl]     || 0,
+                xpNext: XP_LEVELS[lvl + 1] || 0,
+            };
+        });
+        updateCollectionUI();
+    } catch (e) {
+        console.warn('[upgrade] loadCharacterLevels failed:', e.message);
+    }
+}
+
 async function checkCollectionStatus() {
-    // Data is now loaded from backend in applyProfileData
-    // This function just updates the UI
     loadSelectedCharacter();
     updateCollectionUI();
     updateStartButtonState();
@@ -3332,10 +3389,56 @@ function updateCollectionUI() {
         }
         
         // Update card state
+        // ── Level badge & XP bar (owned characters) ──────────────────────────
+        const lvlInfo = characterLevelCache[charId];
+        let lvlBadge = card.querySelector('.char-level-badge');
+        let xpBarWrap = card.querySelector('.char-xp-wrap');
+        if (!lvlBadge) {
+            lvlBadge = document.createElement('div');
+            lvlBadge.className = 'char-level-badge';
+            card.appendChild(lvlBadge);
+        }
+        if (!xpBarWrap) {
+            xpBarWrap = document.createElement('div');
+            xpBarWrap.className = 'char-xp-wrap';
+            xpBarWrap.innerHTML = '<div class="char-xp-bar"><div class="char-xp-fill"></div></div><span class="char-xp-text"></span>';
+            card.appendChild(xpBarWrap);
+        }
+
+        // ── Upgrade button (owned only) ───────────────────────────────────────
+        let upgradeBtn = card.querySelector('.char-upgrade-btn');
+        if (!upgradeBtn) {
+            upgradeBtn = document.createElement('button');
+            upgradeBtn.className = 'btn btn-small char-upgrade-btn';
+            upgradeBtn.textContent = 'Upgrade';
+            card.appendChild(upgradeBtn);
+            upgradeBtn.addEventListener('click', (e) => { e.stopPropagation(); openUpgradeModal(charId); });
+            upgradeBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); openUpgradeModal(charId); }, { passive: false });
+        }
+
         if (isOwned) {
             card.classList.add('owned');
             card.classList.remove('locked');
-            
+
+            // Level display
+            if (lvlInfo) {
+                lvlBadge.textContent = LEVEL_LABELS[lvlInfo.lvl];
+                lvlBadge.className = `char-level-badge level-${lvlInfo.lvl}`;
+                const pct = lvlInfo.lvl >= 5 ? 100
+                    : lvlInfo.xpNext > lvlInfo.xpPrev
+                        ? Math.min(100, Math.round((lvlInfo.xp - lvlInfo.xpPrev) / (lvlInfo.xpNext - lvlInfo.xpPrev) * 100))
+                        : 0;
+                card.querySelector('.char-xp-fill').style.width = pct + '%';
+                card.querySelector('.char-xp-text').textContent =
+                    lvlInfo.lvl >= 5 ? 'MAX LEVEL' : `${lvlInfo.xp} / ${lvlInfo.xpNext} XP`;
+                xpBarWrap.style.display = CHARACTER_UPGRADE_ADDRESS ? '' : 'none';
+                upgradeBtn.style.display = (CHARACTER_UPGRADE_ADDRESS && lvlInfo.lvl < 5) ? '' : 'none';
+            } else {
+                lvlBadge.textContent = 'Lv.?';
+                xpBarWrap.style.display = 'none';
+                upgradeBtn.style.display = CHARACTER_UPGRADE_ADDRESS ? '' : 'none';
+            }
+
             if (selectedCharacter === charId) {
                 card.classList.add('selected');
                 btn.textContent = 'Selected ✓';
@@ -3350,6 +3453,9 @@ function updateCollectionUI() {
                 btn.classList.add('btn-primary');
             }
         } else {
+            lvlBadge.style.display = 'none';
+            xpBarWrap.style.display = 'none';
+            upgradeBtn.style.display = 'none';
             card.classList.remove('owned', 'selected');
             card.classList.add('locked');
             
@@ -3420,6 +3526,126 @@ function openCollection(from = 'menu') {
     updateCollectionCoins();
     checkCollectionStatus();
     loadSilhouettes();
+    loadCharacterLevels();
+}
+
+// ── Upgrade Modal ─────────────────────────────────────────────────────────────
+
+function openUpgradeModal(characterId) {
+    const char = CHARACTERS[characterId];
+    const lvlInfo = characterLevelCache[characterId] || { lvl: 0, xp: 0, xpNext: 100, xpPrev: 0 };
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal-box upgrade-modal">
+        <h2 class="modal-title">Upgrade ${char?.name || 'Character'}</h2>
+        <div class="upgrade-level-info">
+          <span class="upgrade-current-level">${LEVEL_LABELS[lvlInfo.lvl]}</span>
+          ${lvlInfo.lvl < 5 ? `<span class="upgrade-arrow">→</span><span class="upgrade-next-level">${LEVEL_LABELS[lvlInfo.lvl + 1]}</span>` : '<span class="upgrade-max">MAX LEVEL</span>'}
+        </div>
+        ${lvlInfo.lvl < 5 ? `
+        <div class="upgrade-xp-bar-wrap">
+          <div class="upgrade-xp-bar"><div class="upgrade-xp-fill" style="width:${Math.round((lvlInfo.xp - lvlInfo.xpPrev) / Math.max(1, lvlInfo.xpNext - lvlInfo.xpPrev) * 100)}%"></div></div>
+          <span class="upgrade-xp-text">${lvlInfo.xp} / ${lvlInfo.xpNext} XP</span>
+        </div>
+        <div class="upgrade-bonuses">
+          <p>Next level bonuses:</p>
+          <ul>
+            <li>+${LEVEL_BONUS[lvlInfo.lvl + 1].coins} coin per 1 000 pts</li>
+            <li>×${LEVEL_BONUS[lvlInfo.lvl + 1].mult} score multiplier</li>
+          </ul>
+        </div>
+        <div class="upgrade-packages">
+          ${UPGRADE_PACKAGES.map(p => `
+            <button class="btn btn-primary upgrade-pkg-btn" data-xp="${p.xp}" data-coins="${p.coins}">
+              ${p.label}<br><small>${p.coins} coins → ${p.xp * GC_PER_COIN} GC</small>
+            </button>
+          `).join('')}
+        </div>
+        <p id="upgrade-status" class="upgrade-status"></p>
+        ` : '<p style="text-align:center;color:#7fff7f">This character is at max level!</p>'}
+        <div class="upgrade-level-guide">
+          <p class="upgrade-guide-title">Level bonuses:</p>
+          <table class="upgrade-guide-table">
+            <tr><th>Level</th><th>XP needed</th><th>+coins/1k pts</th><th>Multiplier</th></tr>
+            ${[1,2,3,4,5].map(l => `<tr><td>Lv.${l}</td><td>${XP_LEVELS[l]}</td><td>+${LEVEL_BONUS[l].coins}</td><td>×${LEVEL_BONUS[l].mult}</td></tr>`).join('')}
+          </table>
+        </div>
+        <button class="btn btn-ghost upgrade-close-btn">Close</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector('.upgrade-close-btn').addEventListener('touchstart', (e) => { e.preventDefault(); modal.remove(); }, { passive: false });
+    modal.querySelector('.upgrade-close-btn').addEventListener('click', () => modal.remove());
+
+    modal.querySelectorAll('.upgrade-pkg-btn').forEach(btn => {
+        const handler = async (e) => {
+            if (e.type === 'touchstart') { e.preventDefault(); e.stopPropagation(); }
+            const xpAmount = parseInt(btn.dataset.xp);
+            const coinsNeeded = parseInt(btn.dataset.coins);
+            await executeUpgrade(characterId, xpAmount, coinsNeeded, modal);
+        };
+        btn.addEventListener('click', handler);
+        btn.addEventListener('touchstart', handler, { passive: false });
+    });
+}
+
+async function executeUpgrade(characterId, xpAmount, coinsNeeded, modal) {
+    const statusEl = modal.querySelector('#upgrade-status');
+    const pkgBtns  = modal.querySelectorAll('.upgrade-pkg-btn');
+    pkgBtns.forEach(b => b.disabled = true);
+
+    function setStatus(msg, isError) {
+        if (statusEl) { statusEl.textContent = msg; statusEl.style.color = isError ? '#ff7f7f' : '#7fff7f'; }
+    }
+
+    try {
+        if (coinCount < coinsNeeded) { setStatus(`Not enough coins (need ${coinsNeeded}, have ${coinCount})`, true); pkgBtns.forEach(b => b.disabled = false); return; }
+
+        // 1. Get voucher from backend
+        setStatus('Step 1/4: Getting voucher…');
+        const voucherRes = await fetch(`${BACKEND_URL}/api/coins/gc-voucher`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ coinsAmount: coinsNeeded }),
+        }).then(r => r.json());
+        if (!voucherRes.ok) throw new Error(voucherRes.error || 'Voucher failed');
+
+        const { gcAmount, nonce, v, r: rSig, s } = voucherRes;
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer   = await provider.getSigner();
+
+        // 2. Mint GC on-chain
+        setStatus('Step 2/4: Minting GC tokens…');
+        const gcContract = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
+        const mintTx = await gcContract.mintWithVoucher(walletAddress, gcAmount, BigInt(nonce), v, rSig, s);
+        await mintTx.wait();
+
+        // 3. Approve upgrade contract
+        setStatus('Step 3/4: Approving upgrade contract…');
+        const approveTx = await gcContract.approve(CHARACTER_UPGRADE_ADDRESS, gcAmount);
+        await approveTx.wait();
+
+        // 4. Upgrade character
+        setStatus('Step 4/4: Upgrading character…');
+        const upgradeContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, signer);
+        const upgradeTx = await upgradeContract.upgrade(characterId, gcAmount);
+        await upgradeTx.wait();
+
+        // Refresh level cache and update coins
+        coinCount -= coinsNeeded;
+        updateCoinDisplay();
+        await loadCharacterLevels();
+        setStatus('Upgrade complete! ✓');
+        setTimeout(() => modal.remove(), 1500);
+
+    } catch (err) {
+        console.error('[upgrade] error:', err);
+        const msg = err?.reason || err?.message || 'Upgrade failed';
+        setStatus(msg.length > 80 ? msg.slice(0, 80) + '…' : msg, true);
+        pkgBtns.forEach(b => b.disabled = false);
+    }
 }
 
 function updateCollectionCoins() {
