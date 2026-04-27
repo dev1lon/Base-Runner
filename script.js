@@ -2295,6 +2295,14 @@ window.onload = function() {
         notifBtn.style.pointerEvents = 'auto';
         notifBtn.style.touchAction = 'manipulation';
         notifBtn.addEventListener('click', handleEnableNotifications);
+        // Document-level touchstart calls preventDefault, which suppresses synthesized
+        // click on touch devices — so trigger directly on touchstart, matching the
+        // pattern used by other menu buttons (start, pay, checkin, etc.)
+        notifBtn.addEventListener('touchstart', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleEnableNotifications(e);
+        }, { passive: false });
         // Show button when SDK is ready (Base App context)
         setTimeout(() => {
             if (window.__farcasterSdk?.actions?.addMiniApp) {
