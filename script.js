@@ -2283,7 +2283,11 @@ window.onload = function() {
             try {
                 const sdk = window.__farcasterSdk;
                 if (!sdk?.actions?.addMiniApp) { dbg('SDK not ready'); return; }
-                const result = await sdk.actions.addMiniApp();
+                dbg('calling addMiniApp...');
+                const result = await Promise.race([
+                    sdk.actions.addMiniApp(),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('TIMEOUT after 8s — host did not respond')), 8000)),
+                ]);
                 dbg('addMiniApp ok: ' + JSON.stringify(result));
             } catch (err) {
                 dbg('addMiniApp ERR: ' + (err?.message || String(err)));
