@@ -1660,20 +1660,49 @@ body.w3m-modal-open w3m-modal {
 .upgrade-confirm-btn { width: 100%; margin-top: 10px; }
 .upg-row-done td { color: rgba(255,255,255,0.3); text-decoration: line-through; }
 
-/* GC balance row in collection header */
-.collection-gc-row {
+/* GC pill — matches .collection-coins in size and shape */
+.collection-gc-pill {
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-gray-700);
+    justify-content: center;
+    gap: 0.5rem;
+    background: rgba(139, 92, 246, 0.15);
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    margin-top: 0.5rem;
 }
-.collection-gc-label { color: #8b5cf6; }
+
+.collection-gc-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #5a2a9a, #8b5cf6);
+    border: 2px solid rgba(200, 150, 255, 0.6);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+#collection-gc-count {
+    font-weight: 700;
+    font-size: var(--font-size-lg);
+    color: #5a2a9a;
+}
+
 .collection-gc-mint-btn {
-    font-size: 11px !important;
-    padding: 2px 8px !important;
-    background: linear-gradient(135deg,#3a1a6a,#5a2a9a) !important;
-    color: #e8b0ff !important;
-    border: 1px solid rgba(180,100,255,0.4) !important;
+    margin-top: 0.5rem;
+    padding: 0.4rem 1rem;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    background: linear-gradient(135deg, #3a1a6a, #5a2a9a);
+    color: #e8b0ff;
+    border: 1px solid rgba(180, 100, 255, 0.5);
+    border-radius: var(--radius-lg);
+    touch-action: manipulation;
+    cursor: pointer;
 }

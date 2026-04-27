@@ -2396,7 +2396,6 @@ window.onload = function() {
     }
     if (mintGcBtn) {
         mintGcBtn.onclick = openMintGCModal;
-        mintGcBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); openMintGCModal(); }, { passive: false });
     }
     if (buyCoinsCloseBtn) {
         buyCoinsCloseBtn.addEventListener('click', closeBuyCoinsModal);
