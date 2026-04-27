@@ -2394,14 +2394,7 @@ window.onload = function() {
         buyCoinsBtn.addEventListener('click', openBuyCoinsModal);
         buyCoinsBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); openBuyCoinsModal(); }, { passive: false });
     }
-    if (mintGcBtn) {
-        mintGcBtn.addEventListener('click', openMintGCModal);
-        mintGcBtn.addEventListener('touchstart', function(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            openMintGCModal();
-        }, { passive: false });
-    }
+    // mint-gc-btn uses onclick attribute in HTML
     if (buyCoinsCloseBtn) {
         buyCoinsCloseBtn.addEventListener('click', closeBuyCoinsModal);
         buyCoinsCloseBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); closeBuyCoinsModal(); }, { passive: false });

@@ -1063,7 +1063,7 @@ body.w3m-modal-open w3m-modal {
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem;
-    max-height: 54vh;
+    max-height: 48vh;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -1453,7 +1453,7 @@ body.w3m-modal-open w3m-modal {
 }
 .char-level-badge.level-1 { background: #2a4a2a; color: #a0ffb0; }
 .char-level-badge.level-2 { background: #1a3a5a; color: #a0dfff; }
-.char-level-badge.level-3 { background: #5a3080; color: #e8b0ff; }
+.char-level-badge.level-3 { background: #2a3a6a; color: #a8c8ff; }
 .char-level-badge.level-4 { background: #5a3a1a; color: #ffe090; }
 .char-level-badge.level-5 { background: linear-gradient(135deg,#ff6b35,#f7931e); color: #fff; }
 
@@ -1487,14 +1487,16 @@ body.w3m-modal-open w3m-modal {
     width: 100%;
     padding: 0.4rem 0.5rem;
     font-size: var(--font-size-sm);
-    background: linear-gradient(135deg, #3a1a6a, #5a2a9a);
-    color: #e8b0ff;
-    border: 1px solid rgba(180,100,255,0.4);
+    background: linear-gradient(180deg, #9B6FE8 0%, #7B4FD8 50%, #6B3FC8 100%);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
     border-radius: var(--radius-lg);
     cursor: pointer;
     font-weight: 600;
     transition: opacity 0.15s;
     touch-action: manipulation;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(107,63,200,0.35);
 }
 .char-upgrade-btn:active { opacity: 0.75; }
 
@@ -1696,14 +1698,4 @@ body.w3m-modal-open w3m-modal {
 
 .collection-gc-mint-btn {
     margin-top: 0.5rem;
-    padding: 0.5rem 1.2rem;
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-    background: rgba(139, 92, 246, 0.2);
-    color: #5a2a9a;
-    border: 1.5px solid rgba(139, 92, 246, 0.6);
-    border-radius: 999px;
-    touch-action: manipulation;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
 }
