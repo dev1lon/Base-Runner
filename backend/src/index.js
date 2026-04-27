@@ -403,26 +403,6 @@ app.post("/api/checkin", requireAuth, async (req, res) => {
   try {
     const { txHash } = req.body || {};
     const result = await doCheckin(req.user.address, txHash);
-
-    // Send instant notification confirming check-in (if user has notifications enabled)
-    if (result?.ok) {
-      try {
-        const { rows } = await require("./shared/db").query(
-          `SELECT notification_url, notification_token, streak FROM users WHERE address=$1`,
-          [req.user.address]
-        );
-        const u = rows[0];
-        if (u?.notification_url && u?.notification_token) {
-          sendNotification({
-            url: u.notification_url,
-            token: u.notification_token,
-            title: u.streak >= 5 ? `🔥 ${u.streak}-day streak!` : "Check-in done",
-            body: `+${result.reward || 1} coins. Come back in 24h to keep your streak.`,
-          }).catch(() => {});
-        }
-      } catch (_) { /* notifications best-effort */ }
-    }
-
     res.json(result);
   } catch (err) {
     console.error("Checkin error:", err);
@@ -769,119 +749,7 @@ app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
 });
 
 
-// Farcaster mini-app webhook endpoint
-// Receives: miniapp_added, miniapp_removed, notifications_enabled, notifications_disabled
-const {
-  saveNotificationToken,
-  clearNotificationToken,
-  linkFidToAddress,
-  sendNotification,
-  runCheckinReminderJob,
-} = require("./modules/notifications/notificationService");
-
-app.post("/api/notifications", async (req, res) => {
-  try {
-    let event;
-    try {
-      const { parseWebhookEvent, verifyAppKeyWithNeynar } = require("@farcaster/miniapp-node");
-      event = await parseWebhookEvent(req.body, verifyAppKeyWithNeynar);
-    } catch (e) {
-      console.warn("[notifications] SDK parse failed, using raw body:", e.message);
-      event = req.body;
-    }
-    const fid = event?.fid || event?.event?.fid;
-    const data = event?.event || event;
-    const type = data?.event;
-
-    if (type === "miniapp_added" || type === "notifications_enabled") {
-      const token = data?.notificationDetails?.token;
-      const url = data?.notificationDetails?.url;
-      if (fid && token && url) {
-        await saveNotificationToken({ fid, url, token });
-        console.log(`[notifications] registered fid=${fid}`);
-      }
-    } else if (type === "miniapp_removed" || type === "notifications_disabled") {
-      if (fid) {
-        await clearNotificationToken({ fid });
-        console.log(`[notifications] removed fid=${fid}`);
-      }
-    }
-
-    res.status(200).json({ ok: true });
-  } catch (err) {
-    console.error("[notifications] error:", err);
-    res.status(200).json({ ok: true });
-  }
-});
-
-// Link Farcaster FID to wallet address (called after SIWE auth in mini-app context)
-app.post("/api/user/link-fid", requireAuth, async (req, res) => {
-  const { fid } = req.body || {};
-  if (!fid || !Number.isFinite(Number(fid))) {
-    return res.status(400).json({ ok: false, error: "Invalid fid" });
-  }
-  try {
-    await linkFidToAddress({ address: req.user.address, fid: Number(fid) });
-
-    // Copy notification token from pending table (stored before address was known)
-    const { query } = require("./shared/db");
-    const { rows } = await query(
-      `DELETE FROM pending_notification_tokens WHERE fid=$1 RETURNING notification_url, notification_token`,
-      [Number(fid)]
-    );
-    if (rows[0]?.notification_token) {
-      await query(
-        `UPDATE users SET notification_url=$1, notification_token=$2 WHERE address=$3`,
-        [rows[0].notification_url, rows[0].notification_token, req.user.address.toLowerCase()]
-      );
-      console.log(`[link-fid] applied pending notification token to ${req.user.address}`);
-    }
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("link-fid error:", e);
-    res.status(500).json({ ok: false, error: "Failed to link fid" });
-  }
-});
-
-// Test: manually trigger check-in reminder job (admin only via secret header)
-app.post("/api/admin/test-notifications", async (req, res) => {
-  const secret = req.headers["x-admin-secret"];
-  if (!secret || secret !== process.env.ADMIN_SECRET) {
-    return res.status(403).json({ ok: false, error: "Forbidden" });
-  }
-  await runCheckinReminderJob();
-  res.json({ ok: true, message: "Reminder job executed" });
-});
-
-// Test: send a single notification to the authenticated user
-app.post("/api/user/test-notification", requireAuth, async (req, res) => {
-  try {
-    const { rows } = await require("./shared/db").query(
-      `SELECT notification_url, notification_token, fid FROM users WHERE address=$1`,
-      [req.user.address]
-    );
-    const u = rows[0];
-    if (!u?.notification_token) {
-      return res.status(400).json({ ok: false, error: "No notification token. Enable notifications in Base App first." });
-    }
-    const r = await sendNotification({
-      url: u.notification_url,
-      token: u.notification_token,
-      title: "Test notification",
-      body: "Rug Pull Run notifications work!",
-      targetUrl: process.env.APP_URL || "https://rugpullrun.app",
-    });
-    res.json({ ok: r.ok, fid: u.fid, result: r });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
 setInterval(cleanupSessions, 60 * 1000);
-// Check-in reminder job: every hour, push notification to users whose 24h cooldown
-// just expired (so they can keep their streak alive).
-setInterval(runCheckinReminderJob, 60 * 60 * 1000);
 
 async function startServer() {
   try {

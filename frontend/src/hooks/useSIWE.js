@@ -63,20 +63,6 @@ export function useSIWE() {
 
       storeToken(address, vr.token)
 
-      // Link Farcaster FID to wallet address for push notifications (best-effort)
-      try {
-        const { sdk } = await import('@farcaster/miniapp-sdk')
-        const ctx = await sdk.context
-        const fid = ctx?.user?.fid
-        if (fid) {
-          fetch(`${BACKEND}/api/user/link-fid`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${vr.token}` },
-            body: JSON.stringify({ fid }),
-          }).catch(() => {})
-        }
-      } catch (_) { /* not in mini-app context */ }
-
       setStatus('done')
       return vr
     } catch (err) {

@@ -47,23 +47,15 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS checkin_count INTEGER NOT NULL DEFAULT 0;`);
 
-  // Mini-app notifications: link Farcaster FID + push-notification token to wallet address
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS fid BIGINT;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_url TEXT;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_token TEXT;`);
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ;`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_fid ON users (fid);`);
+  // Drop legacy Farcaster mini-app notification columns (deprecated by Base App April 2026)
+  await pool.query(`DROP INDEX IF EXISTS idx_users_fid;`);
+  await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS fid;`);
+  await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS notification_url;`);
+  await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS notification_token;`);
+  await pool.query(`ALTER TABLE users DROP COLUMN IF EXISTS last_notified_at;`);
+  await pool.query(`DROP TABLE IF EXISTS pending_notification_tokens;`);
 
-  // Pending notification tokens — stores token by FID before address is known
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS pending_notification_tokens (
-      fid BIGINT PRIMARY KEY,
-      notification_url TEXT NOT NULL,
-      notification_token TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  
+
   // Shop characters table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS shop_characters (
