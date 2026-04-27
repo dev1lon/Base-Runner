@@ -237,7 +237,7 @@ const GAMECOIN_ABI = [
     "function balanceOf(address) view returns (uint256)",
     "function allowance(address owner, address spender) view returns (uint256)",
     "function approve(address spender, uint256 amount) returns (bool)",
-    "function mintWithVoucher(address to, uint256 amount, uint256 nonce, uint8 v, bytes32 r, bytes32 s)",
+    "function mint(uint256 amount)",
     "function burn(uint256 amount)",
 ];
 const CHARACTER_UPGRADE_ABI = [
@@ -3558,7 +3558,7 @@ function openUpgradeModal(characterId) {
         <div class="upgrade-packages">
           ${UPGRADE_PACKAGES.map(p => `
             <button class="btn btn-primary upgrade-pkg-btn" data-xp="${p.xp}" data-coins="${p.coins}">
-              ${p.label}<br><small>${p.coins} coins → ${p.xp * GC_PER_COIN} GC</small>
+              ${p.label}<br><small>Mint ${p.xp} GC → burn for XP</small>
             </button>
           `).join('')}
         </div>
@@ -3601,41 +3601,27 @@ async function executeUpgrade(characterId, xpAmount, coinsNeeded, modal) {
     }
 
     try {
-        if (coinCount < coinsNeeded) { setStatus(`Not enough coins (need ${coinsNeeded}, have ${coinCount})`, true); pkgBtns.forEach(b => b.disabled = false); return; }
-
-        // 1. Get voucher from backend
-        setStatus('Step 1/4: Getting voucher…');
-        const voucherRes = await fetch(`${BACKEND_URL}/api/coins/gc-voucher`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-            body: JSON.stringify({ coinsAmount: coinsNeeded }),
-        }).then(r => r.json());
-        if (!voucherRes.ok) throw new Error(voucherRes.error || 'Voucher failed');
-
-        const { gcAmount, nonce, v, r: rSig, s } = voucherRes;
+        const gcAmount = xpAmount; // 1 GC = 1 XP
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer   = await provider.getSigner();
-
-        // 2. Mint GC on-chain
-        setStatus('Step 2/4: Minting GC tokens…');
         const gcContract = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
-        const mintTx = await gcContract.mintWithVoucher(walletAddress, gcAmount, BigInt(nonce), v, rSig, s);
+
+        // 1. Mint GC — player calls themselves, no backend
+        setStatus('Step 1/3: Minting GC tokens…');
+        const mintTx = await gcContract.mint(gcAmount);
         await mintTx.wait();
 
-        // 3. Approve upgrade contract
-        setStatus('Step 3/4: Approving upgrade contract…');
+        // 2. Approve upgrade contract
+        setStatus('Step 2/3: Approving upgrade contract…');
         const approveTx = await gcContract.approve(CHARACTER_UPGRADE_ADDRESS, gcAmount);
         await approveTx.wait();
 
-        // 4. Upgrade character
-        setStatus('Step 4/4: Upgrading character…');
+        // 3. Upgrade character (burns GC → mints XP → records level on-chain)
+        setStatus('Step 3/3: Upgrading character…');
         const upgradeContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, signer);
         const upgradeTx = await upgradeContract.upgrade(characterId, gcAmount);
         await upgradeTx.wait();
 
-        // Refresh level cache and update coins
-        coinCount -= coinsNeeded;
-        updateCoinDisplay();
         await loadCharacterLevels();
         setStatus('Upgrade complete! ✓');
         setTimeout(() => modal.remove(), 1500);

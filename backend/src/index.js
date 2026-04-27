@@ -43,9 +43,7 @@ const { getCheckinStatus, doCheckin } = require("./modules/checkin/checkinServic
 
 const { ethers } = require("ethers");
 
-const GAMECOIN_ADDRESS         = process.env.GAMECOIN_ADDRESS || "";
 const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "";
-const GC_PER_COIN = 5; // 1 off-chain coin = 5 GC
 
 // Minimal ABI for reading character XP on-chain
 const CHARACTER_UPGRADE_ABI = [
@@ -421,50 +419,6 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     ownedCharacters: user.owned_characters || [],
     selectedCharacter: user.selected_character || 0
   });
-});
-
-// ============ GameCoin Voucher ============
-
-app.post("/api/coins/gc-voucher", requireAuth, async (req, res) => {
-  const { coinsAmount } = req.body || {};
-  const amount = Number(coinsAmount);
-  if (!Number.isFinite(amount) || amount < 1) {
-    return res.status(400).json({ ok: false, error: "Invalid coinsAmount" });
-  }
-  if (!process.env.SIGNER_PRIVATE_KEY) {
-    return res.status(503).json({ ok: false, error: "Signer not configured" });
-  }
-  if (!GAMECOIN_ADDRESS) {
-    return res.status(503).json({ ok: false, error: "GameCoin contract not configured" });
-  }
-  try {
-    const { rows } = await require("./shared/db").query(
-      `SELECT coins FROM users WHERE address=$1`, [req.user.address]
-    );
-    const balance = rows[0]?.coins || 0;
-    if (balance < amount) {
-      return res.status(400).json({ ok: false, error: "Insufficient coins" });
-    }
-    // Deduct coins first (prevent double-spend)
-    await require("./shared/db").query(
-      `UPDATE users SET coins = coins - $1, updated_at = NOW() WHERE address = $2 AND coins >= $1`,
-      [amount, req.user.address]
-    );
-    const gcAmount = amount * GC_PER_COIN;
-    const nonce    = BigInt("0x" + require("crypto").randomBytes(32).toString("hex"));
-    const chainId  = BigInt(8453);
-    const wallet   = new ethers.Wallet(process.env.SIGNER_PRIVATE_KEY);
-    const hash     = ethers.solidityPackedKeccak256(
-      ["address", "uint256", "uint256", "uint256", "address"],
-      [req.user.address, gcAmount, nonce, chainId, GAMECOIN_ADDRESS]
-    );
-    const sig = await wallet.signMessage(ethers.getBytes(hash));
-    const { v, r, s } = ethers.Signature.from(sig);
-    res.json({ ok: true, to: req.user.address, gcAmount, nonce: nonce.toString(), v, r, s });
-  } catch (e) {
-    console.error("gc-voucher error:", e);
-    res.status(500).json({ ok: false, error: "Failed to issue voucher" });
-  }
 });
 
 // ============ Check-in API ============
