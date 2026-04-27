@@ -2252,12 +2252,14 @@ window.onload = function() {
     // Notification bell button — show only when Farcaster SDK is available
     const notifBtn = document.getElementById("notif-button");
     if (notifBtn) {
+        const NOTIF_DBG_BUILD = 'build-v5-ctx-timeout';
         // Visible on-screen debug banner (alert() may be suppressed in Base App webview)
         let dbgBanner = document.getElementById('notif-dbg-banner');
         if (!dbgBanner) {
             dbgBanner = document.createElement('div');
             dbgBanner.id = 'notif-dbg-banner';
-            dbgBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#000;color:#0f0;font:12px monospace;padding:6px;max-height:40vh;overflow:auto;white-space:pre-wrap;display:none;';
+            dbgBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#000;color:#0f0;font:12px monospace;padding:6px;max-height:40vh;overflow:auto;white-space:pre-wrap;display:block;';
+            dbgBanner.textContent = `[${NOTIF_DBG_BUILD}] loaded`;
             document.body.appendChild(dbgBanner);
         }
         function dbg(msg) {
