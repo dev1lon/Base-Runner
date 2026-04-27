@@ -197,7 +197,7 @@
                         <span class="collection-gc-icon">GC</span>
                         <span id="collection-gc-count">…</span>
                     </div>
-                    <button id="mint-gc-btn" class="btn btn-primary btn-sm" onclick="openMintGCModal()">+ Mint GC</button>
+                    <button id="mint-gc-btn" class="btn collection-gc-mint-btn" ontouchstart="event.stopPropagation();event.preventDefault();openMintGCModal()" onclick="openMintGCModal()">+ Mint GC</button>
                     <button id="buy-coins-btn" class="btn btn-primary btn-sm">+ Buy</button>
                 </div>
             </div>
