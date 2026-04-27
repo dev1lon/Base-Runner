@@ -2252,7 +2252,7 @@ window.onload = function() {
     // Notification bell button — show only when Farcaster SDK is available
     const notifBtn = document.getElementById("notif-button");
     if (notifBtn) {
-        const NOTIF_DBG_BUILD = 'build-v5-ctx-timeout';
+        const NOTIF_DBG_BUILD = 'build-v6-no-ctx';
         // Visible on-screen debug banner (alert() may be suppressed in Base App webview)
         let dbgBanner = document.getElementById('notif-dbg-banner');
         if (!dbgBanner) {
@@ -2285,13 +2285,7 @@ window.onload = function() {
             try {
                 const sdk = window.__farcasterSdk;
                 if (!sdk?.actions?.addMiniApp) { dbg('SDK not ready'); return; }
-                try {
-                    const ctx = await sdk.context;
-                    dbg('ctx.client: ' + JSON.stringify(ctx?.client));
-                    dbg('ctx.user fid: ' + (ctx?.user?.fid ?? 'none'));
-                } catch (ctxErr) {
-                    dbg('ctx ERR: ' + ctxErr.message);
-                }
+                // sdk.context can hang silently in some hosts — skip it and go straight to addMiniApp
                 dbg('calling addMiniApp...');
                 const result = await Promise.race([
                     sdk.actions.addMiniApp(),
