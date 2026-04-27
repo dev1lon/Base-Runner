@@ -2395,7 +2395,12 @@ window.onload = function() {
         buyCoinsBtn.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); openBuyCoinsModal(); }, { passive: false });
     }
     if (mintGcBtn) {
-        mintGcBtn.onclick = openMintGCModal;
+        mintGcBtn.addEventListener('click', openMintGCModal);
+        mintGcBtn.addEventListener('touchstart', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            openMintGCModal();
+        }, { passive: false });
     }
     if (buyCoinsCloseBtn) {
         buyCoinsCloseBtn.addEventListener('click', closeBuyCoinsModal);
