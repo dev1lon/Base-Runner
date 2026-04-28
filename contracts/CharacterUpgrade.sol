@@ -3,6 +3,8 @@ pragma solidity ^0.8.20;
 
 interface IERC20Burnable {
     function burnFrom(address from, uint256 amount) external;
+    function burn(uint256 amount) external;
+    function mint(uint256 amount) external;
     function allowance(address owner, address spender) external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
 }
@@ -96,6 +98,30 @@ contract CharacterUpgrade {
         xpToken.mint(msg.sender, gcAmount);
 
         // Record XP on this character
+        characterXP[msg.sender][characterId] += gcAmount;
+        uint256 totalXP = characterXP[msg.sender][characterId];
+        uint256 lvl     = getLevel(totalXP);
+
+        emit CharacterUpgraded(msg.sender, characterId, gcAmount, totalXP, lvl);
+    }
+
+    /**
+     * @notice One-shot upgrade: mints fresh GC, burns it, mints XP, records level.
+     *         No prior approval needed. Heavier gas (~200-250k) — single tx for player.
+     */
+    function mintAndUpgrade(uint256 characterId, uint256 gcAmount) external {
+        require(gcAmount > 0, "Zero GC amount");
+
+        // 1. Mint GC into this contract (consumes gas: storage write + event)
+        gameCoin.mint(gcAmount);
+
+        // 2. Burn the GC immediately (more gas: storage write + event)
+        gameCoin.burn(gcAmount);
+
+        // 3. Mint XP to caller (gas: storage write + event)
+        xpToken.mint(msg.sender, gcAmount);
+
+        // 4. Record XP on this character
         characterXP[msg.sender][characterId] += gcAmount;
         uint256 totalXP = characterXP[msg.sender][characterId];
         uint256 lvl     = getLevel(totalXP);

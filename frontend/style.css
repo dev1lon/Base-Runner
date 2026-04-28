@@ -1757,11 +1757,21 @@ body.w3m-modal-open w3m-modal {
 .upgrade-gc-balance { font-size: 11px; color: rgba(255,255,255,0.35); margin-left: 4px; }
 .upgrade-slider {
     -webkit-appearance: none;
-    width: 100%;
+    width: calc(100% - 4px);
+    margin: 0 2px;
     height: 6px;
     border-radius: 3px;
     background: rgba(255,255,255,0.15);
     outline: none;
+    cursor: pointer;
+    display: block;
+}
+.upgrade-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg,#4a90d9,#7fd4ff);
+    border: 2px solid #fff;
     cursor: pointer;
 }
 .upgrade-slider::-webkit-slider-thumb {

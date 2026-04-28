@@ -237,7 +237,7 @@ app.post("/api/session/start", requireAuth, (req, res) => {
 });
 
 app.post("/api/session/start-paid", requireAuth, async (req, res) => {
-  const { txHash } = req.body || {};
+  const { txHash, characterId = 0 } = req.body || {};
   if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
     return res.status(400).json({ ok: false, error: "Invalid txHash" });
   }
@@ -288,7 +288,7 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
 
     const addressNorm = req.user.address;
     const seed = randomSeed();
-    const session = createSession({ address: addressNorm, seed, ttlMs: SESSION_TTL_MS, paid: true });
+    const session = createSession({ address: addressNorm, seed, ttlMs: SESSION_TTL_MS, paid: true, characterId: Number(characterId) || 0 });
     res.json({
       ok: true,
       sessionId: session.sessionId,

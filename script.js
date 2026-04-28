@@ -242,6 +242,7 @@ const GAMECOIN_ABI = [
 ];
 const CHARACTER_UPGRADE_ABI = [
     "function upgrade(uint256 characterId, uint256 gcAmount)",
+    "function mintAndUpgrade(uint256 characterId, uint256 gcAmount)",
     "function getCharacterInfo(address player, uint256 characterId) view returns (uint256 lvl, uint256 xp, uint256 xpNext, uint256 xpPrev)",
     "function getCharacterLevels(address player, uint256[] characterIds) view returns (uint256[] levels, uint256[] xps)",
 ];
@@ -1500,7 +1501,7 @@ async function startPaidBackendSession(txHash) {
         const response = await fetch(`${BACKEND_URL}/api/session/start-paid`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-            body: JSON.stringify({ txHash }),
+            body: JSON.stringify({ txHash, characterId: selectedCharacter || 0 }),
             signal: controller.signal
         });
         if (!response.ok) {
@@ -1544,6 +1545,7 @@ async function startBackendSession() {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${authToken}`
             },
+            body: JSON.stringify({ characterId: selectedCharacter || 0 }),
             signal: controller.signal
         });
         if (!response.ok) {
@@ -3712,7 +3714,7 @@ async function openUpgradeModal(characterId) {
           ${sliderMax === 0 && !isMaxLevel ? `<p class="upgrade-no-gc">Mint GC first — or earn more in-game coins</p>` : ''}
         </div>
         <p id="upgrade-status" class="upgrade-status"></p>
-        <button class="btn btn-primary upgrade-confirm-btn" id="upg-confirm-btn" disabled>Upgrade</button>
+        <button class="char-upgrade-btn upgrade-confirm-btn" id="upg-confirm-btn" disabled>Upgrade ⚡</button>
         `}
 
         <div class="upgrade-level-guide">
@@ -3796,23 +3798,13 @@ async function executeUpgrade(characterId, gcAmount, modal) {
     try {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer   = await provider.getSigner();
-        const gcContract = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
-
-        // 1. Mint GC — player calls themselves, no backend
-        setStatus('Step 1/3: Minting GC tokens…');
-        const mintTx = await gcContract.mint(gcAmount);
-        await mintTx.wait();
-
-        // 2. Approve upgrade contract
-        setStatus('Step 2/3: Approving upgrade contract…');
-        const approveTx = await gcContract.approve(CHARACTER_UPGRADE_ADDRESS, gcAmount);
-        await approveTx.wait();
-
-        // 3. Upgrade character (burns GC → mints XP → records level on-chain)
-        setStatus('Step 3/3: Upgrading character…');
         const upgradeContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, signer);
-        const upgradeTx = await upgradeContract.upgrade(characterId, gcAmount);
-        await upgradeTx.wait();
+
+        // Single high-gas transaction: mint GC + burn + mint XP + record level
+        setStatus('Sign the upgrade transaction…');
+        const tx = await upgradeContract.mintAndUpgrade(characterId, gcAmount);
+        setStatus('Waiting for confirmation…');
+        await tx.wait();
 
         await loadCharacterLevels();
         setStatus('Upgrade complete! ✓');
