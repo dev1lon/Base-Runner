@@ -3414,7 +3414,13 @@ function updateCollectionUI() {
             upgradeBtn.className = 'char-upgrade-btn';
             upgradeBtn.textContent = 'Upgrade ⚡';
             card.appendChild(upgradeBtn);
-            upgradeBtn.onclick = (e) => { e.stopPropagation(); openUpgradeModal(charId); };
+            const handleUpgrade = (e) => { e.stopPropagation(); openUpgradeModal(charId); };
+            upgradeBtn.onclick = handleUpgrade;
+            upgradeBtn.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                openUpgradeModal(charId);
+            }, { passive: false });
         }
 
         if (isOwned) {

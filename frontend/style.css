@@ -1186,10 +1186,10 @@ body.w3m-modal-open w3m-modal {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Tight padding so card sits close to status/URL bars without stretching sides */
+/* Tight at top, raised at bottom (~15% off the URL bar) */
 #overlay-collection {
     padding-top: calc(0.5rem + var(--safe-top));
-    padding-bottom: calc(0.5rem + var(--safe-bottom));
+    padding-bottom: calc(15vh + var(--safe-bottom));
 }
 
 .collection-grid {
