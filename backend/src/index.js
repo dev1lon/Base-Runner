@@ -210,19 +210,24 @@ app.post("/auth/siwe-verify", async (req, res) => {
   }
 });
 
-app.post("/api/session/start", requireAuth, (req, res) => {
+app.post("/api/session/start", requireAuth, async (req, res) => {
   const addressNorm = req.user.address;
   const { characterId = 0 } = req.body || {};
   const seed = randomSeed();
+  const lockedCharacterId = Number(characterId) || 0;
+  const characterLevel = await getCharacterLevel(addressNorm, lockedCharacterId);
   const session = createSession({
     address: addressNorm,
     seed,
     ttlMs: SESSION_TTL_MS,
-    characterId: Number(characterId) || 0,
+    characterId: lockedCharacterId,
+    characterLevel,
   });
   res.json({
     sessionId: session.sessionId,
     seed: session.seed,
+    characterId: lockedCharacterId,
+    characterLevel,
     issuedAt: session.issuedAt,
     expiresAt: session.expiresAt,
     config: {
@@ -288,11 +293,22 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
 
     const addressNorm = req.user.address;
     const seed = randomSeed();
-    const session = createSession({ address: addressNorm, seed, ttlMs: SESSION_TTL_MS, paid: true, characterId: Number(characterId) || 0 });
+    const lockedCharacterId = Number(characterId) || 0;
+    const characterLevel = await getCharacterLevel(addressNorm, lockedCharacterId);
+    const session = createSession({
+      address: addressNorm,
+      seed,
+      ttlMs: SESSION_TTL_MS,
+      paid: true,
+      characterId: lockedCharacterId,
+      characterLevel,
+    });
     res.json({
       ok: true,
       sessionId: session.sessionId,
       seed: session.seed,
+      characterId: lockedCharacterId,
+      characterLevel,
       issuedAt: session.issuedAt,
       expiresAt: session.expiresAt,
       config: {
@@ -379,27 +395,28 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   // Anti-cheat: maxScore check (time-based limit)
   console.log("📊 Score info:", { reported, maxScore, gameDurationMs });
 
-  const finalScore = Math.min(reported, maxScore);
+  const rawScore = Math.min(reported, maxScore);
 
-  // Character level multiplier (reads on-chain — 0 if contract not deployed yet)
-  const charLevel = await getCharacterLevel(addressNorm, session.characterId || 0);
+  // Character level is locked at session start, so upgrades during a paused run do not affect it.
+  const charLevel = Number.isFinite(Number(session.characterLevel)) ? Number(session.characterLevel) : 0;
   const scoreMultiplier  = LEVEL_SCORE_MULTIPLIER[charLevel] || 1.0;
   const levelCoinBonus   = LEVEL_COIN_BONUS[charLevel] || 0;
-  const adjustedScore    = Math.floor(finalScore * scoreMultiplier);
+  const adjustedScore    = Math.floor(rawScore * scoreMultiplier);
   const baseCoins        = session.paid ? 5 : 1;
   const coinsAwarded     = Math.floor(adjustedScore / 1000) * (baseCoins + levelCoinBonus);
 
-  console.log("💰 Awarding:", { finalScore, adjustedScore, coinsAwarded, paid: session.paid, charLevel, address: addressNorm });
+  console.log("💰 Awarding:", { rawScore, adjustedScore, coinsAwarded, paid: session.paid, charLevel, address: addressNorm });
   markSessionUsed(sessionId);
-  const result = await applyScore(addressNorm, finalScore, coinsAwarded);
+  const result = await applyScore(addressNorm, adjustedScore, coinsAwarded);
 
   res.json({
     ok: true,
-    finalScore,
+    finalScore: adjustedScore,
+    rawScore,
     maxScore,
     coinsAwarded,
     coinBalance: result ? result.coins : 0,
-    bestScore: result ? result.best_score : finalScore,
+    bestScore: result ? result.best_score : adjustedScore,
     charLevel,
     scoreMultiplier,
   });

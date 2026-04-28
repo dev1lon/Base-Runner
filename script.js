@@ -318,6 +318,8 @@ let hasFreeMint = false;       // User has minted free character (char 0)
 let ownedCharacters = [];      // Array of owned character IDs
 let collectionLoading = false;
 let selectedCharacter = 0; // Currently selected character (0=Vitalik, 1=Trump)
+let activeRunCharacterId = null; // Character locked for the current run
+let activeRunLevel = 0; // Level locked for the current run
 let collectionOpenedFrom = null; // Track where collection was opened from ('menu' or 'pause')
 
 // Overlay elements
@@ -1459,6 +1461,8 @@ function resetFullSession() {
     resetBackendSession();
     isPaidGame = false;
     pendingPaidTxHash = null;
+    activeRunCharacterId = null;
+    activeRunLevel = 0;
 }
 
 function recordInput(type) {
@@ -1501,7 +1505,7 @@ async function startPaidBackendSession(txHash) {
         const response = await fetch(`${BACKEND_URL}/api/session/start-paid`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-            body: JSON.stringify({ txHash, characterId: selectedCharacter || 0 }),
+            body: JSON.stringify({ txHash, characterId: activeRunCharacterId ?? selectedCharacter ?? 0 }),
             signal: controller.signal
         });
         if (!response.ok) {
@@ -1511,6 +1515,9 @@ async function startPaidBackendSession(txHash) {
         const data = await response.json();
         backendSessionId = data.sessionId || null;
         backendSeed = data.seed || null;
+        if (Number.isFinite(data.characterId) && data.characterId === activeRunCharacterId) {
+            activeRunLevel = clampCharacterLevel(data.characterLevel);
+        }
         // backendSessionStartMs already set in restartGame() — don't overwrite
         backendInputLog = [];
         backendSessionActive = !!backendSessionId;
@@ -1545,7 +1552,7 @@ async function startBackendSession() {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${authToken}`
             },
-            body: JSON.stringify({ characterId: selectedCharacter || 0 }),
+            body: JSON.stringify({ characterId: activeRunCharacterId ?? selectedCharacter ?? 0 }),
             signal: controller.signal
         });
         if (!response.ok) {
@@ -1554,6 +1561,9 @@ async function startBackendSession() {
         const data = await response.json();
         backendSessionId = data.sessionId || null;
         backendSeed = data.seed || null;
+        if (Number.isFinite(data.characterId) && data.characterId === activeRunCharacterId) {
+            activeRunLevel = clampCharacterLevel(data.characterLevel);
+        }
         // backendSessionStartMs already set in restartGame() — don't overwrite
         backendInputLog = [];
         backendSessionActive = !!backendSessionId;
@@ -1630,7 +1640,7 @@ function handleGameOver() {
     if (runRecordedOnChain) return;
     runRecordedOnChain = true;
     // submitBackendRun waits internally for session if still in-flight
-    submitBackendRun(score);
+    submitBackendRun(rawScore);
     // Record on-chain in parallel (fire-and-forget)
     recordRunOnChain(score);
     // Paid game is one-shot — consume the flag so any restart becomes a free game
@@ -2114,6 +2124,8 @@ function handleAccountsChanged(accounts) {
         hasFreeMint = false;
         coinCount = 0;
         bestScore = 0;
+        rawScore = 0;
+        score = 0;
         
         // Clear localStorage
         localStorage.removeItem('selectedCharacter');
@@ -2258,6 +2270,7 @@ const GAME_STATE = {
 let gameState = GAME_STATE.RUNNING;
 let gameOverTimestamp = 0;
 let gameOver = false;
+let rawScore = 0;
 let score = 0;
 let bestScore = 0;
 
@@ -2557,6 +2570,7 @@ function forceExitToMenu(reason) {
     hasFreeMint = false;
     coinCount = 0;
     bestScore = 0;
+    rawScore = 0;
     score = 0;
     
     // Clear localStorage for this wallet's data
@@ -2698,6 +2712,41 @@ function updateMenuState() {
     updateCheckinUI();
 }
 
+function clampCharacterLevel(level) {
+    const parsed = Number(level);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.min(LEVEL_BONUS.length - 1, Math.floor(parsed)));
+}
+
+function getCachedCharacterLevel(characterId) {
+    return clampCharacterLevel(characterLevelCache[characterId]?.lvl || 0);
+}
+
+function getRunLevelBonus() {
+    return LEVEL_BONUS[activeRunLevel] || LEVEL_BONUS[0];
+}
+
+function getAdjustedScore(rawScore) {
+    return Math.floor(rawScore * getRunLevelBonus().mult);
+}
+
+function getCoinsPerScoreMilestone() {
+    const baseCoins = isPaidGame ? 5 : 1;
+    return baseCoins + getRunLevelBonus().coins;
+}
+
+function isRunCharacterLocked() {
+    if (activeRunCharacterId === null || gameState !== GAME_STATE.RUNNING) return false;
+    return currentUIState === UI_STATE.RUNNING
+        || currentUIState === UI_STATE.PAUSED
+        || (currentUIState === UI_STATE.COLLECTION && collectionOpenedFrom === 'pause');
+}
+
+function lockActiveRunCharacter() {
+    activeRunCharacterId = selectedCharacter || 0;
+    activeRunLevel = getCachedCharacterLevel(activeRunCharacterId);
+}
+
 async function applyProfileData(data) {
     if (!data) return;
     
@@ -2720,7 +2769,7 @@ async function applyProfileData(data) {
         ownedCharacters = data.ownedCharacters;
         hasFreeMint = ownedCharacters.includes(0);
     }
-    if (Number.isFinite(data.selectedCharacter)) {
+    if (Number.isFinite(data.selectedCharacter) && !isRunCharacterLocked()) {
         selectedCharacter = data.selectedCharacter;
         localStorage.setItem('selectedCharacter', String(selectedCharacter));
     }
@@ -3013,6 +3062,7 @@ async function handlePayGame() {
         pendingPaidTxHash = txHash;
 
         // Start the game
+        await loadCharacterLevels();
         updatePlayerSprite();
         currentUIState = UI_STATE.RUNNING;
         showWelcome = false;
@@ -3317,7 +3367,9 @@ async function handleBuyCoinsPackage(coins) {
 async function loadCharacterLevels() {
     if (!CHARACTER_UPGRADE_ADDRESS || !walletAddress) return;
     try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const ethProvider = getEthereumProvider() || window.ethereum;
+        if (!ethProvider) return;
+        const provider = new ethers.BrowserProvider(ethProvider);
         const contract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, provider);
         const ids = [0,1,2,3,4,5,6,7,8,9];
         const [levels, xps] = await contract.getCharacterLevels(walletAddress, ids);
@@ -3361,6 +3413,7 @@ function loadSilhouettes() {
 function updateCollectionUI() {
     // Update all character cards - NO API requests, use cache only
     const cards = document.querySelectorAll('.character-card[data-char-id]');
+    const selectionLocked = isRunCharacterLocked();
     
     cards.forEach(card => {
         const charId = parseInt(card.dataset.charId);
@@ -3444,6 +3497,12 @@ function updateCollectionUI() {
             if (selectedCharacter === charId) {
                 card.classList.add('selected');
                 btn.textContent = 'Selected ✓';
+                btn.disabled = true;
+                btn.classList.remove('btn-primary', 'btn-secondary');
+                btn.classList.add('btn-ghost');
+            } else if (selectionLocked) {
+                card.classList.remove('selected');
+                btn.textContent = 'Locked in run';
                 btn.disabled = true;
                 btn.classList.remove('btn-primary', 'btn-secondary');
                 btn.classList.add('btn-ghost');
@@ -3988,7 +4047,7 @@ async function loadOwnedSprites(forceReload = false) {
         if (!data.ok) return;
         
         // Update selected character from backend
-        if (data.selectedCharacter !== undefined) {
+        if (data.selectedCharacter !== undefined && !isRunCharacterLocked()) {
             selectedCharacter = data.selectedCharacter;
             localStorage.setItem('selectedCharacter', String(selectedCharacter));
         }
@@ -4282,10 +4341,14 @@ async function handlePurchase(charId) {
         } else {
             if (!ownedCharacters.includes(charId)) ownedCharacters.push(charId);
         }
-        selectedCharacter = charId;
-        localStorage.setItem('selectedCharacter', String(charId));
+        if (!isRunCharacterLocked()) {
+            selectedCharacter = charId;
+            localStorage.setItem('selectedCharacter', String(charId));
+            if (walletAddress) saveSelectedToLS(walletAddress, charId);
+        }
 
         await loadSpriteForCharacter(charId);
+        updatePlayerSprite();
         updateCollectionUI();
         updateCollectionCoins();
         updateStartButtonState();
@@ -4315,6 +4378,11 @@ async function handlePurchase(charId) {
 async function selectCharacter(charType) {
     const char = CHARACTERS[charType];
     if (!char) return;
+    if (isRunCharacterLocked()) {
+        console.warn('Cannot select character during an active run:', charType);
+        updateCollectionUI();
+        return;
+    }
     
     // Check ownership
     const isOwned = ownedCharacters.includes(charType) || (charType === 0 && hasFreeMint);
@@ -4328,6 +4396,7 @@ async function selectCharacter(charType) {
     if (walletAddress) saveSelectedToLS(walletAddress, charType);
 
     // Update player sprite immediately
+    await loadCharacterLevels();
     updatePlayerSprite();
     
     // Update UI
@@ -4366,15 +4435,19 @@ function updatePlayerSprite() {
 // Load selected character from storage (fallback) or backend (primary)
 async function loadSelectedCharacter() {
     // Try wallet-specific localStorage first, fallback to generic key
-    const saved = walletAddress
-        ? (getSelectedFromLS(walletAddress) || localStorage.getItem('selectedCharacter'))
-        : localStorage.getItem('selectedCharacter');
-    if (saved !== null) {
-        const charType = parseInt(saved);
-        if (CHARACTERS[charType]) {
-            selectedCharacter = charType;
-        } else {
-            selectedCharacter = 0;
+    if (isRunCharacterLocked()) {
+        selectedCharacter = activeRunCharacterId ?? selectedCharacter;
+    } else {
+        const saved = walletAddress
+            ? (getSelectedFromLS(walletAddress) || localStorage.getItem('selectedCharacter'))
+            : localStorage.getItem('selectedCharacter');
+        if (saved !== null) {
+            const charType = parseInt(saved);
+            if (CHARACTERS[charType]) {
+                selectedCharacter = charType;
+            } else {
+                selectedCharacter = 0;
+            }
         }
     }
     
@@ -4382,6 +4455,7 @@ async function loadSelectedCharacter() {
     await loadOwnedSprites();
     
     // Update sprite from cache
+    await loadCharacterLevels();
     updatePlayerSprite();
 }
 
@@ -4397,6 +4471,7 @@ async function startGameFromWelcome() {
         return;
     }
     
+    await loadCharacterLevels();
     updatePlayerSprite();
     
     // Transition to running state
@@ -4857,7 +4932,11 @@ function update(timestamp) {
     context.textBaseline = "top";
     // Score increases based on speed
     scoreFloat += stepScale;
-    const nextScore = Math.floor(scoreFloat);
+    const nextRawScore = Math.floor(scoreFloat);
+    if (nextRawScore !== rawScore) {
+        rawScore = nextRawScore;
+    }
+    const nextScore = getAdjustedScore(rawScore);
     if (nextScore !== score) {
         score = nextScore;
     }
@@ -4865,7 +4944,7 @@ function update(timestamp) {
     // Add coins at score milestones (every 1000 points)
     if (score >= nextCoinScore) {
         const increments = Math.floor((score - nextCoinScore) / 1000) + 1;
-        const coinsPerMilestone = isPaidGame ? 5 : 1;
+        const coinsPerMilestone = getCoinsPerScoreMilestone();
         addCoins(increments * coinsPerMilestone);
         nextCoinScore += increments * 1000;
         // Start coin popup animation
@@ -5313,11 +5392,13 @@ async function restartGame() {
     
     // Recompute all scaling (ensures identical state on each run)
     applyGameScale();
+    lockActiveRunCharacter();
     
     // Reset all game state variables
     gameState = GAME_STATE.RUNNING;
     gameOverTimestamp = 0;
     gameOver = false;
+    rawScore = 0;
     score = 0;
     scoreFloat = 0;
     nextCoinScore = 1000;
