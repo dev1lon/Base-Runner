@@ -20,12 +20,12 @@ interface IXPToken {
  *
  * Conversion: 1 GC burned → 1 XP earned (1:1)
  *
- * Level thresholds (cumulative XP):
- *   Level 1 :   100 XP  (+1 coin/1 000 pts, ×1.1 score multiplier)
- *   Level 2 :   300 XP  (+2 coins,          ×1.2)
- *   Level 3 :   700 XP  (+3 coins,          ×1.3)
- *   Level 4 : 1 500 XP  (+4 coins,          ×1.5)
- *   Level 5 : 3 000 XP  (+5 coins,          ×2.0)
+ * Per-level XP cost  →  Cumulative XP threshold for level
+ *   Lv1: 100   →   100 XP  (+1 coin/1k pts, ×1.1 score)
+ *   Lv2: 300   →   400 XP  (+2 coins,       ×1.2)
+ *   Lv3: 700   → 1 100 XP  (+3 coins,       ×1.3)
+ *   Lv4: 1500  → 2 600 XP  (+4 coins,       ×1.5)
+ *   Lv5: 3000  → 5 600 XP  (+5 coins,       ×2.0)
  */
 contract CharacterUpgrade {
 
@@ -35,7 +35,7 @@ contract CharacterUpgrade {
     IXPToken       public xpToken;
 
     // Level thresholds (cumulative XP required)
-    uint256[6] private XP_THRESHOLDS = [0, 100, 300, 700, 1500, 3000];
+    uint256[6] private XP_THRESHOLDS = [0, 100, 400, 1100, 2600, 5600];
 
     // ─── State ───────────────────────────────────────────────────────────────
     // wallet → characterId → total XP earned

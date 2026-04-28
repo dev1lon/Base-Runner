@@ -248,7 +248,7 @@ const CHARACTER_UPGRADE_ABI = [
 ];
 
 const GC_PER_COIN = 5;  // 1 in-game coin = 5 GC
-const XP_LEVELS     = [0, 100, 300, 700, 1500, 3000];
+const XP_LEVELS     = [0, 100, 400, 1100, 2600, 5600];
 const LEVEL_LABELS  = ['Lv.0', 'Lv.1', 'Lv.2', 'Lv.3', 'Lv.4', 'Lv.5'];
 const LEVEL_BONUS   = [
     { coins: 0, mult: 1.0 },
@@ -3692,10 +3692,6 @@ async function openUpgradeModal(characterId) {
         </div>
 
         <div class="upgrade-xp-track">
-          <div class="upgrade-xp-bar">
-            <div class="upgrade-xp-fill" id="upg-bar-current" style="width:${xpPct(lvlInfo)}%"></div>
-            <div class="upgrade-xp-fill upg-preview" id="upg-bar-preview" style="width:0%;left:${xpPct(lvlInfo)}%"></div>
-          </div>
           <span class="upgrade-xp-text" id="upg-xp-text">${lvlInfo.xp} XP</span>
         </div>
 
@@ -3739,7 +3735,6 @@ async function openUpgradeModal(characterId) {
         const gcValEl    = modal.querySelector('#upg-gc-val');
         const nextBadge  = modal.querySelector('#upg-next-badge');
         const xpText     = modal.querySelector('#upg-xp-text');
-        const barPreview = modal.querySelector('#upg-bar-preview');
         const bonusCoins = modal.querySelector('#upg-bonus-coins');
         const bonusMult  = modal.querySelector('#upg-bonus-mult');
         const confirmBtn = modal.querySelector('#upg-confirm-btn');
@@ -3752,12 +3747,6 @@ async function openUpgradeModal(characterId) {
             xpText.textContent    = `${lvlInfo.xp} → ${newXP} XP`;
             nextBadge.textContent = LEVEL_LABELS[newLvl];
             nextBadge.className   = `upgrade-lv-badge level-${newLvl}`;
-            // progress bar preview
-            const startPct   = xpPct({ xp: lvlInfo.xp, lvl: newLvl });
-            const endPct     = xpPct({ xp: newXP,      lvl: newLvl });
-            barPreview.style.left  = startPct + '%';
-            barPreview.style.width = Math.max(0, endPct - startPct) + '%';
-            // bonus text
             bonusCoins.textContent = gc > 0 ? `+${LEVEL_BONUS[newLvl].coins} coin/1k pts` : '';
             bonusMult.textContent  = gc > 0 ? `×${LEVEL_BONUS[newLvl].mult} score`         : '';
             confirmBtn.disabled    = gc === 0;
