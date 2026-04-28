@@ -258,6 +258,7 @@ const LEVEL_BONUS   = [
     { coins: 4, mult: 1.5 },
     { coins: 5, mult: 2.0 },
 ];
+const UPGRADE_GAS_LIMIT = 350000n;
 
 let characterLevelCache = {};  // { [charId]: { lvl, xp, xpNext, xpPrev } }
 
@@ -3844,13 +3845,19 @@ async function executeUpgrade(characterId, gcAmount, modal) {
     }
 
     try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = new ethers.BrowserProvider(getEthereumProvider() || window.ethereum);
         const signer   = await provider.getSigner();
         const upgradeContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, signer);
 
-        // Single high-gas transaction: mint GC + burn + mint XP + record level
+        // Single high-gas transaction: mint GC + burn + mint XP + record level.
+        // Explicit gasLimit avoids wallet-side estimate failures on this multi-contract call.
         setStatus('Sign the upgrade transaction…');
-        const tx = await upgradeContract.mintAndUpgrade(characterId, gcAmount);
+        const tx = await sendWithBuilderCode(
+            signer,
+            upgradeContract,
+            'mintAndUpgrade',
+            [characterId, gcAmount, { gasLimit: UPGRADE_GAS_LIMIT }]
+        );
         setStatus('Waiting for confirmation…');
         await tx.wait();
 
