@@ -3539,50 +3539,79 @@ async function updateGCBalance() {
 }
 
 function openMintGCModal() {
+    const maxCoins = coinCount || 0;
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop';
     modal.innerHTML = `
-      <div class="modal-box" style="max-width:300px;padding:20px">
+      <div class="modal-box mint-gc-modal">
         <h2 class="modal-title">Mint GC</h2>
-        <p style="font-size:13px;color:rgba(255,255,255,0.6);margin:8px 0 14px">
-          GC is the on-chain upgrade token. Mint any amount — use it to upgrade characters.
+        <p class="mint-gc-desc">
+          Convert in-game coins to on-chain GC tokens. Spend GC to upgrade characters.<br>
+          <strong>1 coin → 5 GC</strong>
         </p>
-        <label style="font-size:13px;color:rgba(255,255,255,0.7);display:block;margin-bottom:6px">
-          Amount to mint:
-        </label>
-        <input id="mint-gc-input" type="number" min="1" value="100"
-          style="width:100%;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:16px;box-sizing:border-box">
-        <p id="mint-gc-status" style="font-size:12px;min-height:18px;margin:8px 0;color:#7fff7f;text-align:center"></p>
-        <button id="mint-gc-confirm" class="btn btn-primary" style="width:100%;margin-bottom:8px">Mint GC</button>
-        <button id="mint-gc-close" class="btn btn-ghost" style="width:100%">Cancel</button>
+
+        <div class="mint-gc-row">
+          <span class="mint-gc-label">Coins to spend</span>
+          <span class="mint-gc-value" id="mint-coins-val">0</span>
+          <span class="mint-gc-balance">/ ${maxCoins}</span>
+        </div>
+
+        <input id="mint-gc-slider" class="mint-gc-slider" type="range"
+          min="0" max="${maxCoins}" value="0" step="1" ${maxCoins === 0 ? 'disabled' : ''}>
+
+        <div class="mint-gc-result">
+          <span>You'll mint</span>
+          <span class="mint-gc-result-num" id="mint-gc-out">0</span>
+          <span>GC</span>
+        </div>
+
+        ${maxCoins === 0 ? '<p class="mint-gc-empty">No coins to convert. Earn coins by playing.</p>' : ''}
+
+        <p id="mint-gc-status" class="mint-gc-status"></p>
+
+        <button id="mint-gc-confirm" class="btn mint-gc-confirm-btn" disabled>Mint GC</button>
+        <button id="mint-gc-close" class="btn mint-gc-close-btn">Cancel</button>
       </div>
     `;
     document.body.appendChild(modal);
 
-    const statusEl = modal.querySelector('#mint-gc-status');
-    const closeBtn = modal.querySelector('#mint-gc-close');
+    const statusEl   = modal.querySelector('#mint-gc-status');
+    const closeBtn   = modal.querySelector('#mint-gc-close');
     const confirmBtn = modal.querySelector('#mint-gc-confirm');
-    const input = modal.querySelector('#mint-gc-input');
+    const slider     = modal.querySelector('#mint-gc-slider');
+    const coinsVal   = modal.querySelector('#mint-coins-val');
+    const gcOut      = modal.querySelector('#mint-gc-out');
 
     const close = () => modal.remove();
     closeBtn.onclick = close;
+    closeBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); close(); }, { passive: false });
+
+    if (slider) {
+        slider.addEventListener('input', () => {
+            const v = parseInt(slider.value);
+            coinsVal.textContent = v;
+            gcOut.textContent    = v * 5;
+            confirmBtn.disabled  = v === 0;
+        });
+    }
 
     const doMint = async () => {
-        const amount = parseInt(input.value);
-        if (!amount || amount < 1) { statusEl.textContent = 'Enter a valid amount'; statusEl.style.color = '#ff7f7f'; return; }
+        const coinsToSpend = parseInt(slider.value);
+        if (!coinsToSpend) return;
+        const gcToMint = coinsToSpend * 5;
         confirmBtn.disabled = true;
         statusEl.style.color = '#7fff7f';
-        statusEl.textContent = 'Minting…';
+        statusEl.textContent = 'Sign the transaction…';
         try {
             const provider = new ethers.BrowserProvider(window.ethereum);
             const signer = await provider.getSigner();
             const gc = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
-            const tx = await gc.mint(amount);
+            const tx = await gc.mint(gcToMint);
             statusEl.textContent = 'Waiting for confirmation…';
             await tx.wait();
-            gcBalance += amount;
+            gcBalance += gcToMint;
             document.getElementById('collection-gc-count').textContent = gcBalance;
-            statusEl.textContent = `Minted ${amount} GC ✓`;
+            statusEl.textContent = `Minted ${gcToMint} GC ✓`;
             setTimeout(close, 1200);
         } catch (e) {
             statusEl.style.color = '#ff7f7f';
@@ -3592,7 +3621,7 @@ function openMintGCModal() {
     };
 
     confirmBtn.onclick = doMint;
-    confirmBtn.addEventListener('touchstart', (e) => { e.preventDefault(); doMint(); }, { passive: false });
+    confirmBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); doMint(); }, { passive: false });
 }
 
 // ── Upgrade Modal ─────────────────────────────────────────────────────────────
