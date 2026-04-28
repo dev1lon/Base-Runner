@@ -3616,25 +3616,30 @@ function openMintGCModal() {
             statusEl.textContent = 'Waiting for confirmation…';
             await tx.wait();
 
-            // Deduct in-game coins after on-chain mint succeeds
-            try {
-                const r = await fetch(`${BACKEND_URL}/api/coins/spend-for-gc`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                    body: JSON.stringify({ coinsAmount: coinsToSpend }),
-                }).then(r => r.json());
-                if (r.ok && typeof r.coinBalance === 'number') {
-                    coinCount = r.coinBalance;
-                    localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
-                    updateCoinDisplay();
-                    updateCollectionCoins();
-                }
-            } catch (_) { /* deduction failure is non-fatal — coins reconcile on next /me */ }
-
+            // Optimistic UI update — show new GC balance immediately
             gcBalance += gcToMint;
             document.getElementById('collection-gc-count').textContent = gcBalance;
-            statusEl.textContent = `Minted ${gcToMint} GC ✓`;
-            setTimeout(close, 1200);
+
+            // Deduct in-game coins on the backend (off-chain DB update)
+            statusEl.textContent = 'Updating balance…';
+            const deductRes = await fetch(`${BACKEND_URL}/api/coins/spend-for-gc`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                body: JSON.stringify({ coinsAmount: coinsToSpend }),
+            }).then(r => r.json()).catch(err => ({ ok: false, error: err.message }));
+
+            if (deductRes.ok && typeof deductRes.coinBalance === 'number') {
+                coinCount = deductRes.coinBalance;
+                localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
+                updateCoinDisplay();
+                updateCollectionCoins();
+                statusEl.textContent = `Minted ${gcToMint} GC ✓`;
+                setTimeout(close, 1200);
+            } else {
+                statusEl.style.color = '#ffaa55';
+                statusEl.textContent = `GC minted, but coin sync failed: ${deductRes.error || 'unknown'}`;
+                confirmBtn.disabled = false;
+            }
         } catch (e) {
             statusEl.style.color = '#ff7f7f';
             statusEl.textContent = e?.reason || e?.message?.slice(0, 60) || 'Failed';
