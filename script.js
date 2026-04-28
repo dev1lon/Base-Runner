@@ -3615,6 +3615,22 @@ function openMintGCModal() {
             const tx = await gc.mint(gcToMint);
             statusEl.textContent = 'Waiting for confirmation…';
             await tx.wait();
+
+            // Deduct in-game coins after on-chain mint succeeds
+            try {
+                const r = await fetch(`${BACKEND_URL}/api/coins/spend-for-gc`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ coinsAmount: coinsToSpend }),
+                }).then(r => r.json());
+                if (r.ok && typeof r.coinBalance === 'number') {
+                    coinCount = r.coinBalance;
+                    localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
+                    updateCoinDisplay();
+                    updateCollectionCoins();
+                }
+            } catch (_) { /* deduction failure is non-fatal — coins reconcile on next /me */ }
+
             gcBalance += gcToMint;
             document.getElementById('collection-gc-count').textContent = gcBalance;
             statusEl.textContent = `Minted ${gcToMint} GC ✓`;

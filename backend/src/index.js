@@ -467,6 +467,30 @@ app.get("/api/shop/characters", async (req, res) => {
   }
 });
 
+// Deduct in-game coins after user has minted GC on-chain (1 coin = 5 GC)
+app.post("/api/coins/spend-for-gc", requireAuth, async (req, res) => {
+  const { coinsAmount } = req.body || {};
+  const amount = Number(coinsAmount);
+  if (!Number.isFinite(amount) || amount < 1) {
+    return res.status(400).json({ ok: false, error: "Invalid coinsAmount" });
+  }
+  try {
+    const { rows } = await require("./shared/db").query(
+      `UPDATE users SET coins = coins - $1, updated_at = NOW()
+       WHERE address = $2 AND coins >= $1
+       RETURNING coins`,
+      [amount, req.user.address]
+    );
+    if (!rows.length) {
+      return res.status(400).json({ ok: false, error: "Insufficient coins" });
+    }
+    res.json({ ok: true, coinBalance: rows[0].coins });
+  } catch (e) {
+    console.error("spend-for-gc error:", e);
+    res.status(500).json({ ok: false, error: "Failed to deduct coins" });
+  }
+});
+
 // Get user's inventory and available coins
 app.get("/api/shop/inventory", requireAuth, async (req, res) => {
   try {
