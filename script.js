@@ -144,7 +144,26 @@ function extractCallsId(raw) {
     if (!raw) return null;
     if (typeof raw === 'string') return raw;
     if (typeof raw === 'object' && typeof raw.id === 'string') return raw.id;
+    if (typeof raw === 'object' && typeof raw.batchId === 'string') return raw.batchId;
     return null;
+}
+
+function toHexQuantity(value) {
+    if (value === undefined || value === null) return null;
+    return '0x' + BigInt(value).toString(16);
+}
+
+let _gasLimitOverrideSupported = null;
+async function supportsGasLimitOverride(provider) {
+    if (_gasLimitOverrideSupported !== null) return _gasLimitOverrideSupported;
+    try {
+        const caps = await provider.request({ method: 'wallet_getCapabilities', params: [walletAddress] });
+        const support = caps?.[BASE_CHAIN_ID]?.gasLimitOverride || caps?.['0x0']?.gasLimitOverride;
+        _gasLimitOverrideSupported = !!support?.supported;
+    } catch (err) {
+        _gasLimitOverrideSupported = false;
+    }
+    return _gasLimitOverrideSupported;
 }
 
 // Poll wallet_getCallsStatus until we have a real transactionHash (receipts populated) or FAILED.
@@ -176,22 +195,30 @@ async function waitForCallsTxHash(provider, callsId) {
 async function sendWithBuilderCode(signer, contract, method, args = []) {
     const populated = await contract[method].populateTransaction(...args);
     populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
+    const gasLimitHex = toHexQuantity(populated.gasLimit);
 
     // Try EIP-5792 wallet_sendCalls with paymaster (Coinbase Smart Wallet only)
     const _provider = getEthereumProvider();
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && _provider?.request) {
         try {
+            const call = {
+                to: populated.to,
+                data: populated.data,
+                value: toHexQuantity(populated.value) || '0x0'
+            };
+            if (gasLimitHex && await supportsGasLimitOverride(_provider)) {
+                call.capabilities = {
+                    gasLimitOverride: { value: gasLimitHex }
+                };
+            }
             const raw = await _provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
                     version: '1.0',
                     chainId: '0x2105',
                     from: walletAddress,
-                    calls: [{
-                        to: populated.to,
-                        data: populated.data,
-                        value: populated.value ? '0x' + BigInt(populated.value).toString(16) : '0x0'
-                    }],
+                    atomicRequired: true,
+                    calls: [call],
                     capabilities: {
                         paymasterService: { url: PAYMASTER_URL }
                     }
