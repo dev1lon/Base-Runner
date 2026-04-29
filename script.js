@@ -301,6 +301,7 @@ const LEVEL_BONUS   = [
     { coins: 4, mult: 1.5 },
     { coins: 5, mult: 2.0 },
 ];
+const MINT_GC_GAS_LIMIT = 120000n;
 const UPGRADE_GAS_LIMIT = 350000n;
 
 let characterLevelCache = {};  // { [charId]: { lvl, xp, xpNext, xpPrev } }
@@ -3786,16 +3787,12 @@ function openMintGCModal() {
         statusEl.style.color = '#7fff7f';
         statusEl.textContent = 'Sign the transaction…';
         try {
-            const provider = new ethers.BrowserProvider(window.ethereum);
+            const provider = new ethers.BrowserProvider(getEthereumProvider() || window.ethereum);
             const signer = await provider.getSigner();
             const gc = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
-            const tx = await gc.mint(gcToMint);
+            const tx = await sendWithBuilderCode(signer, gc, 'mint', [gcToMint, { gasLimit: MINT_GC_GAS_LIMIT }]);
             statusEl.textContent = 'Waiting for confirmation…';
             await tx.wait();
-
-            // Optimistic UI update — show new GC balance immediately
-            gcBalance += gcToMint;
-            document.getElementById('collection-gc-count').textContent = gcBalance;
 
             // Deduct in-game coins on the backend (off-chain DB update)
             statusEl.textContent = 'Updating balance…';
@@ -3808,8 +3805,11 @@ function openMintGCModal() {
             if (deductRes.ok && typeof deductRes.coinBalance === 'number') {
                 coinCount = deductRes.coinBalance;
                 localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
-                updateCoinDisplay();
+                gcBalance += gcToMint;
+                const gcCountEl = document.getElementById('collection-gc-count');
+                if (gcCountEl) gcCountEl.textContent = gcBalance;
                 updateCollectionCoins();
+                updateGameUI();
                 statusEl.textContent = `Minted ${gcToMint} GC ✓`;
                 setTimeout(close, 1200);
             } else {
@@ -3977,8 +3977,8 @@ async function executeUpgrade(characterId, gcAmount, modal) {
         await tx.wait();
 
         await loadCharacterLevels();
-        setStatus('Upgrade complete! ✓');
-        setTimeout(() => modal.remove(), 1500);
+        updateCollectionUI();
+        setStatus('Upgrade complete! ✓', false);
 
     } catch (err) {
         console.error('[upgrade] error:', err);
