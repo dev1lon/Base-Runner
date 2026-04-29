@@ -841,11 +841,12 @@ app.get("/api/notifications/status", (req, res) => {
 });
 
 app.post("/api/user/test-notification", requireAuth, async (req, res) => {
+  const sentAt = new Date().toISOString().slice(11, 19);
   const r = await sendNotification({
     walletAddress: req.user.address,
     title: "Test notification",
-    message: "Rug Pull Run notifications work!",
-    targetPath: "/",
+    message: `Rug Pull Run test sent at ${sentAt} UTC`,
+    targetPath: `/?notificationTest=${Date.now()}`,
   });
   res.json(r);
 });
