@@ -6,6 +6,14 @@ const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_TIMEOUT_MS   = 36 * 60 * 60 * 1000;
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
+function getNotificationStatus() {
+  return {
+    configured: !!process.env.BASE_API_KEY,
+    appUrl: APP_URL,
+    endpoint: BASE_NOTIF_URL,
+  };
+}
+
 async function sendNotification({ walletAddress, title, message, targetPath }) {
   const apiKey = process.env.BASE_API_KEY;
   if (!apiKey) return { ok: false, error: "BASE_API_KEY not set" };
@@ -28,7 +36,7 @@ async function sendNotification({ walletAddress, title, message, targetPath }) {
       return { ok: false, status: res.status, error: text };
     }
     const data = await res.json().catch(() => ({}));
-    return { ok: true, data };
+    return { ok: data.success === true, data };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -82,4 +90,4 @@ async function runCheckinReminderJob() {
   }
 }
 
-module.exports = { sendNotification, runCheckinReminderJob };
+module.exports = { getNotificationStatus, sendNotification, runCheckinReminderJob };

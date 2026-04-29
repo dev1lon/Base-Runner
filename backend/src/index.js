@@ -834,7 +834,11 @@ app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
 });
 
 
-const { sendNotification, runCheckinReminderJob } = require("./modules/notifications/notificationService");
+const { getNotificationStatus, sendNotification, runCheckinReminderJob } = require("./modules/notifications/notificationService");
+
+app.get("/api/notifications/status", (req, res) => {
+  res.json({ ok: true, ...getNotificationStatus() });
+});
 
 app.post("/api/user/test-notification", requireAuth, async (req, res) => {
   const r = await sendNotification({
