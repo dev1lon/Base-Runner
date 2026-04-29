@@ -261,6 +261,68 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
     return signer.sendTransaction(populated);
 }
 
+async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
+    const provider = getEthereumProvider();
+    const gameCoin = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
+    const upgradeContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, signer);
+
+    if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && provider?.request) {
+        try {
+            const caps = await getBaseWalletCapabilities(provider);
+            if (!caps.atomic || !caps.paymasterService) {
+                throw Object.assign(new Error('wallet_sendCalls not supported by this wallet'), { code: -32601 });
+            }
+
+            const gcIface = new ethers.Interface(GAMECOIN_ABI);
+            const upgradeIface = new ethers.Interface(CHARACTER_UPGRADE_ABI);
+            const approveData = gcIface.encodeFunctionData('approve', [CHARACTER_UPGRADE_ADDRESS, gcAmount]);
+            const upgradeData = upgradeIface.encodeFunctionData('upgrade', [characterId, gcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
+
+            const raw = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '1.0',
+                    chainId: BASE_CHAIN_ID,
+                    from: walletAddress,
+                    atomicRequired: true,
+                    calls: [
+                        { to: GAMECOIN_ADDRESS, value: '0x0', data: approveData },
+                        { to: CHARACTER_UPGRADE_ADDRESS, value: '0x0', data: upgradeData },
+                    ],
+                    capabilities: {
+                        paymasterService: { url: PAYMASTER_URL }
+                    }
+                }]
+            });
+            const callsId = extractCallsId(raw);
+            if (!callsId) throw new Error('wallet_sendCalls returned no id');
+            return {
+                hash: callsId,
+                wait: async () => ({ hash: await waitForCallsTxHash(provider, callsId) })
+            };
+        } catch (err) {
+            if (err.code === 4001 || err.message?.toLowerCase().includes('reject') || err.message?.toLowerCase().includes('denied')) {
+                throw err;
+            }
+            if (err.code !== -32601) {
+                console.warn('[upgrade] batched upgrade failed:', err.code, err.message, err.data || '');
+            }
+        }
+    }
+
+    const allowance = await gameCoin.allowance(walletAddress, CHARACTER_UPGRADE_ADDRESS);
+    if (BigInt(allowance) < BigInt(gcAmount)) {
+        const approveTx = await gameCoin.approve(CHARACTER_UPGRADE_ADDRESS, gcAmount);
+        await approveTx.wait();
+    }
+    return sendWithBuilderCode(
+        signer,
+        upgradeContract,
+        'upgrade',
+        [characterId, gcAmount, { gasLimit: UPGRADE_GAS_LIMIT }]
+    );
+}
+
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 25000;
 const ALLOW_GUEST_PLAY = false;
@@ -3962,21 +4024,16 @@ async function executeUpgrade(characterId, gcAmount, modal) {
     try {
         const provider = new ethers.BrowserProvider(getEthereumProvider() || window.ethereum);
         const signer   = await provider.getSigner();
-        const upgradeContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, signer);
 
-        // Single high-gas transaction: mint GC + burn + mint XP + record level.
-        // Explicit gasLimit avoids wallet-side estimate failures on this multi-contract call.
+        // Base App path: one atomic transaction with approve + upgrade, so GC is actually spent.
+        // Fallback wallets may require approve then upgrade.
         setStatus('Sign the upgrade transaction…');
-        const tx = await sendWithBuilderCode(
-            signer,
-            upgradeContract,
-            'mintAndUpgrade',
-            [characterId, gcAmount, { gasLimit: UPGRADE_GAS_LIMIT }]
-        );
+        const tx = await sendUpgradeWithGCSpend(signer, characterId, gcAmount);
         setStatus('Waiting for confirmation…');
         await tx.wait();
 
         await loadCharacterLevels();
+        await updateGCBalance();
         updateCollectionUI();
         setStatus('Upgrade complete! ✓', false);
 
