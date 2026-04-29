@@ -131,7 +131,7 @@ contract CharacterUpgrade {
 
     // ─── View helpers ────────────────────────────────────────────────────────
     function getLevel(uint256 xp) public view returns (uint256) {
-        for (uint256 i = 5; i >= 1; i--) {
+        for (uint256 i = 5; i > 0; i--) {
             if (xp >= XP_THRESHOLDS[i]) return i;
         }
         return 0;

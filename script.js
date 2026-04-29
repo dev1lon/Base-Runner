@@ -144,7 +144,13 @@ function extractCallsId(raw) {
     if (!raw) return null;
     if (typeof raw === 'string') return raw;
     if (typeof raw === 'object' && typeof raw.id === 'string') return raw.id;
+    if (typeof raw === 'object' && typeof raw.batchId === 'string') return raw.batchId;
     return null;
+}
+
+function toHexValue(value) {
+    if (value === undefined || value === null) return '0x0';
+    return '0x' + BigInt(value).toString(16);
 }
 
 function getCapabilityStatus(value) {
@@ -209,12 +215,79 @@ async function waitForCallsTxHash(provider, callsId) {
     throw new Error('Transaction timeout');
 }
 
+async function waitForBridgeCallsTxHash(callsId) {
+    const bridge = window.__walletBridge;
+    if (bridge?.getCallsStatus) {
+        for (let i = 0; i < 60; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            const status = await bridge.getCallsStatus(callsId).catch(() => null);
+            const s = status?.status;
+            const txHash = status?.receipts?.[0]?.transactionHash;
+            if ((s === 'CONFIRMED' || s === 200 || s === '200') && txHash) {
+                return txHash;
+            }
+            if (s === 'FAILED' || s === 400 || s === 500 || s === '400' || s === '500') {
+                throw new Error('Transaction failed');
+            }
+        }
+        throw new Error('Transaction timeout');
+    }
+
+    const provider = bridge?.provider || getEthereumProvider();
+    if (provider?.request) {
+        return waitForCallsTxHash(provider, callsId);
+    }
+    return callsId;
+}
+
+async function waitForTransactionHash(txHash) {
+    const provider = getEthereumProvider() || window.__walletBridge?.provider;
+    if (!provider) return { hash: txHash };
+    const ethersProvider = new ethers.BrowserProvider(provider);
+    return await ethersProvider.waitForTransaction(txHash) || { hash: txHash };
+}
+
 // Send a contract call with Builder Code attribution and optional paymaster sponsorship.
 // For Coinbase Smart Wallet (Base App), uses EIP-5792 wallet_sendCalls + paymaster so gas is free.
 // Falls back to regular ethers sendTransaction for other wallets.
 async function sendWithBuilderCode(signer, contract, method, args = []) {
     const populated = await contract[method].populateTransaction(...args);
     populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
+    const bridge = window.__walletBridge;
+
+    if (bridge?.sendCalls && PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')) {
+        try {
+            const caps = await getBaseWalletCapabilities(bridge.provider);
+            if (!caps.atomic || !caps.paymasterService) {
+                throw Object.assign(new Error('wallet_sendCalls not supported by this wallet'), { code: -32601 });
+            }
+            const raw = await bridge.sendCalls({
+                account: walletAddress,
+                chainId: 8453,
+                calls: [{
+                    to: populated.to,
+                    data: populated.data,
+                    value: BigInt(populated.value || 0),
+                }],
+                capabilities: {
+                    paymasterService: { url: PAYMASTER_URL }
+                }
+            });
+            const callsId = extractCallsId(raw);
+            if (!callsId) throw new Error('sendCalls returned no id');
+            return {
+                hash: callsId,
+                wait: async () => ({ hash: await waitForBridgeCallsTxHash(callsId) })
+            };
+        } catch (err) {
+            if (err.code === 4001 || err.message?.toLowerCase().includes('reject') || err.message?.toLowerCase().includes('denied')) {
+                throw err;
+            }
+            if (err.code !== -32601) {
+                console.warn('[wagmi] sendCalls failed:', err.code, err.message, err.data || '');
+            }
+        }
+    }
 
     // Try EIP-5792 wallet_sendCalls with paymaster (Coinbase Smart Wallet only)
     const _provider = getEthereumProvider();
@@ -233,7 +306,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
                     calls: [{
                         to: populated.to,
                         data: populated.data,
-                        value: populated.value ? '0x' + BigInt(populated.value).toString(16) : '0x0'
+                        value: toHexValue(populated.value)
                     }],
                     capabilities: {
                         paymasterService: { url: PAYMASTER_URL }
@@ -258,6 +331,18 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
         }
     }
 
+    if (bridge?.sendTransaction) {
+        const hash = await bridge.sendTransaction({
+            to: populated.to,
+            data: populated.data,
+            value: populated.value,
+        });
+        return {
+            hash,
+            wait: async () => waitForTransactionHash(hash)
+        };
+    }
+
     return signer.sendTransaction(populated);
 }
 
@@ -265,6 +350,44 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
     const provider = getEthereumProvider();
     const gameCoin = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
     const upgradeContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, signer);
+    const gcIface = new ethers.Interface(GAMECOIN_ABI);
+    const upgradeIface = new ethers.Interface(CHARACTER_UPGRADE_ABI);
+    const approveData = gcIface.encodeFunctionData('approve', [CHARACTER_UPGRADE_ADDRESS, gcAmount]);
+    const upgradeData = upgradeIface.encodeFunctionData('upgrade', [characterId, gcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
+    const bridge = window.__walletBridge;
+
+    if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && bridge?.sendCalls) {
+        try {
+            const caps = await getBaseWalletCapabilities(bridge.provider);
+            if (!caps.atomic || !caps.paymasterService) {
+                throw Object.assign(new Error('wallet_sendCalls not supported by this wallet'), { code: -32601 });
+            }
+            const raw = await bridge.sendCalls({
+                account: walletAddress,
+                chainId: 8453,
+                calls: [
+                    { to: GAMECOIN_ADDRESS, value: 0n, data: approveData },
+                    { to: CHARACTER_UPGRADE_ADDRESS, value: 0n, data: upgradeData },
+                ],
+                capabilities: {
+                    paymasterService: { url: PAYMASTER_URL }
+                }
+            });
+            const callsId = extractCallsId(raw);
+            if (!callsId) throw new Error('sendCalls returned no id');
+            return {
+                hash: callsId,
+                wait: async () => ({ hash: await waitForBridgeCallsTxHash(callsId) })
+            };
+        } catch (err) {
+            if (err.code === 4001 || err.message?.toLowerCase().includes('reject') || err.message?.toLowerCase().includes('denied')) {
+                throw err;
+            }
+            if (err.code !== -32601) {
+                console.warn('[upgrade] wagmi batched upgrade failed:', err.code, err.message, err.data || '');
+            }
+        }
+    }
 
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && provider?.request) {
         try {
@@ -272,11 +395,6 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
             if (!caps.atomic || !caps.paymasterService) {
                 throw Object.assign(new Error('wallet_sendCalls not supported by this wallet'), { code: -32601 });
             }
-
-            const gcIface = new ethers.Interface(GAMECOIN_ABI);
-            const upgradeIface = new ethers.Interface(CHARACTER_UPGRADE_ABI);
-            const approveData = gcIface.encodeFunctionData('approve', [CHARACTER_UPGRADE_ADDRESS, gcAmount]);
-            const upgradeData = upgradeIface.encodeFunctionData('upgrade', [characterId, gcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
 
             const raw = await provider.request({
                 method: 'wallet_sendCalls',
@@ -3192,8 +3310,29 @@ async function handlePayGame() {
         // Try EIP-5792 wallet_sendCalls first (Base App / Coinbase Smart Wallet)
         const paymentsIface = new ethers.Interface(PAYMENTS_ABI);
         const playCalldata = paymentsIface.encodeFunctionData("playPaidGame") + BUILDER_CODE_SUFFIX.slice(2);
+        const bridge = window.__walletBridge;
 
-        if (provider?.request) {
+        if (bridge?.sendCalls) {
+            try {
+                const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+                    ? { paymasterService: { url: PAYMASTER_URL } }
+                    : {};
+                const raw = await bridge.sendCalls({
+                    account: walletAddress,
+                    chainId: 8453,
+                    calls: [{ to: PAYMENTS_CONTRACT, value: BigInt(gameConfig.paidGamePriceWei), data: playCalldata }],
+                    capabilities: pmCaps
+                });
+                const callsId = extractCallsId(raw);
+                if (!callsId) throw new Error('sendCalls returned no id');
+                if (payGameButton) payGameButton.textContent = "Confirming...";
+                txHash = await waitForBridgeCallsTxHash(callsId);
+            } catch (e) {
+                if (e.code !== -32601) throw e;
+            }
+        }
+
+        if (!txHash && provider?.request) {
             try {
                 const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
                     ? { paymasterService: { url: PAYMASTER_URL } }
@@ -3222,7 +3361,18 @@ async function handlePayGame() {
         }
 
         // Fallback: ethers contract call
-        if (!txHash) {
+        if (!txHash && bridge?.sendTransaction) {
+            txHash = await bridge.sendTransaction({
+                to: PAYMENTS_CONTRACT,
+                value: BigInt(gameConfig.paidGamePriceWei),
+                data: playCalldata
+            });
+            if (payGameButton) payGameButton.textContent = "Confirming...";
+            if (provider) {
+                const ethersProvider = new ethers.BrowserProvider(provider);
+                await ethersProvider.waitForTransaction(txHash);
+            }
+        } else if (!txHash) {
             const ethersProvider = new ethers.BrowserProvider(provider);
             const signer = await ethersProvider.getSigner();
             const paymentsContract = new ethers.Contract(PAYMENTS_CONTRACT, PAYMENTS_ABI, signer);
@@ -3457,9 +3607,33 @@ async function handleBuyCoinsPackage(coins) {
         const approveData = usdcIface.encodeFunctionData("approve", [PAYMENTS_CONTRACT, usdcAmount]);
         const buyData = paymentsIface.encodeFunctionData("buyCoins", [coins, usdcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
         let txHash;
+        const bridge = window.__walletBridge;
 
         // Try EIP-5792 wallet_sendCalls (batches approve + buyCoins atomically, paymaster for gas)
-        if (provider?.request) {
+        if (bridge?.sendCalls) {
+            try {
+                const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+                    ? { paymasterService: { url: PAYMASTER_URL } }
+                    : {};
+                const raw = await bridge.sendCalls({
+                    account: walletAddress,
+                    chainId: 8453,
+                    calls: [
+                        { to: USDC_CONTRACT, value: 0n, data: approveData },
+                        { to: PAYMENTS_CONTRACT, value: 0n, data: buyData }
+                    ],
+                    capabilities: pmCaps
+                });
+                const callsId = extractCallsId(raw);
+                if (!callsId) throw new Error('sendCalls returned no id');
+                if (statusEl) statusEl.textContent = 'ConfirmingвЂ¦';
+                txHash = await waitForBridgeCallsTxHash(callsId);
+            } catch (e) {
+                if (e.code !== -32601) throw e;
+            }
+        }
+
+        if (!txHash && provider?.request) {
             try {
                 const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
                     ? { paymasterService: { url: PAYMASTER_URL } }
@@ -3487,7 +3661,24 @@ async function handleBuyCoinsPackage(coins) {
         }
 
         // Fallback: two separate transactions (approve then buyCoins)
-        if (!txHash) {
+        if (!txHash && bridge?.sendTransaction) {
+            const ethersProvider = provider ? new ethers.BrowserProvider(provider) : null;
+            if (statusEl) statusEl.textContent = 'Approve USDCвЂ¦';
+            const approveHash = await bridge.sendTransaction({
+                to: USDC_CONTRACT,
+                value: 0n,
+                data: approveData
+            });
+            if (ethersProvider) await ethersProvider.waitForTransaction(approveHash);
+            if (statusEl) statusEl.textContent = 'Buying coinsвЂ¦';
+            txHash = await bridge.sendTransaction({
+                to: PAYMENTS_CONTRACT,
+                value: 0n,
+                data: buyData
+            });
+            if (statusEl) statusEl.textContent = 'ConfirmingвЂ¦';
+            if (ethersProvider) await ethersProvider.waitForTransaction(txHash);
+        } else if (!txHash) {
             const ethersProvider = new ethers.BrowserProvider(provider);
             const signer = await ethersProvider.getSigner();
             const usdcContract = new ethers.Contract(USDC_CONTRACT,
@@ -3844,27 +4035,19 @@ function openMintGCModal() {
         const gcToMint = coinsToSpend * 5;
         confirmBtn.disabled = true;
         statusEl.style.color = '#7fff7f';
-        statusEl.textContent = 'Sign the transaction…';
+        statusEl.textContent = 'Minting GC...';
         try {
-            const provider = new ethers.BrowserProvider(getEthereumProvider() || window.ethereum);
-            const signer = await provider.getSigner();
-            const gc = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
-            const tx = await sendWithBuilderCode(signer, gc, 'mint', [gcToMint]);
-            statusEl.textContent = 'Waiting for confirmation…';
-            await tx.wait();
-
-            // Deduct in-game coins on the backend (off-chain DB update)
-            statusEl.textContent = 'Updating balance…';
-            const deductRes = await fetch(`${BACKEND_URL}/api/coins/spend-for-gc`, {
+            statusEl.textContent = 'Updating balance...';
+            const mintRes = await fetch(`${BACKEND_URL}/api/coins/mint-gc`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
                 body: JSON.stringify({ coinsAmount: coinsToSpend }),
             }).then(r => r.json()).catch(err => ({ ok: false, error: err.message }));
 
-            if (deductRes.ok && typeof deductRes.coinBalance === 'number') {
-                coinCount = deductRes.coinBalance;
+            if (mintRes.ok && typeof mintRes.coinBalance === 'number') {
+                coinCount = mintRes.coinBalance;
                 localStorage.setItem(COIN_STORAGE_KEY, String(coinCount));
-                gcBalance += gcToMint;
+                gcBalance += Number(mintRes.gcAmount || gcToMint);
                 const gcCountEl = document.getElementById('collection-gc-count');
                 if (gcCountEl) gcCountEl.textContent = gcBalance;
                 updateCollectionCoins();
@@ -3872,8 +4055,8 @@ function openMintGCModal() {
                 statusEl.textContent = `Minted ${gcToMint} GC ✓`;
                 setTimeout(close, 1200);
             } else {
-                statusEl.style.color = '#ffaa55';
-                statusEl.textContent = `GC minted, but coin sync failed: ${deductRes.error || 'unknown'}`;
+                statusEl.style.color = '#ff7f7f';
+                statusEl.textContent = mintRes.error || 'GC mint failed';
                 confirmBtn.disabled = false;
             }
         } catch (e) {

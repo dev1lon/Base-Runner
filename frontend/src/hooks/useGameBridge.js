@@ -2,6 +2,11 @@ import { useEffect } from 'react'
 import { useWalletClient, useDisconnect } from 'wagmi'
 import { useCapabilities } from './useCapabilities'
 
+function normalizeTxValue(value) {
+  if (value === undefined || value === null) return undefined
+  return BigInt(value)
+}
+
 /**
  * Bridges wagmi wallet state → window.__walletBridge so script.js can use it.
  * After setting the bridge, dispatches 'walletBridgeReady' event which
@@ -29,6 +34,20 @@ export function useGameBridge({ address, chainId, token, onDisconnect }) {
       token,
       provider,
       capabilities,
+      sendCalls: walletClient?.sendCalls
+        ? (params) => walletClient.sendCalls(params)
+        : null,
+      getCallsStatus: walletClient?.getCallsStatus
+        ? (id) => walletClient.getCallsStatus({ id })
+        : null,
+      sendTransaction: walletClient?.sendTransaction
+        ? (tx) => walletClient.sendTransaction({
+            account: address,
+            to: tx.to,
+            data: tx.data,
+            value: normalizeTxValue(tx.value),
+          })
+        : null,
       disconnect: () => {
         disconnect()
         onDisconnect?.()

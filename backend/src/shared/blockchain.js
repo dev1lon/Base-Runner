@@ -7,6 +7,7 @@ const { ethers } = require("ethers");
 const GAME_COIN_ABI = [
     "function mint(address to, uint256 amount) external",
     "function balanceOf(address account) external view returns (uint256)",
+    "function decimals() external view returns (uint8)",
     "function minters(address) external view returns (bool)",
     "function paused() external view returns (bool)",
     "function getRemainingDailyMint(address account) external view returns (uint256)"
@@ -27,6 +28,7 @@ let provider = null;
 let minterWallet = null;
 let gameCoinContract = null;
 let currentRpcIndex = 0;
+let gameCoinDecimals = 0;
 
 /**
  * Try to connect to RPC with fallback
@@ -60,6 +62,7 @@ async function initBlockchain() {
         provider = await getWorkingProvider();
         minterWallet = new ethers.Wallet(MINTER_PRIVATE_KEY, provider);
         gameCoinContract = new ethers.Contract(GAME_COIN_ADDRESS, GAME_COIN_ABI, minterWallet);
+        gameCoinDecimals = await gameCoinContract.decimals().catch(() => 0);
         
         console.log(`✅ Blockchain initialized`);
         console.log(`   RPC: ${RPC_URLS[currentRpcIndex]}`);
@@ -105,13 +108,12 @@ async function mintCoins(to, amount, retries = 2) {
         return { success: false, error: "Invalid parameters" };
     }
     
-    // Convert to wei (18 decimals)
-    const amountWei = ethers.parseUnits(String(amount), 18);
+    const amountUnits = ethers.parseUnits(String(amount), gameCoinDecimals);
     
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
             // Check if contract is paused
-            const isPaused = await gameCoinContract.paused();
+            const isPaused = await gameCoinContract.paused().catch(() => false);
             if (isPaused) {
                 console.warn("GameCoin contract is paused");
                 return { success: false, error: "Contract paused" };
@@ -125,8 +127,8 @@ async function mintCoins(to, amount, retries = 2) {
             }
             
             // Execute mint
-            console.log(`Minting ${amount} coins (${amountWei} wei) to ${to}... (attempt ${attempt + 1})`);
-            const tx = await gameCoinContract.mint(to, amountWei);
+            console.log(`Minting ${amount} GC (${amountUnits} units) to ${to}... (attempt ${attempt + 1})`);
+            const tx = await gameCoinContract.mint(to, amountUnits);
             console.log(`Transaction sent: ${tx.hash}`);
             
             // Wait for confirmation
@@ -167,8 +169,7 @@ async function getOnChainBalance(address) {
     
     try {
         const balance = await gameCoinContract.balanceOf(address);
-        // Convert from wei to coins
-        return Number(ethers.formatUnits(balance, 18));
+        return Number(ethers.formatUnits(balance, gameCoinDecimals));
     } catch (err) {
         console.error("Failed to get balance:", err.message);
         return 0;

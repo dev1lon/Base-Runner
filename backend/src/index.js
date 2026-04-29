@@ -40,6 +40,7 @@ const { ensureSchema } = require("./shared/db");
 const { normalizeAddress, verifyJwt } = require("./shared/auth");
 const { issueNonce, verifyNonce } = require("./modules/auth/authService");
 const { getCheckinStatus, doCheckin } = require("./modules/checkin/checkinService");
+const { mintCoins } = require("./shared/blockchain");
 
 const { ethers } = require("ethers");
 
@@ -85,6 +86,7 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || "").toLowerCase();
 // Default: 3000000000000 wei = 0.000003 ETH ≈ $0.01 at ~$3333/ETH
 const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "3000000000000");
+const GC_PER_COIN = 5;
 
 // In-memory set to prevent reusing the same tx for multiple paid sessions
 const usedPaidTxHashes = new Set();
@@ -516,6 +518,50 @@ app.post("/api/coins/spend-for-gc", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("spend-for-gc error:", e);
     res.status(500).json({ ok: false, error: "Failed to deduct coins" });
+  }
+});
+
+// Secure GC conversion: spend in-game coins, then backend minter mints GC on-chain.
+app.post("/api/coins/mint-gc", requireAuth, async (req, res) => {
+  const { coinsAmount } = req.body || {};
+  const amount = Number(coinsAmount);
+  if (!Number.isInteger(amount) || amount < 1) {
+    return res.status(400).json({ ok: false, error: "Invalid coinsAmount" });
+  }
+
+  const gcAmount = amount * GC_PER_COIN;
+  const db = require("./shared/db");
+
+  try {
+    const { rows } = await db.query(
+      `UPDATE users SET coins = coins - $1, updated_at = NOW()
+       WHERE address = $2 AND coins >= $1
+       RETURNING coins`,
+      [amount, req.user.address]
+    );
+    if (!rows.length) {
+      return res.status(400).json({ ok: false, error: "Insufficient coins" });
+    }
+
+    const mintResult = await mintCoins(req.user.address, gcAmount);
+    if (!mintResult.success) {
+      await db.query(
+        `UPDATE users SET coins = coins + $1, updated_at = NOW()
+         WHERE address = $2`,
+        [amount, req.user.address]
+      ).catch(e => console.error("mint-gc refund failed:", e));
+      return res.status(502).json({ ok: false, error: mintResult.error || "GC mint failed" });
+    }
+
+    res.json({
+      ok: true,
+      coinBalance: rows[0].coins,
+      gcAmount,
+      txHash: mintResult.txHash,
+    });
+  } catch (e) {
+    console.error("mint-gc error:", e);
+    res.status(500).json({ ok: false, error: "Failed to mint GC" });
   }
 });
 
