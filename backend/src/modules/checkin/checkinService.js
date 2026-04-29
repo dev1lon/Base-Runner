@@ -13,9 +13,17 @@ const NFT_ABI = [
   "function canCheckIn(address) view returns (bool)"
 ];
 
+let readProvider;
+let readContract;
+
 function getContract() {
-  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
-  return new ethers.Contract(process.env.NFT_CONTRACT_ADDRESS, NFT_ABI, provider);
+  if (!readProvider) {
+    readProvider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
+  }
+  if (!readContract) {
+    readContract = new ethers.Contract(process.env.NFT_CONTRACT_ADDRESS, NFT_ABI, readProvider);
+  }
+  return readContract;
 }
 
 function calcReward(streak) {

@@ -3026,7 +3026,7 @@ async function handleTestNotification() {
         const data = await res.json().catch(() => ({}));
         const result = Array.isArray(data?.data?.results) ? data.data.results[0] : null;
 
-        if (res.ok && data.ok && data.data?.sentCount > 0) {
+        if (res.ok && data.ok && (data.data?.sentCount > 0 || result?.sent === true)) {
             setCheckinStatusText("Notification sent", true);
         } else if (result?.failureReason) {
             setCheckinStatusText(result.failureReason, false);

@@ -44,6 +44,16 @@ const { getCheckinStatus, doCheckin } = require("./modules/checkin/checkinServic
 const { ethers } = require("ethers");
 
 const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "0x2A2528974D6A9B6Cf64eF53EF7248Da0D777b592";
+const RPC_URL = process.env.RPC_URL || "https://mainnet.base.org";
+let rpcProvider;
+let characterUpgradeReadContract;
+
+function getRpcProvider() {
+  if (!rpcProvider) {
+    rpcProvider = new ethers.JsonRpcProvider(RPC_URL);
+  }
+  return rpcProvider;
+}
 
 // Minimal ABI for reading character XP on-chain
 const CHARACTER_UPGRADE_ABI = [
@@ -56,9 +66,10 @@ const LEVEL_SCORE_MULTIPLIER = [1.0, 1.1, 1.2, 1.3, 1.5, 2.0];
 async function getCharacterLevel(playerAddress, characterId) {
   if (!CHARACTER_UPGRADE_ADDRESS) return 0;
   try {
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
-    const contract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, provider);
-    const info = await contract.getCharacterInfo(playerAddress, characterId);
+    if (!characterUpgradeReadContract) {
+      characterUpgradeReadContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, getRpcProvider());
+    }
+    const info = await characterUpgradeReadContract.getCharacterInfo(playerAddress, characterId);
     return Number(info.lvl);
   } catch (e) {
     console.warn("[level] Failed to read character level:", e.message);
@@ -254,7 +265,7 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
   }
 
   try {
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
+    const provider = getRpcProvider();
     // Verify txHash is a real confirmed tx on Base mainnet (not fabricated).
     // Retry a few times — backend RPC may lag behind the wallet.
     let receipt = null;
@@ -645,7 +656,7 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
   }
 
   try {
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
+    const provider = getRpcProvider();
     let receipt = null;
     for (let i = 0; i < 5; i++) {
       receipt = await provider.getTransactionReceipt(txHash);

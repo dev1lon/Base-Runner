@@ -6,9 +6,15 @@ export function useCapabilities(address) {
   const [caps, setCaps] = useState(null)
 
   useEffect(() => {
-    if (!address) return
+    if (!address) {
+      queueMicrotask(() => setCaps(null))
+      return
+    }
     const provider = window.__walletBridge?.provider || window.ethereum
-    if (!provider?.request) return
+    if (!provider?.request) {
+      queueMicrotask(() => setCaps({ atomic: false, paymasterService: false, auxiliaryFunds: false }))
+      return
+    }
 
     let cancelled = false
     provider.request({ method: 'wallet_getCapabilities', params: [address] })
@@ -16,14 +22,15 @@ export function useCapabilities(address) {
         if (cancelled) return
         // Base mainnet: key is "0x2105"
         const baseCaps = result?.['0x2105'] || result?.[8453] || {}
+        const atomicStatus = baseCaps.atomic?.status ?? baseCaps.atomic?.supported
         setCaps({
-          atomic: baseCaps.atomic?.supported === 'supported' || baseCaps.atomic?.supported === 'ready',
+          atomic: atomicStatus === 'supported' || atomicStatus === 'ready',
           paymasterService: !!baseCaps.paymasterService?.supported,
           auxiliaryFunds: !!baseCaps.auxiliaryFunds?.supported,
           raw: baseCaps,
         })
       })
-      .catch(err => {
+      .catch(() => {
         // Wallet doesn't support EIP-5792 (EOA wallets) — no capabilities
         if (!cancelled) setCaps({ atomic: false, paymasterService: false, auxiliaryFunds: false })
       })
