@@ -470,8 +470,8 @@ const PAYMENTS_ABI = [
 ];
 
 // Character upgrade contracts (set after deploy)
-const GAMECOIN_ADDRESS          = "0x27904124D4c0FbB345AfBe2a0d05AbCACd6d46Aa";
-const CHARACTER_UPGRADE_ADDRESS = "0x7DB86DcdC9d5ae403ac38ecB91c6981812710157";
+const GAMECOIN_ADDRESS          = "0x32ED4BE8A2c9e3DE287bC76773ADaAB48f13E787";
+const CHARACTER_UPGRADE_ADDRESS = "0xf7d33fBE432eC51330955494083be4824606F3D1";
 
 const GAMECOIN_ABI = [
     "function balanceOf(address) view returns (uint256)",

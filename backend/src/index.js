@@ -44,7 +44,7 @@ const { mintCoins } = require("./shared/blockchain");
 
 const { ethers } = require("ethers");
 
-const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "0x7DB86DcdC9d5ae403ac38ecB91c6981812710157";
+const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "0xf7d33fBE432eC51330955494083be4824606F3D1";
 const RPC_URL = process.env.RPC_URL || "https://mainnet.base.org";
 let rpcProvider;
 let characterUpgradeReadContract;
