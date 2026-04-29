@@ -222,9 +222,12 @@ async function waitForBridgeCallsTxHash(callsId) {
             await new Promise(r => setTimeout(r, 2000));
             const status = await bridge.getCallsStatus(callsId).catch(() => null);
             const s = status?.status;
-            const txHash = status?.receipts?.[0]?.transactionHash;
+            const txHash = status?.receipts?.[0]?.transactionHash || status?.receipts?.[0]?.hash || status?.transactionHash || status?.hash;
             if ((s === 'CONFIRMED' || s === 200 || s === '200') && txHash) {
                 return txHash;
+            }
+            if (s === 'CONFIRMED' || s === 'SUCCESS' || s === 'COMPLETED' || s === 'success' || s === 'completed' || s === 200 || s === '200') {
+                return callsId;
             }
             if (s === 'FAILED' || s === 400 || s === 500 || s === '400' || s === '500') {
                 throw new Error('Transaction failed');
@@ -245,6 +248,49 @@ async function waitForTransactionHash(txHash) {
     if (!provider) return { hash: txHash };
     const ethersProvider = new ethers.BrowserProvider(provider);
     return await ethersProvider.waitForTransaction(txHash) || { hash: txHash };
+}
+
+async function signGameCoinPermit(signer, gameCoin, spender, amount) {
+    const owner = walletAddress;
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 10 * 60);
+    const [name, nonce] = await Promise.all([
+        gameCoin.name().catch(() => 'Rug Pull Run GameCoin'),
+        gameCoin.nonces(owner),
+    ]);
+    const domain = {
+        name,
+        version: '1',
+        chainId: 8453,
+        verifyingContract: GAMECOIN_ADDRESS,
+    };
+    const types = {
+        Permit: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+        ],
+    };
+    const message = {
+        owner,
+        spender,
+        value: BigInt(amount),
+        nonce: BigInt(nonce),
+        deadline,
+    };
+
+    const bridge = window.__walletBridge;
+    const signature = bridge?.signTypedData
+        ? await bridge.signTypedData({ domain, types, primaryType: 'Permit', message })
+        : await signer.signTypedData(domain, types, message);
+    const parsed = ethers.Signature.from(signature);
+    return {
+        deadline,
+        v: parsed.v,
+        r: parsed.r,
+        s: parsed.s,
+    };
 }
 
 // Send a contract call with Builder Code attribution and optional paymaster sponsorship.
@@ -356,6 +402,21 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
     const upgradeData = upgradeIface.encodeFunctionData('upgrade', [characterId, gcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
     const bridge = window.__walletBridge;
 
+    try {
+        const permit = await signGameCoinPermit(signer, gameCoin, CHARACTER_UPGRADE_ADDRESS, gcAmount);
+        return sendWithBuilderCode(
+            signer,
+            upgradeContract,
+            'upgradeWithPermit',
+            [characterId, gcAmount, permit.deadline, permit.v, permit.r, permit.s]
+        );
+    } catch (err) {
+        if (err.code === 4001 || err.code === 'ACTION_REJECTED' || err.message?.toLowerCase().includes('reject') || err.message?.toLowerCase().includes('denied')) {
+            throw err;
+        }
+        console.warn('[upgrade] permit flow unavailable, falling back to approve + upgrade:', err.code, err.message);
+    }
+
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && bridge?.sendCalls) {
         try {
             const caps = await getBaseWalletCapabilities(bridge.provider);
@@ -457,15 +518,15 @@ const GAMECOIN_ADDRESS          = "0x27904124D4c0FbB345AfBe2a0d05AbCACd6d46Aa";
 const CHARACTER_UPGRADE_ADDRESS = "0x7DB86DcdC9d5ae403ac38ecB91c6981812710157";
 
 const GAMECOIN_ABI = [
+    "function name() view returns (string)",
     "function balanceOf(address) view returns (uint256)",
     "function allowance(address owner, address spender) view returns (uint256)",
+    "function nonces(address owner) view returns (uint256)",
     "function approve(address spender, uint256 amount) returns (bool)",
-    "function mint(uint256 amount)",
-    "function burn(uint256 amount)",
 ];
 const CHARACTER_UPGRADE_ABI = [
     "function upgrade(uint256 characterId, uint256 gcAmount)",
-    "function mintAndUpgrade(uint256 characterId, uint256 gcAmount)",
+    "function upgradeWithPermit(uint256 characterId, uint256 gcAmount, uint256 deadline, uint8 v, bytes32 r, bytes32 s)",
     "function getCharacterInfo(address player, uint256 characterId) view returns (uint256 lvl, uint256 xp, uint256 xpNext, uint256 xpPrev)",
     "function getCharacterLevels(address player, uint256[] characterIds) view returns (uint256[] levels, uint256[] xps)",
 ];
@@ -4196,6 +4257,7 @@ async function executeUpgrade(characterId, gcAmount, modal) {
     const statusEl = modal.querySelector('#upgrade-status');
     const pkgBtns  = modal.querySelectorAll('.upgrade-pkg-btn');
     pkgBtns.forEach(b => b.disabled = true);
+    const beforeXP = Number(characterLevelCache[characterId]?.xp || 0);
 
     function setStatus(msg, isError) {
         if (statusEl) { statusEl.textContent = msg; statusEl.style.color = isError ? '#ff7f7f' : '#7fff7f'; }
@@ -4210,11 +4272,23 @@ async function executeUpgrade(characterId, gcAmount, modal) {
         setStatus('Sign the upgrade transaction…');
         const tx = await sendUpgradeWithGCSpend(signer, characterId, gcAmount);
         setStatus('Waiting for confirmation…');
-        await tx.wait();
+        try {
+            await tx.wait();
+        } catch (waitErr) {
+            if (!String(waitErr?.message || '').toLowerCase().includes('timeout')) {
+                throw waitErr;
+            }
+            console.warn('[upgrade] wallet status timeout, checking chain state:', waitErr);
+            setStatus('Checking upgrade status...');
+        }
 
         await loadCharacterLevels();
         await updateGCBalance();
         updateCollectionUI();
+        const afterXP = Number(characterLevelCache[characterId]?.xp || 0);
+        if (afterXP < beforeXP + Number(gcAmount)) {
+            throw new Error('Transaction timeout');
+        }
         setStatus('Upgrade complete! ✓', false);
 
     } catch (err) {

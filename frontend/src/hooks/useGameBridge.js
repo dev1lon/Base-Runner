@@ -40,6 +40,9 @@ export function useGameBridge({ address, chainId, token, onDisconnect }) {
       getCallsStatus: walletClient?.getCallsStatus
         ? (id) => walletClient.getCallsStatus({ id })
         : null,
+      signTypedData: walletClient?.signTypedData
+        ? (params) => walletClient.signTypedData({ account: address, ...params })
+        : null,
       sendTransaction: walletClient?.sendTransaction
         ? (tx) => walletClient.sendTransaction({
             account: address,
