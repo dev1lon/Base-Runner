@@ -319,7 +319,7 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
         signer,
         upgradeContract,
         'upgrade',
-        [characterId, gcAmount, { gasLimit: UPGRADE_GAS_LIMIT }]
+        [characterId, gcAmount]
     );
 }
 
@@ -363,9 +363,6 @@ const LEVEL_BONUS   = [
     { coins: 4, mult: 1.5 },
     { coins: 5, mult: 2.0 },
 ];
-const MINT_GC_GAS_LIMIT = 120000n;
-const UPGRADE_GAS_LIMIT = 350000n;
-
 let characterLevelCache = {};  // { [charId]: { lvl, xp, xpNext, xpPrev } }
 
 // USDC on Base mainnet
@@ -3852,7 +3849,7 @@ function openMintGCModal() {
             const provider = new ethers.BrowserProvider(getEthereumProvider() || window.ethereum);
             const signer = await provider.getSigner();
             const gc = new ethers.Contract(GAMECOIN_ADDRESS, GAMECOIN_ABI, signer);
-            const tx = await sendWithBuilderCode(signer, gc, 'mint', [gcToMint, { gasLimit: MINT_GC_GAS_LIMIT }]);
+            const tx = await sendWithBuilderCode(signer, gc, 'mint', [gcToMint]);
             statusEl.textContent = 'Waiting for confirmation…';
             await tx.wait();
 
