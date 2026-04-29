@@ -139,7 +139,7 @@ const BUILDER_CODE_SUFFIX = "0x62635f64357464397274770b0080218021802180218021802
 // Get your API key at https://portal.cdp.coinbase.com/
 const PAYMASTER_URL = 'https://api.developer.coinbase.com/rpc/v1/base/cjnueih0AaiYBVVOk5iiZRXjP00VX1fB';
 
-// Normalize wallet_sendCalls response — EIP-5792 v1.0 returns string, v2.0 returns { id, capabilities }.
+// Normalize wallet_sendCalls response — EIP-5792 v2 returns { batchId, status }.
 function extractCallsId(raw) {
     if (!raw) return null;
     if (typeof raw === 'string') return raw;
@@ -267,6 +267,7 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
             const raw = await bridge.sendCalls({
                 account: walletAddress,
                 chainId: 8453,
+                atomicRequired: true,
                 calls: [{
                     to: populated.to,
                     data: populated.data,
@@ -303,9 +304,10 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
             const raw = await _provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
-                    version: '1.0',
+                    version: '2.0.0',
                     chainId: '0x2105',
                     from: walletAddress,
+                    atomicRequired: true,
                     calls: [{
                         to: populated.to,
                         data: populated.data,
@@ -359,6 +361,18 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
     const upgradeData = upgradeIface.encodeFunctionData('upgrade', [characterId, gcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
     const bridge = window.__walletBridge;
 
+    try {
+        await upgradeContract.upgrade.staticCall(characterId, gcAmount);
+        return sendWithBuilderCode(
+            signer,
+            upgradeContract,
+            'upgrade',
+            [characterId, gcAmount]
+        );
+    } catch (err) {
+        console.info('[upgrade] direct single-call upgrade unavailable, trying atomic batch:', err.code || '', err.shortMessage || err.message || '');
+    }
+
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && bridge?.sendCalls) {
         try {
             const caps = await getBaseWalletCapabilities(bridge.provider);
@@ -403,7 +417,7 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
             const raw = await provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
-                    version: '1.0',
+                    version: '2.0.0',
                     chainId: BASE_CHAIN_ID,
                     from: walletAddress,
                     atomicRequired: true,
@@ -3320,6 +3334,7 @@ async function handlePayGame() {
                 const raw = await bridge.sendCalls({
                     account: walletAddress,
                     chainId: 8453,
+                    atomicRequired: true,
                     calls: [{ to: PAYMENTS_CONTRACT, value: BigInt(gameConfig.paidGamePriceWei), data: playCalldata }],
                     capabilities: pmCaps
                 });
@@ -3340,9 +3355,10 @@ async function handlePayGame() {
                 const raw = await provider.request({
                     method: 'wallet_sendCalls',
                     params: [{
-                        version: '1.0',
+                        version: '2.0.0',
                         chainId: '0x2105',
                         from: walletAddress,
+                        atomicRequired: true,
                         calls: [{ to: PAYMENTS_CONTRACT, value: priceHex, data: playCalldata }],
                         capabilities: pmCaps
                     }]
@@ -3618,6 +3634,7 @@ async function handleBuyCoinsPackage(coins) {
                 const raw = await bridge.sendCalls({
                     account: walletAddress,
                     chainId: 8453,
+                    atomicRequired: true,
                     calls: [
                         { to: USDC_CONTRACT, value: 0n, data: approveData },
                         { to: PAYMENTS_CONTRACT, value: 0n, data: buyData }
@@ -3641,9 +3658,10 @@ async function handleBuyCoinsPackage(coins) {
                 const raw = await provider.request({
                     method: 'wallet_sendCalls',
                     params: [{
-                        version: '1.0',
+                        version: '2.0.0',
                         chainId: '0x2105',
                         from: walletAddress,
+                        atomicRequired: true,
                         calls: [
                             { to: USDC_CONTRACT, value: '0x0', data: approveData },
                             { to: PAYMENTS_CONTRACT, value: '0x0', data: buyData }
