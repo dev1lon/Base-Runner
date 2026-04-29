@@ -2,6 +2,7 @@ const { query } = require("../../shared/db");
 
 const APP_URL = process.env.APP_URL || "https://rugpullrun.app";
 const BASE_NOTIF_URL = "https://dashboard.base.org/api/v1/notifications/send";
+const BASE_NOTIF_USERS_URL = "https://dashboard.base.org/api/v1/notifications/app/users";
 const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_TIMEOUT_MS   = 36 * 60 * 60 * 1000;
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
@@ -11,7 +12,52 @@ function getNotificationStatus() {
     configured: !!process.env.BASE_API_KEY,
     appUrl: APP_URL,
     endpoint: BASE_NOTIF_URL,
+    usersEndpoint: BASE_NOTIF_USERS_URL,
   };
+}
+
+async function getNotificationUserStatus(walletAddress) {
+  const apiKey = process.env.BASE_API_KEY;
+  if (!apiKey) return { ok: false, error: "BASE_API_KEY not set" };
+  if (!walletAddress) return { ok: false, error: "Missing walletAddress" };
+
+  const target = walletAddress.toLowerCase();
+  let cursor = "";
+
+  try {
+    for (let page = 0; page < 10; page += 1) {
+      const url = new URL(BASE_NOTIF_USERS_URL);
+      url.searchParams.set("app_url", APP_URL);
+      url.searchParams.set("limit", "100");
+      if (cursor) url.searchParams.set("cursor", cursor);
+
+      const res = await fetch(url, {
+        headers: { "x-api-key": apiKey },
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return { ok: false, status: res.status, error: text };
+      }
+
+      const data = await res.json().catch(() => ({}));
+      const user = (data.users || []).find(u => String(u.address || "").toLowerCase() === target);
+      if (user) {
+        return {
+          ok: true,
+          saved: true,
+          notificationsEnabled: user.notificationsEnabled === true,
+          user,
+        };
+      }
+
+      cursor = data.nextCursor || "";
+      if (!cursor) break;
+    }
+
+    return { ok: true, saved: false, notificationsEnabled: false };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 async function sendNotification({ walletAddress, title, message, targetPath }) {
@@ -90,4 +136,4 @@ async function runCheckinReminderJob() {
   }
 }
 
-module.exports = { getNotificationStatus, sendNotification, runCheckinReminderJob };
+module.exports = { getNotificationStatus, getNotificationUserStatus, sendNotification, runCheckinReminderJob };

@@ -147,6 +147,45 @@ function extractCallsId(raw) {
     return null;
 }
 
+function getCapabilityStatus(value) {
+    if (!value) return false;
+    if (value === true) return true;
+    if (typeof value === 'string') return value === 'ready' || value === 'supported';
+    if (typeof value === 'object') {
+        return getCapabilityStatus(value.status ?? value.supported);
+    }
+    return false;
+}
+
+const walletCapabilityCache = new Map();
+async function getBaseWalletCapabilities(provider) {
+    const cached = walletAddress ? walletCapabilityCache.get(walletAddress.toLowerCase()) : null;
+    if (cached) return cached;
+
+    const bridged = window.__walletBridge?.capabilities;
+    if (bridged) {
+        const normalized = {
+            atomic: !!bridged.atomic,
+            paymasterService: !!bridged.paymasterService,
+        };
+        if (walletAddress) walletCapabilityCache.set(walletAddress.toLowerCase(), normalized);
+        return normalized;
+    }
+
+    try {
+        const raw = await provider.request({ method: 'wallet_getCapabilities', params: [walletAddress] });
+        const baseCaps = raw?.[BASE_CHAIN_ID] || raw?.[8453] || {};
+        const normalized = {
+            atomic: getCapabilityStatus(baseCaps.atomic),
+            paymasterService: getCapabilityStatus(baseCaps.paymasterService),
+        };
+        if (walletAddress) walletCapabilityCache.set(walletAddress.toLowerCase(), normalized);
+        return normalized;
+    } catch (err) {
+        return { atomic: false, paymasterService: false };
+    }
+}
+
 // Poll wallet_getCallsStatus until we have a real transactionHash (receipts populated) or FAILED.
 async function waitForCallsTxHash(provider, callsId) {
     for (let i = 0; i < 60; i++) {
@@ -181,6 +220,10 @@ async function sendWithBuilderCode(signer, contract, method, args = []) {
     const _provider = getEthereumProvider();
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && _provider?.request) {
         try {
+            const caps = await getBaseWalletCapabilities(_provider);
+            if (!caps.atomic || !caps.paymasterService) {
+                throw Object.assign(new Error('wallet_sendCalls not supported by this wallet'), { code: -32601 });
+            }
             const raw = await _provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
@@ -3019,6 +3062,21 @@ async function handleTestNotification() {
     setCheckinStatusText("Sending test notification...", false);
 
     try {
+        const statusRes = await fetch(`${BACKEND_URL}/api/user/notification-status`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const status = await statusRes.json().catch(() => ({}));
+        if (statusRes.ok && status.ok) {
+            if (!status.saved) {
+                setCheckinStatusText("Save app in Base first", false);
+                return;
+            }
+            if (!status.notificationsEnabled) {
+                setCheckinStatusText("Enable notifications in Base", false);
+                return;
+            }
+        }
+
         const res = await fetch(`${BACKEND_URL}/api/user/test-notification`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${authToken}` }
