@@ -250,49 +250,6 @@ async function waitForTransactionHash(txHash) {
     return await ethersProvider.waitForTransaction(txHash) || { hash: txHash };
 }
 
-async function signGameCoinPermit(signer, gameCoin, spender, amount) {
-    const owner = walletAddress;
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 10 * 60);
-    const [name, nonce] = await Promise.all([
-        gameCoin.name().catch(() => 'Rug Pull Run GameCoin'),
-        gameCoin.nonces(owner),
-    ]);
-    const domain = {
-        name,
-        version: '1',
-        chainId: 8453,
-        verifyingContract: GAMECOIN_ADDRESS,
-    };
-    const types = {
-        Permit: [
-            { name: 'owner', type: 'address' },
-            { name: 'spender', type: 'address' },
-            { name: 'value', type: 'uint256' },
-            { name: 'nonce', type: 'uint256' },
-            { name: 'deadline', type: 'uint256' },
-        ],
-    };
-    const message = {
-        owner,
-        spender,
-        value: BigInt(amount),
-        nonce: BigInt(nonce),
-        deadline,
-    };
-
-    const bridge = window.__walletBridge;
-    const signature = bridge?.signTypedData
-        ? await bridge.signTypedData({ domain, types, primaryType: 'Permit', message })
-        : await signer.signTypedData(domain, types, message);
-    const parsed = ethers.Signature.from(signature);
-    return {
-        deadline,
-        v: parsed.v,
-        r: parsed.r,
-        s: parsed.s,
-    };
-}
-
 // Send a contract call with Builder Code attribution and optional paymaster sponsorship.
 // For Coinbase Smart Wallet (Base App), uses EIP-5792 wallet_sendCalls + paymaster so gas is free.
 // Falls back to regular ethers sendTransaction for other wallets.
@@ -402,21 +359,6 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
     const upgradeData = upgradeIface.encodeFunctionData('upgrade', [characterId, gcAmount]) + BUILDER_CODE_SUFFIX.slice(2);
     const bridge = window.__walletBridge;
 
-    try {
-        const permit = await signGameCoinPermit(signer, gameCoin, CHARACTER_UPGRADE_ADDRESS, gcAmount);
-        return sendWithBuilderCode(
-            signer,
-            upgradeContract,
-            'upgradeWithPermit',
-            [characterId, gcAmount, permit.deadline, permit.v, permit.r, permit.s]
-        );
-    } catch (err) {
-        if (err.code === 4001 || err.code === 'ACTION_REJECTED' || err.message?.toLowerCase().includes('reject') || err.message?.toLowerCase().includes('denied')) {
-            throw err;
-        }
-        console.warn('[upgrade] permit flow unavailable, falling back to approve + upgrade:', err.code, err.message);
-    }
-
     if (PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY') && bridge?.sendCalls) {
         try {
             const caps = await getBaseWalletCapabilities(bridge.provider);
@@ -426,6 +368,7 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
             const raw = await bridge.sendCalls({
                 account: walletAddress,
                 chainId: 8453,
+                atomicRequired: true,
                 calls: [
                     { to: GAMECOIN_ADDRESS, value: 0n, data: approveData },
                     { to: CHARACTER_UPGRADE_ADDRESS, value: 0n, data: upgradeData },
@@ -489,10 +432,9 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
         }
     }
 
-    const allowance = await gameCoin.allowance(walletAddress, CHARACTER_UPGRADE_ADDRESS);
-    if (BigInt(allowance) < BigInt(gcAmount)) {
-        const approveTx = await gameCoin.approve(CHARACTER_UPGRADE_ADDRESS, gcAmount);
-        await approveTx.wait();
+    const allowance = BigInt(await gameCoin.allowance(walletAddress, CHARACTER_UPGRADE_ADDRESS));
+    if (allowance < BigInt(gcAmount)) {
+        throw new Error('Base Account batch is required for one-action upgrade');
     }
     return sendWithBuilderCode(
         signer,
@@ -518,15 +460,12 @@ const GAMECOIN_ADDRESS          = "0x27904124D4c0FbB345AfBe2a0d05AbCACd6d46Aa";
 const CHARACTER_UPGRADE_ADDRESS = "0x7DB86DcdC9d5ae403ac38ecB91c6981812710157";
 
 const GAMECOIN_ABI = [
-    "function name() view returns (string)",
     "function balanceOf(address) view returns (uint256)",
     "function allowance(address owner, address spender) view returns (uint256)",
-    "function nonces(address owner) view returns (uint256)",
     "function approve(address spender, uint256 amount) returns (bool)",
 ];
 const CHARACTER_UPGRADE_ABI = [
     "function upgrade(uint256 characterId, uint256 gcAmount)",
-    "function upgradeWithPermit(uint256 characterId, uint256 gcAmount, uint256 deadline, uint8 v, bytes32 r, bytes32 s)",
     "function getCharacterInfo(address player, uint256 characterId) view returns (uint256 lvl, uint256 xp, uint256 xpNext, uint256 xpPrev)",
     "function getCharacterLevels(address player, uint256[] characterIds) view returns (uint256[] levels, uint256[] xps)",
 ];
@@ -4267,11 +4206,9 @@ async function executeUpgrade(characterId, gcAmount, modal) {
         const provider = new ethers.BrowserProvider(getEthereumProvider() || window.ethereum);
         const signer   = await provider.getSigner();
 
-        // Base App path: one atomic transaction with approve + upgrade, so GC is actually spent.
-        // Fallback wallets may require approve then upgrade.
-        setStatus('Sign the upgrade transaction…');
+        setStatus('Confirm the upgrade transaction...');
         const tx = await sendUpgradeWithGCSpend(signer, characterId, gcAmount);
-        setStatus('Waiting for confirmation…');
+        setStatus('Waiting for confirmation...');
         try {
             await tx.wait();
         } catch (waitErr) {
@@ -4282,10 +4219,15 @@ async function executeUpgrade(characterId, gcAmount, modal) {
             setStatus('Checking upgrade status...');
         }
 
-        await loadCharacterLevels();
-        await updateGCBalance();
-        updateCollectionUI();
-        const afterXP = Number(characterLevelCache[characterId]?.xp || 0);
+        let afterXP = beforeXP;
+        for (let i = 0; i < 8; i++) {
+            await loadCharacterLevels();
+            await updateGCBalance();
+            updateCollectionUI();
+            afterXP = Number(characterLevelCache[characterId]?.xp || 0);
+            if (afterXP >= beforeXP + Number(gcAmount)) break;
+            await new Promise(r => setTimeout(r, 2000));
+        }
         if (afterXP < beforeXP + Number(gcAmount)) {
             throw new Error('Transaction timeout');
         }
