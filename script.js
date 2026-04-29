@@ -4117,7 +4117,7 @@ async function openUpgradeModal(characterId) {
         <div class="upgrade-level-row">
           <div class="upgrade-level-block current">
             <span class="upgrade-lv-label">Current</span>
-            <span class="upgrade-lv-badge level-${lvlInfo.lvl}">${LEVEL_LABELS[lvlInfo.lvl]}</span>
+            <span class="upgrade-lv-badge level-${lvlInfo.lvl}" id="upg-current-badge">${LEVEL_LABELS[lvlInfo.lvl]}</span>
           </div>
           <div class="upgrade-arrow-big">→</div>
           <div class="upgrade-level-block next" id="upg-next-block">
@@ -4134,7 +4134,7 @@ async function openUpgradeModal(characterId) {
         <div class="upgrade-slider-wrap">
           <label class="upgrade-slider-label">
             GC to spend: <strong id="upg-gc-val">0</strong>
-            <span class="upgrade-gc-balance">(balance: ${gcBalance} GC)</span>
+            <span class="upgrade-gc-balance" id="upg-gc-balance">(balance: ${gcBalance} GC)</span>
           </label>
           <input type="range" class="upgrade-slider" id="upg-slider"
             min="0" max="${sliderMax}" value="0" step="1" ${sliderMax === 0 ? 'disabled' : ''}>
@@ -4152,7 +4152,7 @@ async function openUpgradeModal(characterId) {
           <p class="upgrade-guide-title">All level bonuses:</p>
           <table class="upgrade-guide-table">
             <tr><th>Level</th><th>XP</th><th>+coins/1k</th><th>×score</th></tr>
-            ${[1,2,3,4,5].map(l => `<tr class="${lvlInfo.lvl >= l ? 'upg-row-done' : ''}"><td>Lv.${l}</td><td>${XP_LEVELS[l]}</td><td>+${LEVEL_BONUS[l].coins}</td><td>×${LEVEL_BONUS[l].mult}</td></tr>`).join('')}
+            ${[1,2,3,4,5].map(l => `<tr data-level="${l}" class="${lvlInfo.lvl >= l ? 'upg-row-done' : ''}"><td>Lv.${l}</td><td>${XP_LEVELS[l]}</td><td>+${LEVEL_BONUS[l].coins}</td><td>×${LEVEL_BONUS[l].mult}</td></tr>`).join('')}
           </table>
         </div>
 
@@ -4176,10 +4176,12 @@ async function openUpgradeModal(characterId) {
 
         slider.addEventListener('input', () => {
             const gc     = parseInt(slider.value);
-            const newXP  = lvlInfo.xp + gc;
+            const baseInfo = characterLevelCache[characterId] || lvlInfo;
+            const baseXP = Number(baseInfo.xp || 0);
+            const newXP  = baseXP + gc;
             const newLvl = getUpgradeLevel(newXP);
             gcValEl.textContent   = gc;
-            xpText.textContent    = `${lvlInfo.xp} → ${newXP} XP`;
+            xpText.textContent    = gc > 0 ? `${baseXP} → ${newXP} XP` : `${baseXP} XP`;
             nextBadge.textContent = LEVEL_LABELS[newLvl];
             nextBadge.className   = `upgrade-lv-badge level-${newLvl}`;
             bonusCoins.textContent = gc > 0 ? `+${LEVEL_BONUS[newLvl].coins} coin/1k pts` : '';
@@ -4195,6 +4197,50 @@ async function openUpgradeModal(characterId) {
         confirmBtn.addEventListener('click', handler);
         confirmBtn.addEventListener('touchstart', handler, { passive: false });
     }
+}
+
+function updateOpenUpgradeModal(modal, characterId) {
+    const info = characterLevelCache[characterId] || { lvl: 0, xp: 0 };
+    const lvl = Number(info.lvl ?? getUpgradeLevel(info.xp));
+    const xp = Number(info.xp || 0);
+    const currentBadge = modal.querySelector('#upg-current-badge');
+    const nextBadge = modal.querySelector('#upg-next-badge');
+    const xpText = modal.querySelector('#upg-xp-text');
+    const slider = modal.querySelector('#upg-slider');
+    const gcValEl = modal.querySelector('#upg-gc-val');
+    const gcBalanceEl = modal.querySelector('#upg-gc-balance');
+    const bonusCoins = modal.querySelector('#upg-bonus-coins');
+    const bonusMult = modal.querySelector('#upg-bonus-mult');
+    const confirmBtn = modal.querySelector('#upg-confirm-btn');
+
+    if (currentBadge) {
+        currentBadge.textContent = LEVEL_LABELS[lvl];
+        currentBadge.className = `upgrade-lv-badge level-${lvl}`;
+    }
+    if (nextBadge) {
+        nextBadge.textContent = LEVEL_LABELS[lvl];
+        nextBadge.className = `upgrade-lv-badge level-${lvl}`;
+    }
+    if (xpText) xpText.textContent = `${xp} XP`;
+    if (gcBalanceEl) gcBalanceEl.textContent = `(balance: ${gcBalance} GC)`;
+    if (gcValEl) gcValEl.textContent = '0';
+    if (bonusCoins) bonusCoins.textContent = '';
+    if (bonusMult) bonusMult.textContent = '';
+
+    if (slider) {
+        const nextXP = XP_LEVELS[lvl + 1] || XP_LEVELS[5];
+        const nextNeed = lvl >= 5 ? 0 : Math.max(0, nextXP - xp);
+        const maxSpend = Math.min(Number(gcBalance || 0), nextNeed);
+        slider.max = String(maxSpend);
+        slider.value = '0';
+        slider.disabled = maxSpend === 0;
+    }
+    if (confirmBtn) confirmBtn.disabled = true;
+
+    modal.querySelectorAll('.upgrade-guide-table tr[data-level]').forEach(row => {
+        const rowLevel = Number(row.dataset.level);
+        row.classList.toggle('upg-row-done', lvl >= rowLevel);
+    });
 }
 
 function xpPct(info) {
@@ -4249,6 +4295,7 @@ async function executeUpgrade(characterId, gcAmount, modal) {
         if (afterXP < beforeXP + Number(gcAmount)) {
             throw new Error('Transaction timeout');
         }
+        updateOpenUpgradeModal(modal, characterId);
         setStatus('Upgrade complete! ✓', false);
 
     } catch (err) {
