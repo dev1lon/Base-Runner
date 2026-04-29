@@ -341,6 +341,8 @@ let checkinButton;
 let checkinStatus;
 let checkinButtonPause;
 let checkinStatusPause;
+let testNotificationButton;
+let testNotificationButtonPause;
 let collectionButton;
 let collectionButtonPause;
 let collectionCloseBtn;
@@ -2295,6 +2297,8 @@ window.onload = function() {
     checkinStatus = document.getElementById("checkin-status");
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
+    testNotificationButton = document.getElementById("test-notification-button");
+    testNotificationButtonPause = document.getElementById("test-notification-button-pause");
 
     // Disconnect buttons — hide only inside mobile wallet apps (Base App, MetaMask mobile, etc.)
     const disconnectBtn = document.getElementById("disconnect-button");
@@ -2465,6 +2469,22 @@ window.onload = function() {
             e.stopPropagation();
             e.preventDefault();
             handleCheckin();
+        }, { passive: false });
+    }
+    if (testNotificationButton) {
+        testNotificationButton.addEventListener("click", handleTestNotification);
+        testNotificationButton.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleTestNotification();
+        }, { passive: false });
+    }
+    if (testNotificationButtonPause) {
+        testNotificationButtonPause.addEventListener("click", handleTestNotification);
+        testNotificationButtonPause.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleTestNotification();
         }, { passive: false });
     }
     initWalletState();
@@ -2810,6 +2830,11 @@ function setCheckinButtonDisabled(disabled) {
     if (checkinButtonPause) checkinButtonPause.disabled = disabled;
 }
 
+function setTestNotificationButtonDisabled(disabled) {
+    if (testNotificationButton) testNotificationButton.disabled = disabled;
+    if (testNotificationButtonPause) testNotificationButtonPause.disabled = disabled;
+}
+
 function setCheckinStatusText(text, isSuccess) {
     const updateStatus = (el) => {
         if (!el) return;
@@ -2981,6 +3006,38 @@ async function handleCheckin() {
         if (pendingReward) {
             showCheckinRewardAnimation(pendingReward);
         }
+    }
+}
+
+async function handleTestNotification() {
+    if (!walletReady || !walletAddress || !authToken) {
+        setCheckinStatusText("Connect wallet first", false);
+        return;
+    }
+
+    setTestNotificationButtonDisabled(true);
+    setCheckinStatusText("Sending test notification...", false);
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/user/test-notification`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        const result = Array.isArray(data?.data?.results) ? data.data.results[0] : null;
+
+        if (res.ok && data.ok && data.data?.sentCount > 0) {
+            setCheckinStatusText("Notification sent", true);
+        } else if (result?.failureReason) {
+            setCheckinStatusText(result.failureReason, false);
+        } else {
+            setCheckinStatusText(data.error || "Notification failed", false);
+        }
+    } catch (err) {
+        console.warn("Test notification failed", err);
+        setCheckinStatusText("Notification failed", false);
+    } finally {
+        setTestNotificationButtonDisabled(false);
     }
 }
 
