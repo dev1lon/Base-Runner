@@ -915,15 +915,42 @@ app.get("/api/user/notification-status", requireAuth, async (req, res) => {
   res.json(r);
 });
 
+const BROADCAST_NOTIFICATION_COPY = [
+  {
+    title: "Ready to run?",
+    message: "Jump back into Rug Pull Run and chase a new high score.",
+  },
+  {
+    title: "The market is moving",
+    message: "Start a run, dodge the candles, and stack more coins.",
+  },
+  {
+    title: "New run waiting",
+    message: "Your runner is ready. Come back and push the leaderboard.",
+  },
+  {
+    title: "Don't get rugged",
+    message: "Open Rug Pull Run and see how far you can survive today.",
+  },
+  {
+    title: "Coins are calling",
+    message: "Play another round and build up your next upgrade.",
+  },
+];
+
+function getBroadcastNotificationCopy() {
+  return BROADCAST_NOTIFICATION_COPY[Math.floor(Math.random() * BROADCAST_NOTIFICATION_COPY.length)];
+}
+
 app.post("/api/user/test-notification", requireAuth, async (req, res) => {
   if (!isAdminAddress(req.user.address)) {
     res.status(403).json({ ok: false, error: "Not authorized" });
     return;
   }
-  const sentAt = new Date().toISOString().slice(11, 19);
+  const copy = getBroadcastNotificationCopy();
   const r = await sendBroadcastNotification({
-    title: "Ready to run?",
-    message: `Jump back into Rug Pull Run and chase a new high score. Sent at ${sentAt} UTC`,
+    title: copy.title,
+    message: copy.message,
     targetPath: `/?notification=${Date.now()}`,
   });
   res.json(r);
