@@ -875,6 +875,31 @@ body {
     color: var(--color-success);
 }
 
+.admin-notification-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(74, 144, 217, 0.1);
+    border-radius: var(--radius-lg);
+}
+
+.admin-notification-row.hidden {
+    display: none;
+}
+
+.admin-notification-address {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: var(--font-size-sm);
+    color: var(--color-gray-500);
+}
+
 /* ============================================
    Responsive Adjustments
    ============================================ */

@@ -85,6 +85,7 @@ const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 60 * 60 * 1000); // 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || "").toLowerCase();
 const PAYMASTER_URL = process.env.PAYMASTER_URL || "";
+const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || "").toLowerCase().split(",").filter(Boolean);
 // Default: 3000000000000 wei = 0.000003 ETH ≈ $0.01 at ~$3333/ETH
 const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "3000000000000");
 const GC_PER_COIN = 5;
@@ -114,6 +115,10 @@ app.use(express.json({ limit: "1mb" }));
 
 function randomSeed() {
   return `seed-${Math.random().toString(16).slice(2)}`;
+}
+
+function isAdminAddress(address) {
+  return ADMIN_ADDRESSES.includes(String(address || "").toLowerCase());
 }
 
 app.get("/health", (req, res) => {
@@ -185,7 +190,8 @@ app.post("/auth/verify", async (req, res) => {
     hasFreeMint: result.user.has_claimed_free || false,
     ownedCharacters: result.user.owned_characters || [],
     selectedCharacter: result.user.selected_character || 0,
-    checkin
+    checkin,
+    isAdmin: isAdminAddress(result.user.address)
   });
 });
 
@@ -217,7 +223,8 @@ app.post("/auth/siwe-verify", async (req, res) => {
       hasFreeMint: result.user.has_claimed_free || false,
       ownedCharacters: result.user.owned_characters || [],
       selectedCharacter: result.user.selected_character || 0,
-      checkin
+      checkin,
+      isAdmin: isAdminAddress(result.user.address)
     });
   } catch (err) {
     console.error("[auth/siwe-verify] error:", err);
@@ -449,7 +456,8 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
     bestScore: user.best_score,
     hasFreeMint: user.has_claimed_free || false,
     ownedCharacters: user.owned_characters || [],
-    selectedCharacter: user.selected_character || 0
+    selectedCharacter: user.selected_character || 0,
+    isAdmin: isAdminAddress(user.address)
   });
 });
 
@@ -860,11 +868,8 @@ app.get("/api/sprites", requireAuth, async (req, res) => {
   }
 });
 
-// Admin: Add character (only contract owner / signer can call)
-const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || "").toLowerCase().split(",").filter(Boolean);
-
 app.post("/api/admin/shop/character", requireAuth, async (req, res) => {
-  if (!ADMIN_ADDRESSES.includes(req.user.address)) {
+  if (!isAdminAddress(req.user.address)) {
     res.status(403).json({ ok: false, error: "Not authorized" });
     return;
   }
@@ -910,6 +915,10 @@ app.get("/api/user/notification-status", requireAuth, async (req, res) => {
 });
 
 app.post("/api/user/test-notification", requireAuth, async (req, res) => {
+  if (!isAdminAddress(req.user.address)) {
+    res.status(403).json({ ok: false, error: "Not authorized" });
+    return;
+  }
   const sentAt = new Date().toISOString().slice(11, 19);
   const r = await sendNotification({
     walletAddress: req.user.address,

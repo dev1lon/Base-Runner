@@ -575,6 +575,10 @@ let checkinButton;
 let checkinStatus;
 let checkinButtonPause;
 let checkinStatusPause;
+let testNotificationAdminRow;
+let testNotificationAdminRowPause;
+let testNotificationAddress;
+let testNotificationAddressPause;
 let testNotificationButton;
 let testNotificationButtonPause;
 let collectionButton;
@@ -609,6 +613,7 @@ let isDetectingWallet = true; // Start true, set false after provider check
 let walletErrorMessage = "";
 let walletInfoMessage = "";
 let walletAuthenticated = false;
+let walletIsAdmin = false;
 let authInProgress = false;
 let authAttempted = false;
 let authToken = "";
@@ -1509,9 +1514,11 @@ function resetAuthState() {
     walletAuthenticated = false;
     authToken = "";
     authAttempted = false;
+    walletIsAdmin = false;
     walletBasename = null;
     isPaidGame = false;
     pendingPaidTxHash = null;
+    updateTestNotificationAdminControls();
 }
 
 function shouldRestoreAuth() {
@@ -2533,6 +2540,10 @@ window.onload = function() {
     checkinStatus = document.getElementById("checkin-status");
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
+    testNotificationAdminRow = document.getElementById("test-notification-admin-row");
+    testNotificationAdminRowPause = document.getElementById("test-notification-admin-row-pause");
+    testNotificationAddress = document.getElementById("test-notification-address");
+    testNotificationAddressPause = document.getElementById("test-notification-address-pause");
     testNotificationButton = document.getElementById("test-notification-button");
     testNotificationButtonPause = document.getElementById("test-notification-button-pause");
 
@@ -2906,6 +2917,7 @@ function updateUIState() {
     
     // Update collection button pulse
     updateStartButtonState();
+    updateTestNotificationAdminControls();
     
     // Sync legacy state variables
     showWelcome = currentUIState !== UI_STATE.RUNNING;
@@ -3006,6 +3018,7 @@ function lockActiveRunCharacter() {
 
 async function applyProfileData(data) {
     if (!data) return;
+    walletIsAdmin = data.isAdmin === true;
     
     // Best score from backend (for anti-cheat)
     if (Number.isFinite(data.bestScore)) {
@@ -3053,6 +3066,7 @@ async function applyProfileData(data) {
     updateStartButtonState();
     checkinState.message = "";
     updateCheckinUI();
+    updateTestNotificationAdminControls();
     updateUIState();
 }
 
@@ -3069,6 +3083,28 @@ function setCheckinButtonDisabled(disabled) {
 function setTestNotificationButtonDisabled(disabled) {
     if (testNotificationButton) testNotificationButton.disabled = disabled;
     if (testNotificationButtonPause) testNotificationButtonPause.disabled = disabled;
+}
+
+function updateTestNotificationAdminControls() {
+    const showControls = walletReady && !!authToken && walletIsAdmin;
+    const addressText = walletAddress
+        ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+        : "";
+
+    if (testNotificationAdminRow) {
+        testNotificationAdminRow.classList.toggle("hidden", !showControls);
+    }
+    if (testNotificationAdminRowPause) {
+        testNotificationAdminRowPause.classList.toggle("hidden", !showControls);
+    }
+    if (testNotificationAddress) {
+        testNotificationAddress.textContent = addressText;
+        testNotificationAddress.title = walletAddress || "";
+    }
+    if (testNotificationAddressPause) {
+        testNotificationAddressPause.textContent = addressText;
+        testNotificationAddressPause.title = walletAddress || "";
+    }
 }
 
 function setCheckinStatusText(text, isSuccess) {
@@ -3248,6 +3284,11 @@ async function handleCheckin() {
 async function handleTestNotification() {
     if (!walletReady || !walletAddress || !authToken) {
         setCheckinStatusText("Connect wallet first", false);
+        return;
+    }
+    if (!walletIsAdmin) {
+        setCheckinStatusText("Admin only", false);
+        updateTestNotificationAdminControls();
         return;
     }
 
