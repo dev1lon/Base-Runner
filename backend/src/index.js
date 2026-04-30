@@ -922,9 +922,9 @@ app.post("/api/user/test-notification", requireAuth, async (req, res) => {
   const sentAt = new Date().toISOString().slice(11, 19);
   const r = await sendNotification({
     walletAddress: req.user.address,
-    title: "Test notification",
-    message: `Rug Pull Run test sent at ${sentAt} UTC`,
-    targetPath: `/?notificationTest=${Date.now()}`,
+    title: "Ready to run?",
+    message: `Jump back into Rug Pull Run and chase a new high score. Sent at ${sentAt} UTC`,
+    targetPath: `/?notification=${Date.now()}`,
   });
   res.json(r);
 });

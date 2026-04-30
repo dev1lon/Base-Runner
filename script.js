@@ -3293,7 +3293,7 @@ async function handleTestNotification() {
     }
 
     setTestNotificationButtonDisabled(true);
-    setCheckinStatusText("Sending test notification...", false);
+    setCheckinStatusText("Sending notification...", false);
 
     try {
         const statusRes = await fetch(`${BACKEND_URL}/api/user/notification-status`, {
@@ -3326,7 +3326,7 @@ async function handleTestNotification() {
             setCheckinStatusText(data.error || "Notification failed", false);
         }
     } catch (err) {
-        console.warn("Test notification failed", err);
+        console.warn("Notification failed", err);
         setCheckinStatusText("Notification failed", false);
     } finally {
         setTestNotificationButtonDisabled(false);
