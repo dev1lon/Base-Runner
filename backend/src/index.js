@@ -84,6 +84,7 @@ const PORT = Number(process.env.PORT || 8787);
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 60 * 60 * 1000); // 1 hour
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || "").toLowerCase();
+const PAYMASTER_URL = process.env.PAYMASTER_URL || "";
 // Default: 3000000000000 wei = 0.000003 ETH ≈ $0.01 at ~$3333/ETH
 const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "3000000000000");
 const GC_PER_COIN = 5;
@@ -123,7 +124,8 @@ app.get("/health", (req, res) => {
 app.get("/api/game-config", (req, res) => {
   res.json({
     treasuryAddress: TREASURY_ADDRESS || null,
-    paidGamePriceWei: PAID_GAME_PRICE_WEI.toString()
+    paidGamePriceWei: PAID_GAME_PRICE_WEI.toString(),
+    paymasterUrl: PAYMASTER_URL || ""
   });
 });
 

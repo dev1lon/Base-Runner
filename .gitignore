@@ -9,6 +9,23 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+*.env
+*.env.*
+!.env.example
+
+# Secrets / credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.secret
+secrets/
+keystore/
+wallets/
+render.yaml
+render.yml
+.claude/
 
 # Build outputs
 dist/
@@ -32,8 +49,12 @@ backend/data/
 logs/
 *.log
 
-# Contracts (keep private until audit)
-contracts/
+# Solidity build outputs / private drafts
+artifacts/
+cache/
+broadcast/
+typechain/
+contracts/private/
 
 # OS / editor
 .DS_Store
@@ -43,3 +64,6 @@ Thumbs.db
 
 # Misc
 *.swp
+
+# Local accidental copies
+frontend/script.js

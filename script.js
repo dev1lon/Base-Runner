@@ -135,9 +135,8 @@ const RUN_RECORDER_ADDRESS = "0x44D090F487fF730aCd94f6E3E9f832ff6b933d36";
 // Code: bc_d5td9rtw
 const BUILDER_CODE_SUFFIX = "0x62635f64357464397274770b0080218021802180218021802180218021";
 
-// CDP Paymaster URL for gas-free transactions (EIP-5792 / Coinbase Smart Wallet)
-// Get your API key at https://portal.cdp.coinbase.com/
-const PAYMASTER_URL = 'https://api.developer.coinbase.com/rpc/v1/base/cjnueih0AaiYBVVOk5iiZRXjP00VX1fB';
+// Loaded from backend /api/game-config. Keep API keys out of the public repo.
+let PAYMASTER_URL = '';
 
 // Normalize wallet_sendCalls response — EIP-5792 v2 returns { batchId, status }.
 function extractCallsId(raw) {
@@ -622,7 +621,7 @@ let checkinState = {
     loading: false,
     message: ""
 };
-let gameConfig = { treasuryAddress: null, paidGamePriceWei: "3000000000000" };
+let gameConfig = { treasuryAddress: null, paidGamePriceWei: "3000000000000", paymasterUrl: "" };
 let isPaidGame = false;
 let pendingPaidTxHash = null;
 let backendSessionId = null;
@@ -1721,6 +1720,8 @@ async function fetchGameConfig() {
                 const data = await res.json();
                 gameConfig.treasuryAddress = data.treasuryAddress || null;
                 gameConfig.paidGamePriceWei = data.paidGamePriceWei || "3000000000000";
+                gameConfig.paymasterUrl = data.paymasterUrl || "";
+                PAYMASTER_URL = gameConfig.paymasterUrl;
                 return;
             }
         } catch (e) {
