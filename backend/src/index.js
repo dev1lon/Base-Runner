@@ -481,7 +481,7 @@ app.post("/api/checkin", requireAuth, async (req, res) => {
     if (result?.ok) {
       sendNotification({
         walletAddress: req.user.address,
-        title: result.streak >= 5 ? "🔥 Streak milestone!" : "Check-in done",
+        title: result.streak >= 5 ? "Streak milestone!" : "Check-in done",
         message: `+${result.reward || 1} coins earned. Come back in 24h to keep your streak.`,
         targetPath: "/",
       }).catch(() => {});
@@ -902,6 +902,7 @@ const {
   getNotificationStatus,
   getNotificationUserStatus,
   sendNotification,
+  sendBroadcastNotification,
   runCheckinReminderJob
 } = require("./modules/notifications/notificationService");
 
@@ -920,8 +921,7 @@ app.post("/api/user/test-notification", requireAuth, async (req, res) => {
     return;
   }
   const sentAt = new Date().toISOString().slice(11, 19);
-  const r = await sendNotification({
-    walletAddress: req.user.address,
+  const r = await sendBroadcastNotification({
     title: "Ready to run?",
     message: `Jump back into Rug Pull Run and chase a new high score. Sent at ${sentAt} UTC`,
     targetPath: `/?notification=${Date.now()}`,
@@ -930,6 +930,7 @@ app.post("/api/user/test-notification", requireAuth, async (req, res) => {
 });
 
 // Hourly job: remind users whose 24h cooldown expired before their streak times out
+setTimeout(runCheckinReminderJob, 30 * 1000);
 setInterval(runCheckinReminderJob, 60 * 60 * 1000);
 setInterval(cleanupSessions, 60 * 1000);
 

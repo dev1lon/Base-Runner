@@ -6,6 +6,7 @@ const BASE_NOTIF_USERS_URL = "https://dashboard.base.org/api/v1/notifications/ap
 const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_TIMEOUT_MS   = 36 * 60 * 60 * 1000;
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const NOTIFICATION_CHUNK_SIZE = Number(process.env.NOTIFICATION_CHUNK_SIZE || 100);
 
 function getNotificationStatus() {
   return {
@@ -60,32 +61,144 @@ async function getNotificationUserStatus(walletAddress) {
   }
 }
 
-async function sendNotification({ walletAddress, title, message, targetPath }) {
+function notificationWasSent(result) {
+  if (!result?.ok) return false;
+  if (Number(result.sentCount || 0) > 0) return true;
+  if (Number(result.data?.sentCount || 0) > 0) return true;
+  const results = Array.isArray(result.data?.results) ? result.data.results : [];
+  return results.some(r => r?.sent === true);
+}
+
+async function listNotificationUsers({ enabledOnly = true } = {}) {
   const apiKey = process.env.BASE_API_KEY;
   if (!apiKey) return { ok: false, error: "BASE_API_KEY not set" };
-  if (!walletAddress) return { ok: false, error: "Missing walletAddress" };
+
+  const users = [];
+  let cursor = "";
 
   try {
-    const res = await fetch(BASE_NOTIF_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-      body: JSON.stringify({
-        app_url: APP_URL,
-        wallet_addresses: [walletAddress],
-        title: title.slice(0, 30),
-        message: message.slice(0, 200),
-        ...(targetPath ? { target_path: targetPath } : {}),
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return { ok: false, status: res.status, error: text };
+    for (let page = 0; page < 100; page += 1) {
+      const url = new URL(BASE_NOTIF_USERS_URL);
+      url.searchParams.set("app_url", APP_URL);
+      url.searchParams.set("limit", "100");
+      if (cursor) url.searchParams.set("cursor", cursor);
+
+      const res = await fetch(url, {
+        headers: { "x-api-key": apiKey },
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return { ok: false, status: res.status, error: text };
+      }
+
+      const data = await res.json().catch(() => ({}));
+      for (const user of data.users || []) {
+        const address = String(user.address || "").toLowerCase();
+        if (!address) continue;
+        if (enabledOnly && user.notificationsEnabled !== true) continue;
+        users.push({ ...user, address });
+      }
+
+      cursor = data.nextCursor || "";
+      if (!cursor) break;
     }
-    const data = await res.json().catch(() => ({}));
-    return { ok: data.success === true, data };
+    return { ok: true, users };
   } catch (e) {
     return { ok: false, error: e.message };
   }
+}
+
+async function sendNotificationToWallets({ walletAddresses, title, message, targetPath }) {
+  const apiKey = process.env.BASE_API_KEY;
+  if (!apiKey) return { ok: false, error: "BASE_API_KEY not set" };
+
+  const uniqueAddresses = [...new Set((walletAddresses || [])
+    .map(address => String(address || "").toLowerCase())
+    .filter(Boolean))];
+
+  if (!uniqueAddresses.length) {
+    return { ok: false, error: "No wallet addresses" };
+  }
+
+  const batches = [];
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (let i = 0; i < uniqueAddresses.length; i += NOTIFICATION_CHUNK_SIZE) {
+    const chunk = uniqueAddresses.slice(i, i + NOTIFICATION_CHUNK_SIZE);
+    try {
+      const res = await fetch(BASE_NOTIF_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({
+          app_url: APP_URL,
+          wallet_addresses: chunk,
+          title: title.slice(0, 30),
+          message: message.slice(0, 200),
+          ...(targetPath ? { target_path: targetPath } : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        failedCount += chunk.length;
+        batches.push({ ok: false, status: res.status, error: text, requestedCount: chunk.length });
+        continue;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      let batchSent = Number(data.sentCount || 0)
+        || (Array.isArray(data.results) ? data.results.filter(r => r?.sent === true).length : 0);
+      if (batchSent === 0 && data.success === true && data.sentCount === undefined && !Array.isArray(data.results)) {
+        batchSent = chunk.length;
+      }
+      sentCount += batchSent;
+      failedCount += Math.max(0, chunk.length - batchSent);
+      batches.push({ ok: data.success === true, data, requestedCount: chunk.length, sentCount: batchSent });
+    } catch (e) {
+      failedCount += chunk.length;
+      batches.push({ ok: false, error: e.message, requestedCount: chunk.length });
+    }
+  }
+
+  return {
+    ok: sentCount > 0 && failedCount === 0,
+    partial: sentCount > 0 && failedCount > 0,
+    requestedCount: uniqueAddresses.length,
+    sentCount,
+    failedCount,
+    batches,
+  };
+}
+
+async function sendNotification({ walletAddress, title, message, targetPath }) {
+  if (!walletAddress) return { ok: false, error: "Missing walletAddress" };
+  const result = await sendNotificationToWallets({
+    walletAddresses: [walletAddress],
+    title,
+    message,
+    targetPath,
+  });
+  return {
+    ok: result.sentCount > 0,
+    sentCount: result.sentCount || 0,
+    requestedCount: result.requestedCount || 0,
+    failedCount: result.failedCount || 0,
+    data: result.batches?.[0]?.data,
+    error: result.error || result.batches?.[0]?.error,
+  };
+}
+
+async function sendBroadcastNotification({ title, message, targetPath }) {
+  const usersResult = await listNotificationUsers({ enabledOnly: true });
+  if (!usersResult.ok) return usersResult;
+
+  const walletAddresses = usersResult.users.map(u => u.address);
+  if (!walletAddresses.length) {
+    return { ok: false, error: "No opted-in notification users", requestedCount: 0, sentCount: 0 };
+  }
+
+  return sendNotificationToWallets({ walletAddresses, title, message, targetPath });
 }
 
 async function getCheckinReminderTargets() {
@@ -128,7 +241,7 @@ async function runCheckinReminderJob() {
         message,
         targetPath: "/",
       });
-      if (r.ok) await markNotified(u.address);
+      if (notificationWasSent(r)) await markNotified(u.address);
       else console.warn(`[notifications] failed for ${u.address}:`, r.error);
     }
   } catch (e) {
@@ -136,4 +249,10 @@ async function runCheckinReminderJob() {
   }
 }
 
-module.exports = { getNotificationStatus, getNotificationUserStatus, sendNotification, runCheckinReminderJob };
+module.exports = {
+  getNotificationStatus,
+  getNotificationUserStatus,
+  sendNotification,
+  sendBroadcastNotification,
+  runCheckinReminderJob,
+};

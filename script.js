@@ -3296,30 +3296,16 @@ async function handleTestNotification() {
     setCheckinStatusText("Sending notification...", false);
 
     try {
-        const statusRes = await fetch(`${BACKEND_URL}/api/user/notification-status`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
-        const status = await statusRes.json().catch(() => ({}));
-        if (statusRes.ok && status.ok) {
-            if (!status.saved) {
-                setCheckinStatusText("Save app in Base first", false);
-                return;
-            }
-            if (!status.notificationsEnabled) {
-                setCheckinStatusText("Enable notifications in Base", false);
-                return;
-            }
-        }
-
         const res = await fetch(`${BACKEND_URL}/api/user/test-notification`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const data = await res.json().catch(() => ({}));
+        const sentCount = Number(data.sentCount || data.data?.sentCount || 0);
         const result = Array.isArray(data?.data?.results) ? data.data.results[0] : null;
 
-        if (res.ok && data.ok && (data.data?.sentCount > 0 || result?.sent === true)) {
-            setCheckinStatusText("Notification sent", true);
+        if (res.ok && (data.ok || data.partial) && (sentCount > 0 || result?.sent === true)) {
+            setCheckinStatusText(sentCount > 1 ? `Sent to ${sentCount} users` : "Notification sent", true);
         } else if (result?.failureReason) {
             setCheckinStatusText(result.failureReason, false);
         } else {
