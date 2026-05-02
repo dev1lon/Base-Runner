@@ -460,6 +460,7 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 25000;
 const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const CHECKIN_STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
 const ALLOW_GUEST_PLAY = false;
 
 // Payments contract (RugPullRunPayments on Base mainnet)
@@ -3147,7 +3148,10 @@ function getCheckinRemainingMs() {
 }
 
 function getCheckinStreakText() {
-    const streakText = `Streak: ${checkinState.streak}`;
+    const lastCheckin = Number(checkinState.lastCheckin || 0);
+    const streakExpired = lastCheckin > 0 && Date.now() > lastCheckin + CHECKIN_STREAK_TIMEOUT_MS;
+    const visibleStreak = streakExpired ? 0 : checkinState.streak;
+    const streakText = `Streak: ${visibleStreak}`;
     const remainingMs = getCheckinRemainingMs();
     if (remainingMs <= 0) return streakText;
     return `${streakText} · ${formatCheckinCountdown(remainingMs)}`;
@@ -3234,7 +3238,7 @@ function updateCheckinUI() {
         checkinState.canCheckin = true;
         setCheckinButtonDisabled(false);
         setCheckinButtonText("Check-in");
-        setCheckinStatusText(`Streak: ${checkinState.streak}`, false);
+        setCheckinStatusText(getCheckinStreakText(), false);
         return;
     }
     setCheckinButtonDisabled(checkedIn);
