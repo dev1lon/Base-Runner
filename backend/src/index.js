@@ -477,17 +477,31 @@ app.post("/api/checkin", requireAuth, async (req, res) => {
   try {
     const { txHash } = req.body || {};
     const result = await doCheckin(req.user.address, txHash);
+    let notification = null;
 
     if (result?.ok) {
-      sendNotification({
+      notification = await sendNotification({
         walletAddress: req.user.address,
         title: result.streak >= 5 ? "Streak milestone!" : "Check-in done",
         message: `+${result.reward || 1} coins earned. Come back in 24h to keep your streak.`,
         targetPath: "/",
-      }).catch(() => {});
+      }).catch(e => ({ ok: false, error: e.message }));
+
+      if (!notification?.ok) {
+        console.warn(`[notifications] check-in notification failed for ${req.user.address}:`, notification?.error || notification);
+      }
     }
 
-    res.json(result);
+    res.json({
+      ...result,
+      notification: notification
+        ? {
+            ok: notification.ok === true,
+            sentCount: notification.sentCount || 0,
+            error: notification.ok ? undefined : notification.error,
+          }
+        : null,
+    });
   } catch (err) {
     console.error("Checkin error:", err);
     res.status(500).json({ ok: false, error: "Check-in failed" });

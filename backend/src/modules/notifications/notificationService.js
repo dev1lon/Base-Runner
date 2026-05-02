@@ -7,6 +7,13 @@ const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_TIMEOUT_MS   = 36 * 60 * 60 * 1000;
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const NOTIFICATION_CHUNK_SIZE = Number(process.env.NOTIFICATION_CHUNK_SIZE || 100);
+const reminderStats = {
+  lastRunAt: null,
+  lastTargetCount: 0,
+  lastSentCount: 0,
+  lastFailedCount: 0,
+  lastError: null,
+};
 
 function getNotificationStatus() {
   return {
@@ -14,6 +21,7 @@ function getNotificationStatus() {
     appUrl: APP_URL,
     endpoint: BASE_NOTIF_URL,
     usersEndpoint: BASE_NOTIF_USERS_URL,
+    checkinReminder: reminderStats,
   };
 }
 
@@ -226,9 +234,16 @@ async function markNotified(address) {
 }
 
 async function runCheckinReminderJob() {
+  reminderStats.lastRunAt = new Date().toISOString();
+  reminderStats.lastTargetCount = 0;
+  reminderStats.lastSentCount = 0;
+  reminderStats.lastFailedCount = 0;
+  reminderStats.lastError = null;
+
   try {
     const targets = await getCheckinReminderTargets();
-    if (!targets.length) return;
+    reminderStats.lastTargetCount = targets.length;
+    if (!targets.length) return { ok: true, ...reminderStats };
     console.log(`[notifications] sending reminders to ${targets.length} user(s)`);
     for (const u of targets) {
       const title   = u.streak > 0 ? "Streak alert!" : "Daily check-in";
@@ -241,11 +256,19 @@ async function runCheckinReminderJob() {
         message,
         targetPath: "/",
       });
-      if (notificationWasSent(r)) await markNotified(u.address);
-      else console.warn(`[notifications] failed for ${u.address}:`, r.error);
+      if (notificationWasSent(r)) {
+        reminderStats.lastSentCount += 1;
+        await markNotified(u.address);
+      } else {
+        reminderStats.lastFailedCount += 1;
+        console.warn(`[notifications] failed for ${u.address}:`, r.error);
+      }
     }
+    return { ok: true, ...reminderStats };
   } catch (e) {
+    reminderStats.lastError = e.message;
     console.error("[notifications] job error:", e);
+    return { ok: false, ...reminderStats };
   }
 }
 
