@@ -459,6 +459,7 @@ async function sendUpgradeWithGCSpend(signer, characterId, gcAmount) {
 
 const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 25000;
+const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const ALLOW_GUEST_PLAY = false;
 
 // Payments contract (RugPullRunPayments on Base mainnet)
@@ -624,7 +625,8 @@ let checkinState = {
     streak: 0,
     canCheckin: true,
     loading: false,
-    message: ""
+    message: "",
+    _rewardAnimating: false
 };
 let gameConfig = { treasuryAddress: null, paidGamePriceWei: "3000000000000", paymasterUrl: "" };
 let isPaidGame = false;
@@ -2797,6 +2799,7 @@ window.onload = function() {
 
     drawStaticFrame(); // Draw platform once; full loop starts on game start
     setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
+    setInterval(updateCheckinUI, 1000);
     document.addEventListener("keydown", movePlayer);
     document.addEventListener("touchstart", handleTouchStart, { passive: false });
     document.addEventListener("touchend", handleTouchEnd, { passive: false });
@@ -3108,6 +3111,7 @@ function updateTestNotificationAdminControls() {
 }
 
 function setCheckinStatusText(text, isSuccess) {
+    checkinState._rewardAnimating = false;
     const updateStatus = (el) => {
         if (!el) return;
         _checkinAnimTimers.forEach(clearTimeout);
@@ -3126,14 +3130,38 @@ function setCheckinStatusText(text, isSuccess) {
 
 let _checkinAnimTimers = [];
 
+function formatCheckinCountdown(ms) {
+    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return [hours, minutes, seconds]
+        .map(value => String(value).padStart(2, '0'))
+        .join(':');
+}
+
+function getCheckinRemainingMs() {
+    const lastCheckin = Number(checkinState.lastCheckin || 0);
+    if (!lastCheckin) return 0;
+    return Math.max(0, lastCheckin + CHECKIN_COOLDOWN_MS - Date.now());
+}
+
+function getCheckinStreakText() {
+    const streakText = `Streak: ${checkinState.streak}`;
+    const remainingMs = getCheckinRemainingMs();
+    if (remainingMs <= 0) return streakText;
+    return `${streakText} · ${formatCheckinCountdown(remainingMs)}`;
+}
+
 function showCheckinRewardAnimation(rewardText) {
     _checkinAnimTimers.forEach(clearTimeout);
     _checkinAnimTimers = [];
 
     const els = [checkinStatus, checkinStatusPause].filter(Boolean);
     if (els.length === 0) return;
+    checkinState._rewardAnimating = true;
 
-    const streakText = `Streak: ${checkinState.streak}`;
+    const streakText = getCheckinStreakText();
 
     els.forEach(el => {
         el.classList.remove("reward-in", "reward-out");
@@ -3172,6 +3200,8 @@ function showCheckinRewardAnimation(rewardText) {
                     el.style.opacity = '';
                     el.style.transform = '';
                 });
+                checkinState._rewardAnimating = false;
+                updateCheckinUI();
             }, 400));
         }, 350));
     }, 1700));
@@ -3179,6 +3209,7 @@ function showCheckinRewardAnimation(rewardText) {
 
 function updateCheckinUI() {
     if (!checkinButton && !checkinButtonPause) return;
+    if (checkinState._rewardAnimating) return;
     
     if (!walletReady) {
         setCheckinButtonDisabled(true);
@@ -3199,13 +3230,20 @@ function updateCheckinUI() {
         return;
     }
     const checkedIn = !checkinState.canCheckin;
+    if (checkedIn && getCheckinRemainingMs() <= 0) {
+        checkinState.canCheckin = true;
+        setCheckinButtonDisabled(false);
+        setCheckinButtonText("Check-in");
+        setCheckinStatusText(`Streak: ${checkinState.streak}`, false);
+        return;
+    }
     setCheckinButtonDisabled(checkedIn);
     setCheckinButtonText(checkedIn ? "Done" : "Check-in");
 
     if (checkinState.message) {
         setCheckinStatusText(checkinState.message, checkedIn);
     } else if (checkedIn) {
-        setCheckinStatusText(`Streak: ${checkinState.streak}`, true);
+        setCheckinStatusText(getCheckinStreakText(), true);
     } else {
         setCheckinStatusText(`Streak: ${checkinState.streak}`, false);
     }
