@@ -3149,8 +3149,8 @@ function getCheckinRemainingMs() {
 
 function getCheckinStreakText() {
     const lastCheckin = Number(checkinState.lastCheckin || 0);
-    const streakExpired = lastCheckin > 0 && Date.now() > lastCheckin + CHECKIN_STREAK_TIMEOUT_MS;
-    const visibleStreak = streakExpired ? 0 : checkinState.streak;
+    const streakActive = lastCheckin > 0 && Date.now() <= lastCheckin + CHECKIN_STREAK_TIMEOUT_MS;
+    const visibleStreak = streakActive ? checkinState.streak : 0;
     const streakText = `Streak: ${visibleStreak}`;
     const remainingMs = getCheckinRemainingMs();
     if (remainingMs <= 0) return streakText;
@@ -3249,7 +3249,7 @@ function updateCheckinUI() {
     } else if (checkedIn) {
         setCheckinStatusText(getCheckinStreakText(), true);
     } else {
-        setCheckinStatusText(`Streak: ${checkinState.streak}`, false);
+        setCheckinStatusText(getCheckinStreakText(), false);
     }
 }
 

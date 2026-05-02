@@ -54,9 +54,10 @@ async function getCheckinStatus(address) {
 
   const now = Date.now();
   const canCheckin = lastCheckinAt === 0 || now >= lastCheckinAt + CHECKIN_COOLDOWN_MS;
+  const streakActive = lastCheckinAt > 0 && now <= lastCheckinAt + STREAK_TIMEOUT_MS;
 
   let nextStreak;
-  if (lastCheckinAt === 0 || now > lastCheckinAt + STREAK_TIMEOUT_MS) {
+  if (!streakActive) {
     nextStreak = 1;
   } else {
     nextStreak = (user.streak || 0) + 1;
@@ -64,7 +65,7 @@ async function getCheckinStatus(address) {
 
   return {
     lastCheckin: lastCheckinAt,
-    streak: user.streak || 0,
+    streak: streakActive ? (user.streak || 0) : 0,
     checkinCount: user.checkin_count || 0,
     canCheckin,
     nextReward: calcReward(nextStreak)
