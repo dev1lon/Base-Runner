@@ -4043,6 +4043,31 @@ function openCollection(from = 'menu') {
     loadSilhouettes();
     loadCharacterLevels();
     updateGCBalance();
+    // Reconcile on-chain free mint state silently on every open
+    if (!hasFreeMint && walletAddress && isValidAddress(NFT_CONTRACT_ADDRESS)) {
+        reconcileFreeMint();
+    }
+}
+
+async function reconcileFreeMint() {
+    try {
+        const provider = getEthereumProvider();
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, ethersProvider);
+        const claimed = await contract.hasClaimedFreeMint(walletAddress);
+        if (claimed && !hasFreeMint) {
+            hasFreeMint = true;
+            if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
+            selectedCharacter = 0;
+            localStorage.setItem('selectedCharacter', '0');
+            await loadSpriteForCharacter(0);
+            updatePlayerSprite();
+            updateCollectionUI();
+            updateStartButtonState();
+            // Sync backend silently
+            recordFreeMintOnBackend(null);
+        }
+    } catch (e) { /* non-critical */ }
 }
 
 let gcBalance = 0;
@@ -4698,9 +4723,17 @@ async function handleFreeMint() {
         
         if (btn) btn.textContent = 'Confirming...';
         const receipt = await tx.wait();
-        
-        // Record on backend
-        await recordFreeMintOnBackend(receipt.hash);
+
+        // Optimistic unlock — tx confirmed on-chain, character is ours
+        hasFreeMint = true;
+        if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
+        selectedCharacter = 0;
+        localStorage.setItem('selectedCharacter', '0');
+        updateCollectionUI();
+        updateStartButtonState();
+
+        // Notify backend in background (best-effort)
+        recordFreeMintOnBackend(receipt.hash);
         
     } catch (e) {
         console.error('Free mint failed:', e);
