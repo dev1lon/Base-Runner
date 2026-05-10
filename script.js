@@ -4716,6 +4716,10 @@ async function handleFreeMint() {
         updateCollectionUI();
     } finally {
         collectionLoading = false;
+        // Force UI refresh after lock released — catches any path where
+        // updateCollectionUI ran while collectionLoading was still true
+        updateCollectionUI();
+        updateStartButtonState();
     }
 }
 
@@ -4773,7 +4777,8 @@ async function recordFreeMintOnBackend(txHash) {
         });
         const data = await response.json();
         
-        if (data.ok) {
+        const alreadyClaimed = !data.ok && data.error?.includes('Already claimed');
+        if (data.ok || alreadyClaimed) {
             if (Array.isArray(data.ownedCharacters)) {
                 ownedCharacters = data.ownedCharacters;
             } else {
