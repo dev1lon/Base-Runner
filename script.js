@@ -4384,7 +4384,8 @@ function updateCollectionCoins() {
 }
 
 function closeCollection() {
-    // Return to where we came from
+    // Reset loading lock so pending mint doesn't permanently block the button
+    collectionLoading = false;
     if (collectionOpenedFrom === 'pause') {
         currentUIState = UI_STATE.PAUSED;
     } else {
@@ -4681,7 +4682,11 @@ async function handleFreeMint() {
         // Check if can claim
         const canClaim = await contract.canClaimFreeMint(walletAddress);
         if (!canClaim) {
-            alert('Already claimed or not available on-chain');
+            // On-chain says already minted — maybe backend wasn't notified (user exited mid-flow)
+            // Try to sync backend silently (no txHash needed, backend allows it)
+            if (!hasFreeMint) {
+                await recordFreeMintOnBackend(null);
+            }
             collectionLoading = false;
             updateCollectionUI();
             return;
