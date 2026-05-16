@@ -3,10 +3,12 @@ const { query } = require("../../shared/db");
 const APP_URL = process.env.APP_URL || "https://rugpullrun.app";
 const BASE_NOTIF_URL = "https://dashboard.base.org/api/v1/notifications/send";
 const BASE_NOTIF_USERS_URL = "https://dashboard.base.org/api/v1/notifications/app/users";
+const BASE_NOTIF_USER_STATUS_URL = "https://dashboard.base.org/api/v1/notifications/app/user/status";
 const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_TIMEOUT_MS   = 36 * 60 * 60 * 1000;
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-const NOTIFICATION_CHUNK_SIZE = Number(process.env.NOTIFICATION_CHUNK_SIZE || 100);
+const NOTIFICATION_CHUNK_SIZE = Number(process.env.NOTIFICATION_CHUNK_SIZE || 500);
+const NOTIFICATION_RATE_LIMIT_MS = 3500; // 20 req/min -> ~3s between batches
 const reminderStats = {
   lastRunAt: null,
   lastTargetCount: 0,
@@ -30,40 +32,23 @@ async function getNotificationUserStatus(walletAddress) {
   if (!apiKey) return { ok: false, error: "BASE_API_KEY not set" };
   if (!walletAddress) return { ok: false, error: "Missing walletAddress" };
 
-  const target = walletAddress.toLowerCase();
-  let cursor = "";
-
   try {
-    for (let page = 0; page < 10; page += 1) {
-      const url = new URL(BASE_NOTIF_USERS_URL);
-      url.searchParams.set("app_url", APP_URL);
-      url.searchParams.set("limit", "100");
-      if (cursor) url.searchParams.set("cursor", cursor);
-
-      const res = await fetch(url, {
-        headers: { "x-api-key": apiKey },
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        return { ok: false, status: res.status, error: text };
-      }
-
-      const data = await res.json().catch(() => ({}));
-      const user = (data.users || []).find(u => String(u.address || "").toLowerCase() === target);
-      if (user) {
-        return {
-          ok: true,
-          saved: true,
-          notificationsEnabled: user.notificationsEnabled === true,
-          user,
-        };
-      }
-
-      cursor = data.nextCursor || "";
-      if (!cursor) break;
+    const res = await fetch(BASE_NOTIF_USER_STATUS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify({ app_url: APP_URL, wallet_address: walletAddress }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, status: res.status, error: text };
     }
-
-    return { ok: true, saved: false, notificationsEnabled: false };
+    const data = await res.json().catch(() => ({}));
+    return {
+      ok: true,
+      saved: data.appPinned === true,
+      notificationsEnabled: data.notificationsEnabled === true,
+      raw: data,
+    };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -88,7 +73,8 @@ async function listNotificationUsers({ enabledOnly = true } = {}) {
     for (let page = 0; page < 100; page += 1) {
       const url = new URL(BASE_NOTIF_USERS_URL);
       url.searchParams.set("app_url", APP_URL);
-      url.searchParams.set("limit", "100");
+      url.searchParams.set("limit", "500");
+      if (enabledOnly) url.searchParams.set("notification_enabled", "true");
       if (cursor) url.searchParams.set("cursor", cursor);
 
       const res = await fetch(url, {
@@ -103,7 +89,6 @@ async function listNotificationUsers({ enabledOnly = true } = {}) {
       for (const user of data.users || []) {
         const address = String(user.address || "").toLowerCase();
         if (!address) continue;
-        if (enabledOnly && user.notificationsEnabled !== true) continue;
         users.push({ ...user, address });
       }
 
@@ -132,8 +117,17 @@ async function sendNotificationToWallets({ walletAddresses, title, message, targ
   let sentCount = 0;
   let failedCount = 0;
 
+  const safeTitle   = (title   || "").slice(0, 30);
+  const safeMessage = (message || "").slice(0, 200);
+
   for (let i = 0; i < uniqueAddresses.length; i += NOTIFICATION_CHUNK_SIZE) {
     const chunk = uniqueAddresses.slice(i, i + NOTIFICATION_CHUNK_SIZE);
+
+    // Throttle: Base API limits 20 req/min — wait ~3.5s between batches
+    if (i > 0) {
+      await new Promise(r => setTimeout(r, NOTIFICATION_RATE_LIMIT_MS));
+    }
+
     try {
       const res = await fetch(BASE_NOTIF_URL, {
         method: "POST",
@@ -141,8 +135,8 @@ async function sendNotificationToWallets({ walletAddresses, title, message, targ
         body: JSON.stringify({
           app_url: APP_URL,
           wallet_addresses: chunk,
-          title: title.slice(0, 30),
-          message: message.slice(0, 200),
+          title: safeTitle,
+          message: safeMessage,
           ...(targetPath ? { target_path: targetPath } : {}),
         }),
       });
@@ -233,6 +227,22 @@ async function markNotified(address) {
   );
 }
 
+// Rotating copy — avoids Base's 24h duplicate-notification suppression
+const STREAK_REMINDER_VARIANTS = [
+  { title: "Don't lose your streak", msg: (s) => `${s}-day streak runs out in 12h. Jump back in.` },
+  { title: "Streak alert",            msg: (s) => `Your ${s}-day run is at risk — check in to keep it alive.` },
+  { title: "Keep the streak going",   msg: (s) => `${s} days strong. Don't let it reset — quick check-in waiting.` },
+  { title: "Streak expires soon",     msg: (s) => `12h left to save your ${s}-day streak. One tap to fix it.` },
+];
+const NEW_USER_REMINDER_VARIANTS = [
+  { title: "Daily reward ready",  msg: "Your check-in is waiting. Start a streak today." },
+  { title: "Come back today",     msg: "Free reward sitting in your account — claim it now." },
+  { title: "Don't miss out",      msg: "Open the app and grab today's check-in bonus." },
+  { title: "Pull yourself in",    msg: "Daily reward + the chance to start a streak. Just one tap." },
+];
+
+function pickVariant(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
 async function runCheckinReminderJob() {
   reminderStats.lastRunAt = new Date().toISOString();
   reminderStats.lastTargetCount = 0;
@@ -246,10 +256,11 @@ async function runCheckinReminderJob() {
     if (!targets.length) return { ok: true, ...reminderStats };
     console.log(`[notifications] sending reminders to ${targets.length} user(s)`);
     for (const u of targets) {
-      const title   = u.streak > 0 ? "Streak alert!" : "Daily check-in";
-      const message = u.streak > 0
-        ? `Your ${u.streak}-day streak expires in 12h. Check in now!`
-        : "Your daily reward is waiting. Check in to start a streak.";
+      const variant = u.streak > 0
+        ? pickVariant(STREAK_REMINDER_VARIANTS)
+        : pickVariant(NEW_USER_REMINDER_VARIANTS);
+      const title   = variant.title;
+      const message = typeof variant.msg === "function" ? variant.msg(u.streak) : variant.msg;
       const r = await sendNotification({
         walletAddress: u.address,
         title,
