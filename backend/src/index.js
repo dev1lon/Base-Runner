@@ -476,17 +476,38 @@ const BASE_REVERSE_REGISTRAR = "0x79EA96012eEa67A83431F1701B3dFf7e37F9E282";
 const BASE_L2_RESOLVER       = "0xC6d566A56A1aFf6508b41f6c90ff131615583BCD";
 const BASE_RPC_URL           = process.env.RPC_URL || "https://mainnet.base.org";
 
-async function rpcCall(to, data) {
-  const res = await fetch(BASE_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0", id: 1, method: "eth_call",
-      params: [{ to, data }, "latest"],
-    }),
-  });
-  const json = await res.json();
-  return json.result;
+async function rpcCall(to, data, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(BASE_RPC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1, method: "eth_call",
+          params: [{ to, data }, "latest"],
+        }),
+      });
+      if (res.status === 429 || res.status === 503) {
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`rpc ${res.status}`);
+      }
+      const json = await res.json();
+      if (json.error) {
+        if (json.error.code === -32005 && attempt < retries) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`rpc error ${json.error.code}: ${json.error.message}`);
+      }
+      return json.result;
+    } catch (e) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+    }
+  }
 }
 
 function decodeAbiString(hexResult) {
@@ -521,7 +542,7 @@ async function resolveBaseName(address) {
       } else {
         const decoded = decodeAbiString(nameResult);
         if (decoded && decoded.includes(".")) name = decoded;
-        else lastError = `decode failed: ${nameResult?.slice(0, 80)}`;
+        else lastError = `decode failed (len=${nameResult?.length}): ${nameResult}`;
       }
     }
   } catch (e) { lastError = e.message; }
@@ -550,24 +571,22 @@ app.get("/api/leaderboard", async (req, res) => {
     // Filter out admins (overfetch with LIMIT 200 to keep 100 after filter)
     const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 100);
 
-    // Batch basename resolution to avoid hammering public Base RPC (rate-limits)
+    // Sequential basename resolution — public Base RPC rate-limits hard on
+    // concurrent calls. ~2 RPC calls per address * 100 ms = ~30s worst case
+    // but most are cached after first run.
     const entries = [];
     let resolved = 0, withNames = 0;
-    const CONCURRENCY = 5;
-    for (let i = 0; i < filtered.length; i += CONCURRENCY) {
-      const batch = filtered.slice(i, i + CONCURRENCY);
-      const results = await Promise.all(batch.map(r => resolveBaseName(r.address)));
-      batch.forEach((r, j) => {
-        const name = results[j] || null;
-        resolved++;
-        if (name) withNames++;
-        entries.push({
-          rank: entries.length + 1,
-          address: r.address,
-          name,
-          score: Number(r.best_score),
-        });
+    for (const r of filtered) {
+      const name = await resolveBaseName(r.address);
+      resolved++;
+      if (name) withNames++;
+      entries.push({
+        rank: entries.length + 1,
+        address: r.address,
+        name,
+        score: Number(r.best_score),
       });
+      await new Promise(rr => setTimeout(rr, 50));
     }
     console.log(`[leaderboard] resolved ${resolved} addresses, ${withNames} with basenames`);
 
