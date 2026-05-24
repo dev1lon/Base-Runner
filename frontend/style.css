@@ -2166,3 +2166,25 @@ body.w3m-modal-open w3m-modal {
     box-shadow: 0 2px 6px rgba(74,144,217,0.3);
 }
 .leaderboard-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.game-over-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    margin: 12px 0;
+}
+.game-over-buttons .game-over-save-btn { margin: 0; }
+.game-over-home-btn {
+    padding: 10px 24px;
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 14px;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    min-width: 180px;
+}

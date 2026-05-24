@@ -2633,6 +2633,17 @@ window.onload = function() {
         saveRecordBtn.addEventListener("click", handleSaveRecord);
         saveRecordBtn.addEventListener("touchstart", handleSaveRecord, { passive: false });
     }
+    // Home button on game over
+    const gameOverHomeBtn = document.getElementById("game-over-home-btn");
+    if (gameOverHomeBtn) {
+        const handleHome = (e) => {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            if (gameOverOverlay) gameOverOverlay.classList.add('hidden');
+            goHome();
+        };
+        gameOverHomeBtn.addEventListener("click", handleHome);
+        gameOverHomeBtn.addEventListener("touchstart", handleHome, { passive: false });
+    }
 
     // Leaderboard — both menu and pause buttons
     const openLb = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } openLeaderboard(); };
