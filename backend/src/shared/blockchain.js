@@ -98,63 +98,73 @@ function isBlockchainReady() {
  * @param {number} retries - Number of retries on failure
  * @returns {Promise<{success: boolean, txHash?: string, error?: string}>}
  */
-async function mintCoins(to, amount, retries = 2) {
-    if (!isBlockchainReady()) {
-        console.warn("Blockchain not ready, skipping on-chain mint");
-        return { success: false, error: "Blockchain not configured" };
+// Serialize all mints from the same minter wallet: ethers.js auto-nonce
+// is not thread-safe — parallel mint calls get the same nonce and one tx
+// gets dropped with CALL_EXCEPTION. Single in-flight queue prevents that.
+let mintQueue = Promise.resolve();
+let nextNonce = null;
+
+async function ensureNonce() {
+    if (nextNonce === null) {
+        nextNonce = await minterWallet.getNonce();
     }
-    
+}
+
+async function _mintCoinsInner(to, amount, retries) {
     if (!to || amount <= 0) {
         return { success: false, error: "Invalid parameters" };
     }
-    
+
     const amountUnits = ethers.parseUnits(String(amount), gameCoinDecimals);
-    
+
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-            // Check if contract is paused
             const isPaused = await gameCoinContract.paused().catch(() => false);
-            if (isPaused) {
-                console.warn("GameCoin contract is paused");
-                return { success: false, error: "Contract paused" };
-            }
-            
-            // Check if we're an authorized minter
+            if (isPaused) return { success: false, error: "Contract paused" };
+
             const isMinter = await gameCoinContract.minters(minterWallet.address);
-            if (!isMinter) {
-                console.error("Backend wallet is not an authorized minter!");
-                return { success: false, error: "Not authorized minter" };
-            }
-            
-            // Execute mint
-            console.log(`Minting ${amount} GC (${amountUnits} units) to ${to}... (attempt ${attempt + 1})`);
-            const tx = await gameCoinContract.mint(to, amountUnits);
+            if (!isMinter) return { success: false, error: "Not authorized minter" };
+
+            await ensureNonce();
+            console.log(`Minting ${amount} GC (${amountUnits} units) to ${to}... (attempt ${attempt + 1}, nonce ${nextNonce})`);
+            const tx = await gameCoinContract.mint(to, amountUnits, { nonce: nextNonce });
+            const usedNonce = nextNonce;
+            nextNonce += 1; // assume success; we'll re-sync on error below
             console.log(`Transaction sent: ${tx.hash}`);
-            
-            // Wait for confirmation
+
             const receipt = await tx.wait();
-            console.log(`✅ Minted ${amount} coins to ${to} in tx ${receipt.hash}`);
-            
-            return { 
-                success: true, 
+            console.log(`✅ Minted ${amount} coins to ${to} in tx ${receipt.hash} (nonce ${usedNonce})`);
+
+            return {
+                success: true,
                 txHash: receipt.hash,
                 blockNumber: receipt.blockNumber,
-                amount: amount
+                amount,
             };
         } catch (err) {
             console.error(`❌ Mint attempt ${attempt + 1} failed:`, err.message);
-            
-            // Try reconnecting on network errors
+
+            // Re-sync nonce from chain on any error so the next attempt isn't stale
+            nextNonce = await minterWallet.getNonce().catch(() => null);
+
             if (attempt < retries && (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT')) {
-                console.log("Trying to reconnect to blockchain...");
                 await reconnectBlockchain();
             } else if (attempt === retries) {
                 return { success: false, error: err.message };
             }
         }
     }
-    
     return { success: false, error: "All retry attempts failed" };
+}
+
+async function mintCoins(to, amount, retries = 2) {
+    if (!isBlockchainReady()) {
+        return { success: false, error: "Blockchain not configured" };
+    }
+    // Chain onto the previous mint so they run strictly sequential
+    const run = mintQueue.then(() => _mintCoinsInner(to, amount, retries));
+    mintQueue = run.catch(() => {}); // never let queue chain reject
+    return run;
 }
 
 /**

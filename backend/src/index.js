@@ -574,11 +574,11 @@ app.get("/api/leaderboard", async (req, res) => {
     }
 
     const { rows } = await require("./shared/db").query(
-      `SELECT address, best_score FROM users WHERE best_score > 0 ORDER BY best_score DESC LIMIT 50`
+      `SELECT address, best_score FROM users WHERE best_score > 0 ORDER BY best_score DESC LIMIT 25`
     );
 
-    // Filter out admins (overfetch with LIMIT 50 to keep 25 after filter)
-    const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 25);
+    // Filter out admins (overfetch with LIMIT 25 to keep 10 after filter)
+    const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 10);
 
     // Sequential basename resolution — public Base RPC rate-limits hard on
     // concurrent calls. ~2 RPC calls per address * 100 ms = ~30s worst case
