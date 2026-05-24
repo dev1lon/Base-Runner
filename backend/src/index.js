@@ -510,16 +510,19 @@ async function rpcCall(to, data, retries = 3) {
   }
 }
 
+// Returns { ok: true, name } if decoded (name may be ""), { ok: false } on parse fail
 function decodeAbiString(hexResult) {
-  if (!hexResult || hexResult === "0x" || hexResult.length <= 130) return null;
+  if (!hexResult || hexResult === "0x" || hexResult.length < 130) return { ok: false };
   const hex = hexResult.slice(2);
   const strOffset = parseInt(hex.slice(0, 64), 16) * 2;
   const strLen    = parseInt(hex.slice(strOffset, strOffset + 64), 16);
-  if (!strLen || strLen > 256) return null;
+  if (strLen === 0) return { ok: true, name: "" };
+  if (strLen > 256) return { ok: false };
   const strHex = hex.slice(strOffset + 64, strOffset + 64 + strLen * 2);
   try {
-    return new TextDecoder().decode(new Uint8Array(strHex.match(/.{2}/g).map(b => parseInt(b, 16))));
-  } catch { return null; }
+    const name = new TextDecoder().decode(new Uint8Array(strHex.match(/.{2}/g).map(b => parseInt(b, 16))));
+    return { ok: true, name };
+  } catch { return { ok: false }; }
 }
 
 async function resolveBaseName(address) {
@@ -530,6 +533,7 @@ async function resolveBaseName(address) {
 
   let name = null;
   let lastError = null;
+  let rateLimited = false;
   try {
     const paddedAddr = key.slice(2).padStart(64, "0");
     const reverseNode = await rpcCall(BASE_REVERSE_REGISTRAR, "0xbffbe61c" + paddedAddr);
@@ -538,25 +542,30 @@ async function resolveBaseName(address) {
     } else {
       const nameResult = await rpcCall(BASE_L2_RESOLVER, "0x691f3431" + reverseNode.slice(2));
       if (!nameResult || nameResult === "0x") {
-        lastError = `empty name result: ${nameResult}`;
+        lastError = `empty name result`;
       } else {
         const decoded = decodeAbiString(nameResult);
-        if (decoded && decoded.includes(".")) name = decoded;
-        else lastError = `decode failed (len=${nameResult?.length}): ${nameResult}`;
+        if (!decoded.ok) lastError = `decode failed (len=${nameResult.length})`;
+        else if (decoded.name && decoded.name.includes(".")) name = decoded.name;
+        // else: empty string = no basename set, not an error
       }
     }
-  } catch (e) { lastError = e.message; }
+  } catch (e) {
+    lastError = e.message;
+    if (/429|rate/i.test(e.message)) rateLimited = true;
+  }
 
   if (!name && lastError) {
     console.warn(`[basename] ${key} -> null (${lastError})`);
   }
 
-  baseNameCache.set(key, { name, fetchedAt: Date.now() });
+  // Only cache on success or definitive "no name" — don't cache rate-limit failures
+  if (!rateLimited) baseNameCache.set(key, { name, fetchedAt: Date.now() });
   return name;
 }
 
 let leaderboardCache = { data: null, fetchedAt: 0 };
-const LEADERBOARD_TTL_MS = 30 * 1000; // 30s cache
+const LEADERBOARD_TTL_MS = 5 * 60 * 1000; // 5min cache — saves RPC on repeated opens
 
 app.get("/api/leaderboard", async (req, res) => {
   try {
@@ -565,11 +574,11 @@ app.get("/api/leaderboard", async (req, res) => {
     }
 
     const { rows } = await require("./shared/db").query(
-      `SELECT address, best_score FROM users WHERE best_score > 0 ORDER BY best_score DESC LIMIT 200`
+      `SELECT address, best_score FROM users WHERE best_score > 0 ORDER BY best_score DESC LIMIT 50`
     );
 
-    // Filter out admins (overfetch with LIMIT 200 to keep 100 after filter)
-    const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 100);
+    // Filter out admins (overfetch with LIMIT 50 to keep 25 after filter)
+    const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 25);
 
     // Sequential basename resolution — public Base RPC rate-limits hard on
     // concurrent calls. ~2 RPC calls per address * 100 ms = ~30s worst case
