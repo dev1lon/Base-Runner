@@ -469,14 +469,37 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
 const baseNameCache = new Map();
 const BASE_NAME_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-// Base L2 Reverse Resolver (ENSIP-19) — handles xxx.base.eth primary names
-const L2_REVERSE_RESOLVER_BASE = "0x79EA96012eEa67A83431F1701B3dFf7e37F9E282";
-const L2_REVERSE_RESOLVER_ABI = [
-  { type: "function", name: "name", stateMutability: "view",
-    inputs: [{ name: "node", type: "bytes32" }], outputs: [{ type: "string" }] }
-];
-// ENSIP-19 coinType for Base = 0x80002105 (8453 | 0x80000000) → "80002105"
-const BASE_REVERSE_NAMESPACE = "80002105.reverse";
+// Basenames reverse resolution — same flow the frontend uses:
+//   1) ReverseRegistrar.node(addr) -> bytes32 reverse node
+//   2) L2Resolver.name(node)       -> string
+const BASE_REVERSE_REGISTRAR = "0x79EA96012eEa67A83431F1701B3dFf7e37F9E282";
+const BASE_L2_RESOLVER       = "0xC6d566A56A1aFf6508b41f6c90ff131615583BCD";
+const BASE_RPC_URL           = process.env.RPC_URL || "https://mainnet.base.org";
+
+async function rpcCall(to, data) {
+  const res = await fetch(BASE_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "eth_call",
+      params: [{ to, data }, "latest"],
+    }),
+  });
+  const json = await res.json();
+  return json.result;
+}
+
+function decodeAbiString(hexResult) {
+  if (!hexResult || hexResult === "0x" || hexResult.length <= 130) return null;
+  const hex = hexResult.slice(2);
+  const strOffset = parseInt(hex.slice(0, 64), 16) * 2;
+  const strLen    = parseInt(hex.slice(strOffset, strOffset + 64), 16);
+  if (!strLen || strLen > 256) return null;
+  const strHex = hex.slice(strOffset + 64, strOffset + 64 + strLen * 2);
+  try {
+    return new TextDecoder().decode(new Uint8Array(strHex.match(/.{2}/g).map(b => parseInt(b, 16))));
+  } catch { return null; }
+}
 
 async function resolveBaseName(address) {
   if (!address) return null;
@@ -486,35 +509,16 @@ async function resolveBaseName(address) {
 
   let name = null;
   try {
-    const { createPublicClient, http, namehash } = require("viem");
-    const { base, mainnet } = require("viem/chains");
-
-    // 1) Try L2 reverse resolver on Base (ENSIP-19, primary path for Basenames users)
-    const baseClient = createPublicClient({ chain: base, transport: http(process.env.RPC_URL || "https://mainnet.base.org") });
-    const addrNoPrefix = key.slice(2);
-    const reverseNode = namehash(`${addrNoPrefix}.${BASE_REVERSE_NAMESPACE}`);
-    try {
-      const l2Name = await baseClient.readContract({
-        address: L2_REVERSE_RESOLVER_BASE,
-        abi: L2_REVERSE_RESOLVER_ABI,
-        functionName: "name",
-        args: [reverseNode],
-      });
-      if (l2Name && l2Name.length > 0) name = l2Name;
-    } catch (_) { /* L2 lookup failed — try L1 below */ }
-
-    // 2) Fallback: classic ENS reverse on Ethereum mainnet (covers users who set
-    //    their primary name on L1, plus Basenames via CCIP-read where supported)
-    if (!name) {
-      try {
-        const mainnetClient = createPublicClient({
-          chain: mainnet,
-          transport: http(process.env.ETH_RPC_URL || "https://eth.llamarpc.com"),
-        });
-        name = await mainnetClient.getEnsName({ address }).catch(() => null);
-      } catch (_) { /* ignore */ }
+    const paddedAddr = key.slice(2).padStart(64, "0");
+    // Step 1: ReverseRegistrar.node(address)  selector = 0xbffbe61c
+    const reverseNode = await rpcCall(BASE_REVERSE_REGISTRAR, "0xbffbe61c" + paddedAddr);
+    if (reverseNode && reverseNode !== "0x" && reverseNode.length >= 66) {
+      // Step 2: L2Resolver.name(bytes32)       selector = 0x691f3431
+      const nameResult = await rpcCall(BASE_L2_RESOLVER, "0x691f3431" + reverseNode.slice(2));
+      const decoded = decodeAbiString(nameResult);
+      if (decoded && decoded.includes(".")) name = decoded;
     }
-  } catch (_) { /* ignore — fall back to address */ }
+  } catch (_) { /* ignore */ }
 
   baseNameCache.set(key, { name, fetchedAt: Date.now() });
   return name;
