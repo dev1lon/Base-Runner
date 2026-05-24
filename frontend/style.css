@@ -1998,14 +1998,24 @@ body.w3m-modal-open w3m-modal {
 
 /* Game over screen: final score + Save Record button */
 .game-over-score-line {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
     font-size: 22px;
     font-weight: 700;
     color: #FFD700;
-    text-align: center;
-    margin: 8px 0;
+    margin: 12px auto;
+    padding: 8px 20px;
+    border: 1.5px solid rgba(255, 215, 0, 0.45);
+    border-radius: 14px;
+    background: rgba(255, 215, 0, 0.08);
+    box-shadow: 0 0 16px rgba(255, 215, 0, 0.15);
     text-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
 }
+.game-over-content { display: flex; flex-direction: column; align-items: center; }
 
 .game-over-save-btn {
     margin: 12px auto;
@@ -2219,6 +2229,12 @@ body.w3m-modal-open w3m-modal {
     min-width: 180px;
 }
 
-.game-over-score-line .go-raw   { color: #fff; opacity: 0.7; font-weight: 600; }
-.game-over-score-line .go-mult  { color: #FFD700; font-weight: 800; }
-.game-over-score-line .go-final { color: #FFD700; font-weight: 800; font-size: 1.15em; }
+.game-over-score-line .go-raw,
+.game-over-score-line .go-mult,
+.game-over-score-line .go-final {
+    font-variant-numeric: tabular-nums;
+    display: inline-block;
+}
+.game-over-score-line .go-raw   { color: #fff;    opacity: 0.7; font-weight: 600; min-width: 2ch; text-align: right; }
+.game-over-score-line .go-mult  { color: #FFD700; font-weight: 800; min-width: 3ch; text-align: center; }
+.game-over-score-line .go-final { color: #FFD700; font-weight: 800; font-size: 1.2em; min-width: 2ch; text-align: left; }
