@@ -508,17 +508,27 @@ async function resolveBaseName(address) {
   if (cached && Date.now() - cached.fetchedAt < BASE_NAME_TTL_MS) return cached.name;
 
   let name = null;
+  let lastError = null;
   try {
     const paddedAddr = key.slice(2).padStart(64, "0");
-    // Step 1: ReverseRegistrar.node(address)  selector = 0xbffbe61c
     const reverseNode = await rpcCall(BASE_REVERSE_REGISTRAR, "0xbffbe61c" + paddedAddr);
-    if (reverseNode && reverseNode !== "0x" && reverseNode.length >= 66) {
-      // Step 2: L2Resolver.name(bytes32)       selector = 0x691f3431
+    if (!reverseNode || reverseNode === "0x" || reverseNode.length < 66) {
+      lastError = `bad node: ${reverseNode}`;
+    } else {
       const nameResult = await rpcCall(BASE_L2_RESOLVER, "0x691f3431" + reverseNode.slice(2));
-      const decoded = decodeAbiString(nameResult);
-      if (decoded && decoded.includes(".")) name = decoded;
+      if (!nameResult || nameResult === "0x") {
+        lastError = `empty name result: ${nameResult}`;
+      } else {
+        const decoded = decodeAbiString(nameResult);
+        if (decoded && decoded.includes(".")) name = decoded;
+        else lastError = `decode failed: ${nameResult?.slice(0, 80)}`;
+      }
     }
-  } catch (_) { /* ignore */ }
+  } catch (e) { lastError = e.message; }
+
+  if (!name && lastError) {
+    console.warn(`[basename] ${key} -> null (${lastError})`);
+  }
 
   baseNameCache.set(key, { name, fetchedAt: Date.now() });
   return name;
@@ -540,15 +550,26 @@ app.get("/api/leaderboard", async (req, res) => {
     // Filter out admins (overfetch with LIMIT 200 to keep 100 after filter)
     const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 100);
 
-    const entries = await Promise.all(filtered.map(async (r, idx) => {
-      const name = await resolveBaseName(r.address);
-      return {
-        rank: idx + 1,
-        address: r.address,
-        name: name || null,
-        score: Number(r.best_score),
-      };
-    }));
+    // Batch basename resolution to avoid hammering public Base RPC (rate-limits)
+    const entries = [];
+    let resolved = 0, withNames = 0;
+    const CONCURRENCY = 5;
+    for (let i = 0; i < filtered.length; i += CONCURRENCY) {
+      const batch = filtered.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(batch.map(r => resolveBaseName(r.address)));
+      batch.forEach((r, j) => {
+        const name = results[j] || null;
+        resolved++;
+        if (name) withNames++;
+        entries.push({
+          rank: entries.length + 1,
+          address: r.address,
+          name,
+          score: Number(r.best_score),
+        });
+      });
+    }
+    console.log(`[leaderboard] resolved ${resolved} addresses, ${withNames} with basenames`);
 
     leaderboardCache = { data: entries, fetchedAt: Date.now() };
     res.json({ ok: true, entries });
