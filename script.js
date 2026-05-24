@@ -4143,12 +4143,14 @@ async function openLeaderboard() {
         const myAddr = (walletAddress || '').toLowerCase();
         list.innerHTML = res.entries.map(e => {
             const rankClass = e.rank === 1 ? 'rank-gold' : e.rank === 2 ? 'rank-silver' : e.rank === 3 ? 'rank-bronze' : '';
-            const meClass = e.address.toLowerCase() === myAddr ? 'lb-row-me' : '';
+            const isMe   = e.address.toLowerCase() === myAddr;
+            const meClass = isMe ? 'lb-row-me' : '';
             const medal   = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : `${e.rank}`;
+            const nameDisplay = formatLeaderboardName(e) + (isMe ? ' <span class="lb-you-badge">YOU</span>' : '');
             return `
               <div class="lb-row ${rankClass} ${meClass}">
                 <span class="lb-col-rank">${medal}</span>
-                <span class="lb-col-name">${formatLeaderboardName(e)}</span>
+                <span class="lb-col-name">${nameDisplay}</span>
                 <span class="lb-col-score">${e.score.toLocaleString()}</span>
               </div>
             `;

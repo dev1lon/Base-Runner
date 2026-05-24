@@ -469,6 +469,15 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
 const baseNameCache = new Map();
 const BASE_NAME_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// Base L2 Reverse Resolver (ENSIP-19) — handles xxx.base.eth primary names
+const L2_REVERSE_RESOLVER_BASE = "0x79EA96012eEa67A83431F1701B3dFf7e37F9E282";
+const L2_REVERSE_RESOLVER_ABI = [
+  { type: "function", name: "name", stateMutability: "view",
+    inputs: [{ name: "node", type: "bytes32" }], outputs: [{ type: "string" }] }
+];
+// ENSIP-19 coinType for Base = 0x80002105 (8453 | 0x80000000) → "80002105"
+const BASE_REVERSE_NAMESPACE = "80002105.reverse";
+
 async function resolveBaseName(address) {
   if (!address) return null;
   const key = address.toLowerCase();
@@ -477,11 +486,34 @@ async function resolveBaseName(address) {
 
   let name = null;
   try {
-    const { createPublicClient, http } = require("viem");
-    const { base } = require("viem/chains");
-    const client = createPublicClient({ chain: base, transport: http(process.env.RPC_URL || "https://mainnet.base.org") });
-    // L2Resolver on Base — getEnsName works via the Basenames system
-    name = await client.getEnsName({ address }).catch(() => null);
+    const { createPublicClient, http, namehash } = require("viem");
+    const { base, mainnet } = require("viem/chains");
+
+    // 1) Try L2 reverse resolver on Base (ENSIP-19, primary path for Basenames users)
+    const baseClient = createPublicClient({ chain: base, transport: http(process.env.RPC_URL || "https://mainnet.base.org") });
+    const addrNoPrefix = key.slice(2);
+    const reverseNode = namehash(`${addrNoPrefix}.${BASE_REVERSE_NAMESPACE}`);
+    try {
+      const l2Name = await baseClient.readContract({
+        address: L2_REVERSE_RESOLVER_BASE,
+        abi: L2_REVERSE_RESOLVER_ABI,
+        functionName: "name",
+        args: [reverseNode],
+      });
+      if (l2Name && l2Name.length > 0) name = l2Name;
+    } catch (_) { /* L2 lookup failed — try L1 below */ }
+
+    // 2) Fallback: classic ENS reverse on Ethereum mainnet (covers users who set
+    //    their primary name on L1, plus Basenames via CCIP-read where supported)
+    if (!name) {
+      try {
+        const mainnetClient = createPublicClient({
+          chain: mainnet,
+          transport: http(process.env.ETH_RPC_URL || "https://eth.llamarpc.com"),
+        });
+        name = await mainnetClient.getEnsName({ address }).catch(() => null);
+      } catch (_) { /* ignore */ }
+    }
   } catch (_) { /* ignore — fall back to address */ }
 
   baseNameCache.set(key, { name, fetchedAt: Date.now() });

@@ -2105,8 +2105,26 @@ body.w3m-modal-open w3m-modal {
 .rank-bronze .lb-col-rank  { color: #8b4513; font-size: 22px; }
 .rank-bronze .lb-col-score { color: #8b4513; }
 .lb-row-me {
-    outline: 2px solid var(--color-base-blue);
-    background: rgba(74,144,217,0.08);
+    background: linear-gradient(90deg, rgba(74,144,217,0.22), rgba(74,144,217,0.06)) !important;
+    border: 2px solid var(--color-base-blue) !important;
+    box-shadow: inset 4px 0 0 var(--color-base-blue), 0 2px 8px rgba(74,144,217,0.3);
+}
+.lb-row-me .lb-col-name,
+.lb-row-me .lb-col-score {
+    color: var(--color-base-blue) !important;
+    font-weight: 800;
+}
+.lb-you-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    background: var(--color-base-blue);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 8px;
+    vertical-align: middle;
+    letter-spacing: 0.5px;
 }
 .leaderboard-loading, .leaderboard-empty {
     text-align: center;
