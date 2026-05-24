@@ -2188,3 +2188,7 @@ body.w3m-modal-open w3m-modal {
     -webkit-tap-highlight-color: transparent;
     min-width: 180px;
 }
+
+.game-over-score-line .go-raw   { color: #fff; opacity: 0.7; font-weight: 600; }
+.game-over-score-line .go-mult  { color: #FFD700; font-weight: 800; }
+.game-over-score-line .go-final { color: #FFD700; font-weight: 800; font-size: 1.15em; }
