@@ -1910,22 +1910,22 @@ function setGameOverState() {
         if (restartTextEl) {
             restartTextEl.textContent = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
         }
-        // Show final score: raw × boost = boosted (or just final if no boost)
+        // Show final score: raw × boost = boosted (or just final if no boost).
+        // Use the SAME `score` value as the in-game SCORE badge so they match
+        // exactly — no recomputation that could drift by 1 from float rounding.
         const scoreLineEl = document.getElementById('game-over-score-line');
         if (scoreLineEl) {
             const mult = getRunLevelBonus().mult;
-            const boostedScore = Math.floor(rawScore * mult);
             const multStr = 'x' + (Number.isInteger(mult) ? mult : mult.toFixed(1));
             if (mult > 1) {
                 scoreLineEl.innerHTML =
                     `<span class="go-raw">${rawScore}</span>` +
                     ` <span class="go-mult">${multStr}</span> = ` +
-                    `<span class="go-final">${boostedScore}</span>`;
+                    `<span class="go-final">${score}</span>`;
             } else {
-                scoreLineEl.innerHTML = `<span class="go-final">${boostedScore}</span>`;
+                scoreLineEl.innerHTML = `<span class="go-final">${score}</span>`;
             }
-            // Save Record button writes the boosted score on-chain
-            lastFinalScoreForRecord = boostedScore;
+            lastFinalScoreForRecord = score;
         }
         // Reset Save Record button state
         const saveBtn = document.getElementById('save-record-btn');
