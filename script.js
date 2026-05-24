@@ -4299,7 +4299,7 @@ function openMintGCModal() {
         <p id="mint-gc-status" class="mint-gc-status"></p>
 
         <button id="mint-gc-confirm" class="btn mint-gc-confirm-btn" disabled>Mint GC</button>
-        <button id="mint-gc-close" class="btn mint-gc-close-btn">Cancel</button>
+        <button id="mint-gc-close" class="btn mint-gc-close-btn">Close</button>
       </div>
     `;
     document.body.appendChild(modal);
@@ -4348,7 +4348,17 @@ function openMintGCModal() {
                 updateCollectionCoins();
                 updateGameUI();
                 statusEl.textContent = `Minted ${gcToMint} GC ✓`;
-                setTimeout(close, 1200);
+                // Update slider & balance display to reflect new state, allow another mint
+                const balanceEl = modal.querySelector('.mint-gc-balance');
+                if (balanceEl) balanceEl.textContent = `/ ${coinCount}`;
+                if (slider) {
+                    slider.max = String(coinCount);
+                    slider.value = '0';
+                    if (coinsVal) coinsVal.textContent = '0';
+                    if (gcOut) gcOut.textContent = '0';
+                    slider.disabled = coinCount === 0;
+                }
+                // Don't auto-close — let user close manually or mint again
             } else {
                 statusEl.style.color = '#ff7f7f';
                 statusEl.textContent = mintRes.error || 'GC mint failed';

@@ -113,7 +113,8 @@ async function reserveNonce() {
     await prev;
     try {
         if (nextNonce === null) {
-            nextNonce = await minterWallet.getNonce();
+            // 'pending' includes mempool txs so we don't collide with our own in-flight nonces
+            nextNonce = await minterWallet.getNonce("pending");
         }
         const reserved = nextNonce;
         nextNonce += 1;
@@ -147,8 +148,8 @@ async function _mintCoinsInner(to, amount, retries) {
             return { success: true, txHash: receipt.hash, blockNumber: receipt.blockNumber, amount };
         } catch (err) {
             console.error(`❌ Mint attempt ${attempt + 1} failed (nonce ${reservedNonce}):`, err.message);
-            // Re-sync nonce so a bad nonce doesn't poison subsequent reservations
-            nextNonce = await minterWallet.getNonce().catch(() => null);
+            // Re-sync from pending so we account for other in-flight txs from this wallet
+            nextNonce = await minterWallet.getNonce("pending").catch(() => null);
             if (attempt < retries && (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT')) {
                 await reconnectBlockchain();
             } else if (attempt === retries) {
