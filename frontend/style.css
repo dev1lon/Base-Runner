@@ -2148,3 +2148,21 @@ body.w3m-modal-open w3m-modal {
     text-transform: uppercase;
     font-weight: 600;
 }
+
+.leaderboard-refresh-btn {
+    display: inline-block;
+    margin: 4px auto 8px;
+    padding: 4px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    background: linear-gradient(180deg, #6BA8E8 0%, #4A88C8 100%);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    cursor: pointer;
+    touch-action: manipulation;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    box-shadow: 0 2px 6px rgba(74,144,217,0.3);
+}
+.leaderboard-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }

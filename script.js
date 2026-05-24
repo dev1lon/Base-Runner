@@ -2649,6 +2649,12 @@ window.onload = function() {
         leaderboardCloseBtn.addEventListener("click", close);
         leaderboardCloseBtn.addEventListener("touchstart", close, { passive: false });
     }
+    const leaderboardRefreshBtn = document.getElementById("leaderboard-refresh-btn");
+    if (leaderboardRefreshBtn) {
+        const refresh = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } refreshLeaderboardAsAdmin(); };
+        leaderboardRefreshBtn.addEventListener("click", refresh);
+        leaderboardRefreshBtn.addEventListener("touchstart", refresh, { passive: false });
+    }
 
     // Initial state
     showWelcome = true;
@@ -4138,14 +4144,41 @@ function formatNextUpdate(nextRefreshAt) {
     return `Next update in ${m}m`;
 }
 
+async function refreshLeaderboardAsAdmin() {
+    const btn = document.getElementById('leaderboard-refresh-btn');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Refreshing…';
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/leaderboard/refresh`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${authToken}` },
+        }).then(r => r.json());
+        if (!res.ok) throw new Error(res.error || 'Failed');
+        // Poll until snapshot updates (job runs ~10s for 100 addresses)
+        await new Promise(r => setTimeout(r, 12000));
+        await openLeaderboard();
+    } catch (e) {
+        btn.textContent = e.message || 'Failed';
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    }
+}
+
 async function openLeaderboard() {
     const overlay = document.getElementById('overlay-leaderboard');
     const list    = document.getElementById('leaderboard-list');
     const subtitle = document.getElementById('leaderboard-subtitle');
+    const refreshBtn = document.getElementById('leaderboard-refresh-btn');
     if (!overlay || !list) return;
     overlay.classList.remove('hidden');
     list.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
     if (subtitle) subtitle.textContent = '';
+    if (refreshBtn) {
+        refreshBtn.style.display = walletIsAdmin ? '' : 'none';
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = '↻ Refresh now';
+    }
 
     try {
         const res = await fetch(`${BACKEND_URL}/api/leaderboard`).then(r => r.json());
