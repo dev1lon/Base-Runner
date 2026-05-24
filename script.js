@@ -4151,10 +4151,12 @@ function formatNextUpdate(nextRefreshAt) {
 }
 
 async function refreshLeaderboardAsAdmin() {
-    const btn = document.getElementById('leaderboard-refresh-btn');
+    const btn  = document.getElementById('leaderboard-refresh-btn');
+    const list = document.getElementById('leaderboard-list');
     if (!btn || btn.disabled) return;
     btn.disabled = true;
     btn.classList.add('spinning');
+    if (list) list.innerHTML = '<div class="leaderboard-loading">Updating leaderboard…</div>';
     try {
         const res = await fetch(`${BACKEND_URL}/api/admin/leaderboard/refresh`, {
             method: 'POST',
@@ -4165,6 +4167,8 @@ async function refreshLeaderboardAsAdmin() {
         await openLeaderboard();
     } catch (e) {
         console.warn('Leaderboard refresh failed:', e.message);
+        if (list) list.innerHTML = `<div class="leaderboard-empty">Refresh failed: ${e.message}</div>`;
+    } finally {
         btn.classList.remove('spinning');
         btn.disabled = false;
     }
@@ -4181,6 +4185,7 @@ async function openLeaderboard() {
     if (subtitle) subtitle.textContent = '';
     if (refreshBtn) {
         refreshBtn.classList.toggle('hidden', !walletIsAdmin);
+        refreshBtn.classList.remove('spinning');
         refreshBtn.disabled = false;
         refreshBtn.textContent = '↻';
     }

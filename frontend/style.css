@@ -2178,13 +2178,13 @@ body.w3m-modal-open w3m-modal {
     gap: 8px;
 }
 .leaderboard-refresh-icon {
-    width: 26px;
-    height: 26px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     background: rgba(74,144,217,0.18);
     color: var(--color-base-blue);
-    border: 1px solid rgba(74,144,217,0.35);
-    font-size: 14px;
+    border: 1.5px solid rgba(74,144,217,0.45);
+    font-size: 18px;
     font-weight: 800;
     cursor: pointer;
     touch-action: manipulation;
