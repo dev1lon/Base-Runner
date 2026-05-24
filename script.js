@@ -2634,12 +2634,14 @@ window.onload = function() {
         saveRecordBtn.addEventListener("touchstart", handleSaveRecord, { passive: false });
     }
 
-    // Leaderboard
-    const leaderboardBtn = document.getElementById("leaderboard-button");
-    if (leaderboardBtn) {
-        const open = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } openLeaderboard(); };
-        leaderboardBtn.addEventListener("click", open);
-        leaderboardBtn.addEventListener("touchstart", open, { passive: false });
+    // Leaderboard — both menu and pause buttons
+    const openLb = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } openLeaderboard(); };
+    for (const id of ["leaderboard-button", "leaderboard-button-pause"]) {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener("click", openLb);
+            btn.addEventListener("touchstart", openLb, { passive: false });
+        }
     }
     const leaderboardCloseBtn = document.getElementById("leaderboard-close-btn");
     if (leaderboardCloseBtn) {
