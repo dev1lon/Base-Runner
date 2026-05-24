@@ -564,30 +564,33 @@ async function resolveBaseName(address) {
   return name;
 }
 
-let leaderboardCache = { data: null, fetchedAt: 0 };
-const LEADERBOARD_TTL_MS = 5 * 60 * 1000; // 5min cache — saves RPC on repeated opens
+// Periodic leaderboard snapshot: refresh runs once per 12h, basename
+// resolution amortized across the whole interval. Client gets cached
+// snapshot instantly.
+const LEADERBOARD_REFRESH_MS = 12 * 60 * 60 * 1000;
+const LEADERBOARD_LIMIT = 100;
+let leaderboardSnapshot = {
+  entries: [],
+  refreshedAt: null,
+  nextRefreshAt: null,
+  refreshing: false,
+};
 
-app.get("/api/leaderboard", async (req, res) => {
+async function refreshLeaderboard() {
+  if (leaderboardSnapshot.refreshing) return;
+  leaderboardSnapshot.refreshing = true;
+  const startedAt = Date.now();
   try {
-    if (leaderboardCache.data && Date.now() - leaderboardCache.fetchedAt < LEADERBOARD_TTL_MS) {
-      return res.json({ ok: true, entries: leaderboardCache.data, cached: true });
-    }
-
     const { rows } = await require("./shared/db").query(
-      `SELECT address, best_score FROM users WHERE best_score > 0 ORDER BY best_score DESC LIMIT 25`
+      `SELECT address, best_score FROM users WHERE best_score > 0
+       ORDER BY best_score DESC LIMIT ${LEADERBOARD_LIMIT + 25}`
     );
+    const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, LEADERBOARD_LIMIT);
 
-    // Filter out admins (overfetch with LIMIT 25 to keep 10 after filter)
-    const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 10);
-
-    // Sequential basename resolution — public Base RPC rate-limits hard on
-    // concurrent calls. ~2 RPC calls per address * 100 ms = ~30s worst case
-    // but most are cached after first run.
     const entries = [];
-    let resolved = 0, withNames = 0;
+    let withNames = 0;
     for (const r of filtered) {
       const name = await resolveBaseName(r.address);
-      resolved++;
       if (name) withNames++;
       entries.push({
         rank: entries.length + 1,
@@ -595,17 +598,44 @@ app.get("/api/leaderboard", async (req, res) => {
         name,
         score: Number(r.best_score),
       });
+      // Small gap to stay polite to public Base RPC
       await new Promise(rr => setTimeout(rr, 50));
     }
-    console.log(`[leaderboard] resolved ${resolved} addresses, ${withNames} with basenames`);
 
-    leaderboardCache = { data: entries, fetchedAt: Date.now() };
-    res.json({ ok: true, entries });
-  } catch (err) {
-    console.error("Leaderboard error:", err);
-    res.status(500).json({ ok: false, error: "Failed to load leaderboard" });
+    const now = Date.now();
+    leaderboardSnapshot.entries = entries;
+    leaderboardSnapshot.refreshedAt = now;
+    leaderboardSnapshot.nextRefreshAt = now + LEADERBOARD_REFRESH_MS;
+    console.log(`[leaderboard] snapshot: ${entries.length} entries, ${withNames} basenames, took ${Date.now() - startedAt}ms`);
+  } catch (e) {
+    console.error("[leaderboard] refresh failed:", e.message);
+  } finally {
+    leaderboardSnapshot.refreshing = false;
   }
+}
+
+app.get("/api/leaderboard", (req, res) => {
+  res.json({
+    ok: true,
+    entries: leaderboardSnapshot.entries,
+    refreshedAt: leaderboardSnapshot.refreshedAt,
+    nextRefreshAt: leaderboardSnapshot.nextRefreshAt,
+    refreshing: leaderboardSnapshot.refreshing,
+  });
 });
+
+// Manual refresh endpoint (admin-only) for forced updates
+app.post("/api/admin/leaderboard/refresh", requireAuth, async (req, res) => {
+  if (!isAdminAddress(req.user.address)) {
+    return res.status(403).json({ ok: false, error: "Not authorized" });
+  }
+  refreshLeaderboard().catch(() => {});
+  res.json({ ok: true, message: "Refresh started" });
+});
+
+// Kick off first refresh on startup, then every 12h
+setTimeout(() => refreshLeaderboard(), 5000);
+setInterval(() => refreshLeaderboard(), LEADERBOARD_REFRESH_MS);
 
 app.get("/api/checkin/status", requireAuth, async (req, res) => {
   try {

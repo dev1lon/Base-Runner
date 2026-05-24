@@ -2138,3 +2138,13 @@ body.w3m-modal-open w3m-modal {
     margin: 0.5rem auto 0;
     display: block;
 }
+
+.leaderboard-subtitle {
+    text-align: center;
+    font-size: 11px;
+    color: rgba(0,0,0,0.45);
+    margin: 0 0 8px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-weight: 600;
+}

@@ -4128,18 +4128,39 @@ function formatLeaderboardName(entry) {
     return a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
 
+function formatNextUpdate(nextRefreshAt) {
+    if (!nextRefreshAt) return '';
+    const ms = nextRefreshAt - Date.now();
+    if (ms <= 0) return 'Updating soon…';
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    if (h > 0) return `Next update in ${h}h ${m}m`;
+    return `Next update in ${m}m`;
+}
+
 async function openLeaderboard() {
     const overlay = document.getElementById('overlay-leaderboard');
     const list    = document.getElementById('leaderboard-list');
+    const subtitle = document.getElementById('leaderboard-subtitle');
     if (!overlay || !list) return;
     overlay.classList.remove('hidden');
     list.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
+    if (subtitle) subtitle.textContent = '';
 
     try {
         const res = await fetch(`${BACKEND_URL}/api/leaderboard`).then(r => r.json());
         if (!res.ok || !Array.isArray(res.entries)) throw new Error(res.error || 'Failed');
+        if (subtitle) {
+            if (!res.refreshedAt) {
+                subtitle.textContent = res.refreshing ? 'Preparing first snapshot…' : '';
+            } else {
+                subtitle.textContent = formatNextUpdate(res.nextRefreshAt);
+            }
+        }
         if (!res.entries.length) {
-            list.innerHTML = '<div class="leaderboard-empty">No scores yet. Be the first!</div>';
+            list.innerHTML = '<div class="leaderboard-empty">' +
+                (res.refreshing ? 'Preparing first snapshot…' : 'No scores yet. Be the first!') +
+                '</div>';
             return;
         }
         const myAddr = (walletAddress || '').toLowerCase();
