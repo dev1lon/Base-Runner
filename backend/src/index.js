@@ -463,6 +463,65 @@ app.get("/api/user/me", requireAuth, async (req, res) => {
 
 // ============ Check-in API ============
 
+// ============ Leaderboard ============
+
+// In-memory cache: { address: { name, fetchedAt } }
+const baseNameCache = new Map();
+const BASE_NAME_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function resolveBaseName(address) {
+  if (!address) return null;
+  const key = address.toLowerCase();
+  const cached = baseNameCache.get(key);
+  if (cached && Date.now() - cached.fetchedAt < BASE_NAME_TTL_MS) return cached.name;
+
+  let name = null;
+  try {
+    const { createPublicClient, http } = require("viem");
+    const { base } = require("viem/chains");
+    const client = createPublicClient({ chain: base, transport: http(process.env.RPC_URL || "https://mainnet.base.org") });
+    // L2Resolver on Base — getEnsName works via the Basenames system
+    name = await client.getEnsName({ address }).catch(() => null);
+  } catch (_) { /* ignore — fall back to address */ }
+
+  baseNameCache.set(key, { name, fetchedAt: Date.now() });
+  return name;
+}
+
+let leaderboardCache = { data: null, fetchedAt: 0 };
+const LEADERBOARD_TTL_MS = 30 * 1000; // 30s cache
+
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    if (leaderboardCache.data && Date.now() - leaderboardCache.fetchedAt < LEADERBOARD_TTL_MS) {
+      return res.json({ ok: true, entries: leaderboardCache.data, cached: true });
+    }
+
+    const { rows } = await require("./shared/db").query(
+      `SELECT address, best_score FROM users WHERE best_score > 0 ORDER BY best_score DESC LIMIT 200`
+    );
+
+    // Filter out admins (overfetch with LIMIT 200 to keep 100 after filter)
+    const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, 100);
+
+    const entries = await Promise.all(filtered.map(async (r, idx) => {
+      const name = await resolveBaseName(r.address);
+      return {
+        rank: idx + 1,
+        address: r.address,
+        name: name || null,
+        score: Number(r.best_score),
+      };
+    }));
+
+    leaderboardCache = { data: entries, fetchedAt: Date.now() };
+    res.json({ ok: true, entries });
+  } catch (err) {
+    console.error("Leaderboard error:", err);
+    res.status(500).json({ ok: false, error: "Failed to load leaderboard" });
+  }
+});
+
 app.get("/api/checkin/status", requireAuth, async (req, res) => {
   try {
     const status = await getCheckinStatus(req.user.address);

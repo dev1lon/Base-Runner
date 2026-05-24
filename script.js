@@ -1885,13 +1885,13 @@ async function submitBackendRun(finalScore) {
     }
 }
 
+let lastFinalScoreForRecord = 0;
+
 function handleGameOver() {
-    if (runRecordedOnChain) return;
-    runRecordedOnChain = true;
-    // submitBackendRun waits internally for session if still in-flight
+    // Submit raw score to backend for best-score tracking (backend applies multiplier server-side)
     submitBackendRun(rawScore);
-    // Record on-chain in parallel (fire-and-forget)
-    recordRunOnChain(score);
+    // Remember the multiplied score for the manual Save Record button
+    lastFinalScoreForRecord = score;
     // Paid game is one-shot — consume the flag so any restart becomes a free game
     isPaidGame = false;
     pendingPaidTxHash = null;
@@ -1906,12 +1906,50 @@ function setGameOverState() {
     gameOver = true;
     // Show full-screen game over overlay
     if (gameOverOverlay) {
-        // Update restart text based on device
         const restartTextEl = gameOverOverlay.querySelector('.game-over-restart');
         if (restartTextEl) {
             restartTextEl.textContent = isMobileLayout ? "TAP to restart" : "Press SPACE to restart";
         }
+        // Show final score with multiplier prefix
+        const scoreLineEl = document.getElementById('game-over-score-line');
+        if (scoreLineEl) {
+            const mult = getRunLevelBonus().mult;
+            const multStr = 'x' + (Number.isInteger(mult) ? mult : mult.toFixed(1));
+            scoreLineEl.textContent = `${multStr}  ${score}`;
+        }
+        // Reset Save Record button state
+        const saveBtn = document.getElementById('save-record-btn');
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Record';
+            saveBtn.style.display = '';
+        }
         gameOverOverlay.classList.remove('hidden');
+    }
+}
+
+async function handleSaveRecord(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const btn = document.getElementById('save-record-btn');
+    if (!btn || btn.disabled) return;
+    if (!RUN_RECORDER_ADDRESS || !walletReady) {
+        btn.textContent = 'Wallet not ready';
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+        const ok = await recordRunOnChain(lastFinalScoreForRecord || score);
+        if (ok) {
+            btn.textContent = 'Saved ✓';
+        } else {
+            btn.textContent = 'Failed — Tap to retry';
+            btn.disabled = false;
+        }
+    } catch (err) {
+        console.error('Save record failed:', err);
+        btn.textContent = 'Failed — Tap to retry';
+        btn.disabled = false;
     }
 }
 
@@ -2589,6 +2627,27 @@ window.onload = function() {
     newRecordEl = document.getElementById("new-record-label");
     gameOverOverlay = document.getElementById("game-over-overlay");
 
+    // Save Record button on game over
+    const saveRecordBtn = document.getElementById("save-record-btn");
+    if (saveRecordBtn) {
+        saveRecordBtn.addEventListener("click", handleSaveRecord);
+        saveRecordBtn.addEventListener("touchstart", handleSaveRecord, { passive: false });
+    }
+
+    // Leaderboard
+    const leaderboardBtn = document.getElementById("leaderboard-button");
+    if (leaderboardBtn) {
+        const open = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } openLeaderboard(); };
+        leaderboardBtn.addEventListener("click", open);
+        leaderboardBtn.addEventListener("touchstart", open, { passive: false });
+    }
+    const leaderboardCloseBtn = document.getElementById("leaderboard-close-btn");
+    if (leaderboardCloseBtn) {
+        const close = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } closeLeaderboard(); };
+        leaderboardCloseBtn.addEventListener("click", close);
+        leaderboardCloseBtn.addEventListener("touchstart", close, { passive: false });
+    }
+
     // Initial state
     showWelcome = true;
     gameActive = false;
@@ -2956,6 +3015,7 @@ function updateGameUIVisibility() {
 }
 
 let _prevCoins = -1, _prevScore = -1, _prevBest = -1, _prevIsNewRecord = false;
+let _prevMult = null;
 function updateGameUI() {
     if (gameCoinsEl && coinCount !== _prevCoins) {
         gameCoinsEl.textContent = String(coinCount);
@@ -2964,6 +3024,15 @@ function updateGameUI() {
     if (gameScoreEl && score !== _prevScore) {
         gameScoreEl.textContent = String(score);
         _prevScore = score;
+    }
+    const multEl = document.getElementById('game-score-mult');
+    if (multEl) {
+        const mult = getRunLevelBonus().mult;
+        const multStr = 'x' + (Number.isInteger(mult) ? mult : mult.toFixed(1));
+        if (multStr !== _prevMult) {
+            multEl.textContent = multStr;
+            _prevMult = multStr;
+        }
     }
     const isNewRecord = score > 0 && score >= bestScore;
     const bestVal = isNewRecord ? score : bestScore;
@@ -4047,6 +4116,51 @@ function openCollection(from = 'menu') {
     if (!hasFreeMint && walletAddress && isValidAddress(NFT_CONTRACT_ADDRESS)) {
         reconcileFreeMint();
     }
+}
+
+// ============ Leaderboard ============
+
+function formatLeaderboardName(entry) {
+    if (entry.name) return entry.name;
+    const a = entry.address || '';
+    return a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+}
+
+async function openLeaderboard() {
+    const overlay = document.getElementById('overlay-leaderboard');
+    const list    = document.getElementById('leaderboard-list');
+    if (!overlay || !list) return;
+    overlay.classList.remove('hidden');
+    list.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/leaderboard`).then(r => r.json());
+        if (!res.ok || !Array.isArray(res.entries)) throw new Error(res.error || 'Failed');
+        if (!res.entries.length) {
+            list.innerHTML = '<div class="leaderboard-empty">No scores yet. Be the first!</div>';
+            return;
+        }
+        const myAddr = (walletAddress || '').toLowerCase();
+        list.innerHTML = res.entries.map(e => {
+            const rankClass = e.rank === 1 ? 'rank-gold' : e.rank === 2 ? 'rank-silver' : e.rank === 3 ? 'rank-bronze' : '';
+            const meClass = e.address.toLowerCase() === myAddr ? 'lb-row-me' : '';
+            const medal   = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : `${e.rank}`;
+            return `
+              <div class="lb-row ${rankClass} ${meClass}">
+                <span class="lb-col-rank">${medal}</span>
+                <span class="lb-col-name">${formatLeaderboardName(e)}</span>
+                <span class="lb-col-score">${e.score.toLocaleString()}</span>
+              </div>
+            `;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = `<div class="leaderboard-empty">Failed to load: ${e.message}</div>`;
+    }
+}
+
+function closeLeaderboard() {
+    const overlay = document.getElementById('overlay-leaderboard');
+    if (overlay) overlay.classList.add('hidden');
 }
 
 async function reconcileFreeMint() {
