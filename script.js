@@ -5693,8 +5693,12 @@ function update(timestamp) {
     context.fillStyle="black";
     context.font=`${scoreFontSize}px courier`;
     context.textBaseline = "top";
-    // Score increases based on speed
-    scoreFloat += stepScale;
+    // Score increases based on speed.
+    // Re-check gameState because setGameOverState() may have been called mid-frame
+    // (collision detection happens before this) — without this the score bumps
+    // once more after the overlay captured it, causing UI/overlay mismatch.
+    const scoreStep = gameState === GAME_STATE.GAME_OVER ? 0 : stepScale;
+    scoreFloat += scoreStep;
     const nextRawScore = Math.floor(scoreFloat);
     if (nextRawScore !== rawScore) {
         rawScore = nextRawScore;
