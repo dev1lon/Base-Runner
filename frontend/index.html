@@ -118,6 +118,7 @@
                 <h1 class="card-title">RUG PULL RUN</h1>
                 <div class="wallet-header-row">
                     <p id="wallet-address" class="wallet-badge">0x1234…abcd</p>
+                    <button id="test-notification-button" class="btn-admin-bell hidden" title="Send broadcast notification (admin)">🔔</button>
                     <button id="disconnect-button" class="btn-disconnect" title="Disconnect wallet">✕</button>
                 </div>
             </div>
@@ -129,10 +130,6 @@
                 <button id="start-button" class="btn btn-ghost btn-large">Free Game</button>
                 <button id="pay-game-button" class="btn btn-primary btn-large">Pay Game · $0.01</button>
                 <button id="collection-button" class="btn btn-ghost btn-large">Collection</button>
-                <div id="test-notification-admin-row" class="admin-notification-row hidden">
-                    <span id="test-notification-address" class="admin-notification-address"></span>
-                    <button id="test-notification-button" class="btn btn-ghost btn-small">Notification</button>
-                </div>
                 <button id="leaderboard-button" class="btn btn-ghost btn-large">
                     Leaderboard 🏆
                 </button>
@@ -161,6 +158,7 @@
                 <h1 class="card-title card-title-pause">PAUSED</h1>
                 <div class="wallet-header-row">
                     <p id="wallet-address-pause" class="wallet-badge">0x1234…abcd</p>
+                    <button id="test-notification-button-pause" class="btn-admin-bell hidden" title="Send broadcast notification (admin)">🔔</button>
                     <button id="disconnect-button-pause" class="btn-disconnect" title="Disconnect wallet">✕</button>
                 </div>
             </div>
@@ -172,10 +170,6 @@
                 <button id="resume-button" class="btn btn-primary btn-large">Resume</button>
                 <button id="home-button-pause" class="btn btn-ghost btn-large">Home</button>
                 <button id="collection-button-pause" class="btn btn-ghost btn-large">Collection</button>
-                <div id="test-notification-admin-row-pause" class="admin-notification-row hidden">
-                    <span id="test-notification-address-pause" class="admin-notification-address"></span>
-                    <button id="test-notification-button-pause" class="btn btn-ghost btn-small">Notification</button>
-                </div>
                 <button id="leaderboard-button-pause" class="btn btn-ghost btn-large">
                     Leaderboard 🏆
                 </button>
@@ -251,9 +245,11 @@
             <div class="card-corner card-corner-bl"></div>
             <div class="card-corner card-corner-br"></div>
             <div class="card-header">
-                <h1 class="card-title leaderboard-title">LEADERBOARD 🏆</h1>
+                <div class="leaderboard-title-row">
+                    <h1 class="card-title leaderboard-title">LEADERBOARD 🏆</h1>
+                    <button id="leaderboard-refresh-btn" class="leaderboard-refresh-icon hidden" title="Refresh now (admin)">↻</button>
+                </div>
                 <p id="leaderboard-subtitle" class="leaderboard-subtitle"></p>
-                <button id="leaderboard-refresh-btn" class="btn leaderboard-refresh-btn" style="display:none">↻ Refresh now</button>
             </div>
             <div class="leaderboard-body">
                 <div class="leaderboard-header">

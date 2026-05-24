@@ -2149,23 +2149,53 @@ body.w3m-modal-open w3m-modal {
     font-weight: 600;
 }
 
-.leaderboard-refresh-btn {
-    display: inline-block;
-    margin: 4px auto 8px;
-    padding: 4px 14px;
-    font-size: 11px;
-    font-weight: 700;
-    background: linear-gradient(180deg, #6BA8E8 0%, #4A88C8 100%);
-    color: #fff;
-    border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 999px;
+/* Admin bell icon next to wallet-address */
+.btn-admin-bell {
+    background: rgba(74,144,217,0.18);
+    color: var(--color-base-blue);
+    border: 1px solid rgba(74,144,217,0.35);
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 14px;
     cursor: pointer;
     touch-action: manipulation;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    box-shadow: 0 2px 6px rgba(74,144,217,0.3);
+    -webkit-tap-highlight-color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
 }
-.leaderboard-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-admin-bell.hidden { display: none; }
+.btn-admin-bell:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Admin refresh icon next to LEADERBOARD title */
+.leaderboard-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.leaderboard-refresh-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(74,144,217,0.18);
+    color: var(--color-base-blue);
+    border: 1px solid rgba(74,144,217,0.35);
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    line-height: 1;
+    padding: 0;
+}
+.leaderboard-refresh-icon.hidden { display: none; }
+.leaderboard-refresh-icon:disabled { opacity: 0.6; cursor: not-allowed; }
+.leaderboard-refresh-icon.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .game-over-buttons {
     display: flex;

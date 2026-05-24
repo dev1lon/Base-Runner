@@ -3189,24 +3189,9 @@ function setTestNotificationButtonDisabled(disabled) {
 
 function updateTestNotificationAdminControls() {
     const showControls = walletReady && !!authToken && walletIsAdmin;
-    const addressText = walletAddress
-        ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-        : "";
-
-    if (testNotificationAdminRow) {
-        testNotificationAdminRow.classList.toggle("hidden", !showControls);
-    }
-    if (testNotificationAdminRowPause) {
-        testNotificationAdminRowPause.classList.toggle("hidden", !showControls);
-    }
-    if (testNotificationAddress) {
-        testNotificationAddress.textContent = addressText;
-        testNotificationAddress.title = walletAddress || "";
-    }
-    if (testNotificationAddressPause) {
-        testNotificationAddressPause.textContent = addressText;
-        testNotificationAddressPause.title = walletAddress || "";
-    }
+    // Bell buttons live next to wallet-address now; toggle their own visibility
+    if (testNotificationButton)      testNotificationButton.classList.toggle("hidden", !showControls);
+    if (testNotificationButtonPause) testNotificationButtonPause.classList.toggle("hidden", !showControls);
 }
 
 function setCheckinStatusText(text, isSuccess) {
@@ -4169,20 +4154,19 @@ async function refreshLeaderboardAsAdmin() {
     const btn = document.getElementById('leaderboard-refresh-btn');
     if (!btn || btn.disabled) return;
     btn.disabled = true;
-    const orig = btn.textContent;
-    btn.textContent = 'Refreshing…';
+    btn.classList.add('spinning');
     try {
         const res = await fetch(`${BACKEND_URL}/api/admin/leaderboard/refresh`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${authToken}` },
         }).then(r => r.json());
         if (!res.ok) throw new Error(res.error || 'Failed');
-        // Poll until snapshot updates (job runs ~10s for 100 addresses)
         await new Promise(r => setTimeout(r, 12000));
         await openLeaderboard();
     } catch (e) {
-        btn.textContent = e.message || 'Failed';
-        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+        console.warn('Leaderboard refresh failed:', e.message);
+        btn.classList.remove('spinning');
+        btn.disabled = false;
     }
 }
 
@@ -4196,9 +4180,9 @@ async function openLeaderboard() {
     list.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
     if (subtitle) subtitle.textContent = '';
     if (refreshBtn) {
-        refreshBtn.style.display = walletIsAdmin ? '' : 'none';
+        refreshBtn.classList.toggle('hidden', !walletIsAdmin);
         refreshBtn.disabled = false;
-        refreshBtn.textContent = '↻ Refresh now';
+        refreshBtn.textContent = '↻';
     }
 
     try {
