@@ -3749,7 +3749,6 @@ function openBuyCoinsModal() {
 function closeBuyCoinsModal() {
     const el = document.getElementById('overlay-buy-coins');
     if (el) el.classList.add('hidden');
-    blockGhostClick();
 }
 
 async function handleBuyCoinsPackage(coins) {
@@ -4230,7 +4229,6 @@ async function openLeaderboard() {
 function closeLeaderboard() {
     const overlay = document.getElementById('overlay-leaderboard');
     if (overlay) overlay.classList.add('hidden');
-    blockGhostClick();
 }
 
 async function reconcileFreeMint() {
@@ -4313,7 +4311,7 @@ function openMintGCModal() {
     const coinsVal   = modal.querySelector('#mint-coins-val');
     const gcOut      = modal.querySelector('#mint-gc-out');
 
-    const close = () => { modal.remove(); blockGhostClick(); };
+    const close = () => modal.remove();
     closeBtn.onclick = close;
     closeBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); close(); }, { passive: false });
 
@@ -4451,9 +4449,8 @@ async function openUpgradeModal(characterId) {
     document.body.appendChild(modal);
 
     const closeBtn = modal.querySelector('.upgrade-close-btn');
-    const closeUpgradeModal = () => { modal.remove(); blockGhostClick(); };
-    closeBtn.addEventListener('click', closeUpgradeModal);
-    closeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); closeUpgradeModal(); }, { passive: false });
+    closeBtn.addEventListener('click', () => modal.remove());
+    closeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); modal.remove(); }, { passive: false });
 
     if (!isMaxLevel && sliderMax > 0) {
         const slider     = modal.querySelector('#upg-slider');
@@ -4603,21 +4600,6 @@ function updateCollectionCoins() {
     }
 }
 
-// iOS ghost-click blocker: when a modal closes on touchstart, the synthetic
-// click from touchend fires on whatever element ends up at those coordinates
-// afterward — often a Pay Game / Check-in button → unwanted transaction.
-// Installs a one-shot capture-phase click swallower for ~500ms.
-function blockGhostClick(durationMs = 500) {
-    const swallower = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-    };
-    document.addEventListener('click', swallower, { capture: true, once: true });
-    setTimeout(() => {
-        document.removeEventListener('click', swallower, { capture: true });
-    }, durationMs);
-}
-
 function closeCollection() {
     collectionLoading = false;
     if (collectionOpenedFrom === 'pause') {
@@ -4627,7 +4609,6 @@ function closeCollection() {
     }
     collectionOpenedFrom = null;
     updateUIState();
-    blockGhostClick();
 }
 
 async function handleMintVitalik() {
