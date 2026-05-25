@@ -473,6 +473,7 @@ const PAYMENTS_ABI = [
 // Character upgrade contracts (set after deploy)
 const GAMECOIN_ADDRESS          = "0x32ED4BE8A2c9e3DE287bC76773ADaAB48f13E787";
 const CHARACTER_UPGRADE_ADDRESS = "0xf7d33fBE432eC51330955494083be4824606F3D1";
+const SPRITE_ASSET_VERSION      = "1"; // Bump when character image files are replaced.
 
 const GAMECOIN_ABI = [
     "function balanceOf(address) view returns (uint256)",
@@ -3943,7 +3944,7 @@ function loadSilhouettes() {
         const charId = card.getAttribute('data-char-id');
         const silImg = card.querySelector('.char-silhouette');
         if (silImg && !silImg.src.includes('preview')) {
-            silImg.src = `${BACKEND_URL}/api/sprites/preview/${charId}`;
+            silImg.src = `${BACKEND_URL}/api/sprites/preview/${charId}.png?v=${SPRITE_ASSET_VERSION}`;
         }
     });
 }
@@ -4830,7 +4831,8 @@ async function loadSpriteForCharacter(charId) {
     if (!authToken || spriteCache[charId]) return;
     
     try {
-        const response = await fetch(`${BACKEND_URL}/api/sprites/${charId}`, {
+        const spriteUrl = `${BACKEND_URL}/api/sprites/${charId}?owner=${encodeURIComponent(walletAddress)}&v=${SPRITE_ASSET_VERSION}`;
+        const response = await fetch(spriteUrl, {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         if (response.ok) {

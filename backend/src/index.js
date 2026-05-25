@@ -18,6 +18,8 @@ const CHARACTER_SPRITES = {
   8: 'cz_leg.png',
   9: 'trump_leg.png'
 };
+const SPRITE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const PRIVATE_SPRITE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 const {
   createSession,
   getSession,
@@ -983,7 +985,7 @@ app.get("/api/sprites/preview/:characterId", async (req, res) => {
     return;
   }
   const spritePath = path.join(__dirname, "sprites", CHARACTER_SPRITES[characterId]);
-  res.sendFile(spritePath);
+  res.sendFile(spritePath, { headers: { "Cache-Control": SPRITE_CACHE_CONTROL } });
 });
 
 // Get sprite for owned character (returns image file)
@@ -996,6 +998,12 @@ app.get("/api/sprites/:characterId", requireAuth, async (req, res) => {
   }
   
   try {
+    const requestedOwner = String(req.query.owner || "").toLowerCase();
+    if (requestedOwner && requestedOwner !== req.user.address) {
+      res.status(403).json({ ok: false, error: "Sprite owner mismatch" });
+      return;
+    }
+
     const user = await getOrCreateUser(req.user.address);
     const owned = user.owned_characters || [];
     
@@ -1017,7 +1025,11 @@ app.get("/api/sprites/:characterId", requireAuth, async (req, res) => {
       return;
     }
     
-    res.sendFile(spritePath);
+    res.sendFile(spritePath, {
+      headers: {
+        "Cache-Control": requestedOwner ? PRIVATE_SPRITE_CACHE_CONTROL : "private, no-store",
+      },
+    });
   } catch (err) {
     console.error("Get sprite error:", err);
     res.status(500).json({ ok: false, error: "Failed to get sprite" });
@@ -1035,13 +1047,13 @@ app.get("/api/sprites", requireAuth, async (req, res) => {
     
     for (const charId of owned) {
       if (CHARACTER_SPRITES[charId]) {
-        sprites[charId] = `/api/sprites/${charId}`;
+        sprites[charId] = `/api/sprites/${charId}?owner=${encodeURIComponent(req.user.address)}&v=1`;
       }
     }
     
     // Add character 0 if has free mint
     if (user.has_claimed_free && CHARACTER_SPRITES[0]) {
-      sprites[0] = `/api/sprites/0`;
+      sprites[0] = `/api/sprites/0?owner=${encodeURIComponent(req.user.address)}&v=1`;
     }
     
     res.json({
