@@ -18,6 +18,9 @@ const CHARACTER_SPRITES = {
   8: 'cz_leg.png',
   9: 'trump_leg.png'
 };
+const CHARACTER_PREVIEWS = Object.fromEntries(
+  Object.entries(CHARACTER_SPRITES).map(([id, filename]) => [id, filename.replace(/\.png$/i, ".webp")])
+);
 const SPRITE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const PRIVATE_SPRITE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 const {
@@ -980,11 +983,15 @@ app.post("/api/user/select-character", requireAuth, async (req, res) => {
 // Public silhouette preview — returns sprite without auth (for locked card silhouettes)
 app.get("/api/sprites/preview/:characterId", async (req, res) => {
   const characterId = parseInt(req.params.characterId);
-  if (isNaN(characterId) || !CHARACTER_SPRITES[characterId]) {
+  if (isNaN(characterId) || !CHARACTER_PREVIEWS[characterId]) {
     res.status(404).end();
     return;
   }
-  const spritePath = path.join(__dirname, "sprites", CHARACTER_SPRITES[characterId]);
+  const spritePath = path.join(__dirname, "sprites", "previews", CHARACTER_PREVIEWS[characterId]);
+  if (!fs.existsSync(spritePath)) {
+    res.status(404).end();
+    return;
+  }
   res.sendFile(spritePath, { headers: { "Cache-Control": SPRITE_CACHE_CONTROL } });
 });
 
