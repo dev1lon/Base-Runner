@@ -2695,6 +2695,30 @@ window.onload = function() {
         leaderboardRefreshBtn.addEventListener("touchstart", refresh, { passive: false });
     }
 
+    // Rules / How to play — both menu and pause buttons
+    const openRules = (e) => {
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        const overlay = document.getElementById("overlay-rules");
+        if (overlay) overlay.classList.remove("hidden");
+    };
+    for (const id of ["rules-button", "rules-button-pause"]) {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener("click", openRules);
+            btn.addEventListener("touchstart", openRules, { passive: false });
+        }
+    }
+    const rulesCloseBtn = document.getElementById("rules-close-btn");
+    if (rulesCloseBtn) {
+        const closeRules = (e) => {
+            if (e) { e.stopPropagation(); e.preventDefault(); }
+            const overlay = document.getElementById("overlay-rules");
+            if (overlay) overlay.classList.add("hidden");
+        };
+        rulesCloseBtn.addEventListener("click", closeRules);
+        rulesCloseBtn.addEventListener("touchstart", closeRules, { passive: false });
+    }
+
     // Initial state
     showWelcome = true;
     gameActive = false;

@@ -2326,3 +2326,73 @@ body.w3m-modal-open w3m-modal {
 .game-over-score-line .go-raw   { color: #fff;    opacity: 0.7; font-weight: 600; min-width: 2ch; text-align: right; }
 .game-over-score-line .go-mult  { color: #FFD700; font-weight: 800; min-width: 3ch; text-align: center; }
 .game-over-score-line .go-final { color: #FFD700; font-weight: 800; font-size: 1.2em; min-width: 2ch; text-align: left; }
+
+/* ============================================
+   Rules / How-to-play overlay
+   ============================================ */
+.rules-card {
+    max-width: 440px;
+    width: 100%;
+}
+.rules-body {
+    padding: 0.25rem 1rem 0.5rem !important;
+    color: var(--color-gray-600);
+}
+.rules-section {
+    padding: 0.6rem 0;
+    border-bottom: 1px solid rgba(74, 144, 217, 0.1);
+}
+.rules-section:last-child { border-bottom: 0; }
+.rules-section .rules-h {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-base-dark);
+    letter-spacing: 0.02em;
+}
+.rules-section .rules-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.8rem;
+    color: var(--color-gray-600);
+    line-height: 1.5;
+}
+.rules-section .rules-list li { margin-bottom: 0.2rem; }
+.rules-section .rules-list b { color: var(--color-gray-700); }
+.rules-section .rules-p {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--color-gray-600);
+}
+.rules-section .rules-p b { color: var(--color-gray-700); }
+.rules-table {
+    width: 100%;
+    margin: 0.4rem 0 0.3rem;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+.rules-table th, .rules-table td {
+    padding: 0.3rem 0.4rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(74, 144, 217, 0.12);
+}
+.rules-table th {
+    color: var(--color-base-dark);
+    font-weight: 700;
+}
+.rules-table td { color: var(--color-gray-600); }
+.rules-table td:first-child { font-weight: 700; color: var(--color-gray-700); }
+.rules-note {
+    margin: 0.3rem 0 0;
+    font-size: 0.72rem;
+    color: var(--color-gray-400);
+    font-style: italic;
+}
+#rules-close-btn {
+    width: 80%;
+    max-width: 200px;
+    margin: 0.5rem auto 0;
+    display: block;
+}

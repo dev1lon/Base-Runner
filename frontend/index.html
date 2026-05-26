@@ -131,15 +131,7 @@
                 <button id="leaderboard-button" class="btn btn-ghost btn-large">
                     Leaderboard 🏆
                 </button>
-            </div>
-            <div class="card-rules">
-                <p class="rules-title">How to play:</p>
-                <ul class="rules-list">
-                    <li>Jump: Space / Arrow Up (tap left on mobile)</li>
-                    <li>Duck: Arrow Down / S (hold right on mobile)</li>
-                    <li>Avoid coins and birds as obstacles</li>
-                    <li>Free: 1 coin per 1,000 pts · Paid: 5 coins per 1,000 pts</li>
-                </ul>
+                <button id="rules-button" class="btn btn-ghost btn-large">How to play</button>
             </div>
             <div class="card-ground"></div>
         </div>
@@ -178,15 +170,7 @@
                 <button id="leaderboard-button-pause" class="btn btn-ghost btn-large">
                     Leaderboard 🏆
                 </button>
-            </div>
-            <div class="card-rules">
-                <p class="rules-title">How to play:</p>
-                <ul class="rules-list">
-                    <li>Jump: Space / Arrow Up (tap left on mobile)</li>
-                    <li>Duck: Arrow Down / S (hold right on mobile)</li>
-                    <li>Avoid coins and birds as obstacles</li>
-                    <li>Free: 1 coin per 1,000 pts · Paid: 5 coins per 1,000 pts</li>
-                </ul>
+                <button id="rules-button-pause" class="btn btn-ghost btn-large">How to play</button>
             </div>
             <div class="card-ground"></div>
         </div>
@@ -267,6 +251,87 @@
                 </div>
             </div>
             <button id="leaderboard-close-btn" class="btn btn-ghost">Close</button>
+            <div class="card-ground"></div>
+        </div>
+    </div>
+
+    <!-- RULES / HOW TO PLAY OVERLAY -->
+    <div id="overlay-rules" class="overlay overlay-dimmed hidden" style="overflow:hidden">
+        <div class="glass-card rules-card">
+            <div class="card-corner card-corner-tl"></div>
+            <div class="card-corner card-corner-tr"></div>
+            <div class="card-corner card-corner-bl"></div>
+            <div class="card-corner card-corner-br"></div>
+            <div class="card-header">
+                <h1 class="card-title">HOW TO PLAY</h1>
+            </div>
+            <div class="card-body rules-body">
+                <section class="rules-section">
+                    <h3 class="rules-h">Controls</h3>
+                    <ul class="rules-list">
+                        <li><b>Jump:</b> Space / Arrow Up · tap left side on mobile</li>
+                        <li><b>Duck:</b> Arrow Down / S · hold right side on mobile</li>
+                        <li>Avoid coins and birds — they end the run</li>
+                    </ul>
+                </section>
+
+                <section class="rules-section">
+                    <h3 class="rules-h">Coins per run</h3>
+                    <ul class="rules-list">
+                        <li><b>Free Game:</b> 1 coin per 1,000 pts</li>
+                        <li><b>Pay Game · $0.01:</b> 5 coins per 1,000 pts</li>
+                        <li>Character level adds bonus coins per 1,000 pts (see Upgrades)</li>
+                    </ul>
+                </section>
+
+                <section class="rules-section">
+                    <h3 class="rules-h">What is GC?</h3>
+                    <p class="rules-p">
+                        <b>GC (Game Coin)</b> is an on-chain ERC-20 token on Base. You can mint GC
+                        1:1 from the coins you earn in-game via the <b>+ Mint GC</b> button in the
+                        Collection. GC lives in your wallet and is required to upgrade characters.
+                    </p>
+                </section>
+
+                <section class="rules-section">
+                    <h3 class="rules-h">Character upgrades</h3>
+                    <p class="rules-p">
+                        Burn GC on a character to gain <b>XP</b> and level it up. Each level boosts
+                        the coins and score you earn while playing as that character.
+                    </p>
+                    <table class="rules-table">
+                        <thead>
+                            <tr><th>Level</th><th>XP needed</th><th>Score ×</th><th>+Coins/1k</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Lv.0</td><td>0</td><td>×1.0</td><td>+0</td></tr>
+                            <tr><td>Lv.1</td><td>100</td><td>×1.1</td><td>+1</td></tr>
+                            <tr><td>Lv.2</td><td>400</td><td>×1.2</td><td>+2</td></tr>
+                            <tr><td>Lv.3</td><td>1,100</td><td>×1.3</td><td>+3</td></tr>
+                            <tr><td>Lv.4</td><td>2,600</td><td>×1.5</td><td>+4</td></tr>
+                            <tr><td>Lv.5</td><td>5,600</td><td>×2.0</td><td>+5</td></tr>
+                        </tbody>
+                    </table>
+                    <p class="rules-note">1 GC burned = 1 XP. XP is soul-bound to your wallet.</p>
+                </section>
+
+                <section class="rules-section">
+                    <h3 class="rules-h">Leaderboard</h3>
+                    <ul class="rules-list">
+                        <li>Press <b>Save record to leaderboard</b> after a run to submit your best score</li>
+                        <li>Only scores you submit count — your wallet ranks by your highest saved score</li>
+                    </ul>
+                </section>
+
+                <section class="rules-section">
+                    <h3 class="rules-h">Daily check-in</h3>
+                    <ul class="rules-list">
+                        <li>Tap <b>Check-in</b> every 24h to keep your streak alive</li>
+                        <li>Streaks make your wallet eligible for future rewards</li>
+                    </ul>
+                </section>
+            </div>
+            <button id="rules-close-btn" class="btn btn-ghost">Close</button>
             <div class="card-ground"></div>
         </div>
     </div>
