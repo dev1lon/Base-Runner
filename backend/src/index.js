@@ -587,8 +587,8 @@ async function refreshLeaderboard() {
   const startedAt = Date.now();
   try {
     const { rows } = await require("./shared/db").query(
-      `SELECT address, best_score FROM users WHERE best_score > 0
-       ORDER BY best_score DESC LIMIT ${LEADERBOARD_LIMIT + 25}`
+      `SELECT address, leaderboard_score FROM users WHERE leaderboard_score > 0
+       ORDER BY leaderboard_score DESC LIMIT ${LEADERBOARD_LIMIT + 25}`
     );
     const filtered = rows.filter(r => !isAdminAddress(r.address)).slice(0, LEADERBOARD_LIMIT);
 
@@ -601,7 +601,7 @@ async function refreshLeaderboard() {
         rank: entries.length + 1,
         address: r.address,
         name,
-        score: Number(r.best_score),
+        score: Number(r.leaderboard_score),
       });
       // Small gap to stay polite to public Base RPC
       await new Promise(rr => setTimeout(rr, 50));
@@ -627,6 +627,39 @@ app.get("/api/leaderboard", (req, res) => {
     nextRefreshAt: leaderboardSnapshot.nextRefreshAt,
     refreshing: leaderboardSnapshot.refreshing,
   });
+});
+
+// Players save their (already on-chain) record to the leaderboard.
+// Server validates score does not exceed user's tracked best_score and is
+// strictly higher than the existing leaderboard_score before storing.
+app.post("/api/leaderboard/save", requireAuth, async (req, res) => {
+  const score = Number(req.body?.score);
+  if (!Number.isFinite(score) || score < 1) {
+    return res.status(400).json({ ok: false, error: "Invalid score" });
+  }
+  try {
+    const db = require("./shared/db");
+    const { rows } = await db.query(
+      `SELECT best_score, leaderboard_score FROM users WHERE address = $1`,
+      [req.user.address]
+    );
+    if (!rows.length) return res.status(404).json({ ok: false, error: "User not found" });
+    const { best_score, leaderboard_score } = rows[0];
+    if (score > Number(best_score)) {
+      return res.status(400).json({ ok: false, error: "Score exceeds best_score" });
+    }
+    if (score <= Number(leaderboard_score)) {
+      return res.json({ ok: true, updated: false, leaderboardScore: Number(leaderboard_score) });
+    }
+    await db.query(
+      `UPDATE users SET leaderboard_score = $1, updated_at = NOW() WHERE address = $2`,
+      [score, req.user.address]
+    );
+    res.json({ ok: true, updated: true, leaderboardScore: score });
+  } catch (e) {
+    console.error("leaderboard/save error:", e);
+    res.status(500).json({ ok: false, error: "Failed to save record" });
+  }
 });
 
 // Manual refresh endpoint (admin-only) for forced updates

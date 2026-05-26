@@ -57,6 +57,18 @@ async function ensureSchema() {
   // Base.dev wallet-address notifications
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ;`);
 
+  // Leaderboard: only scores explicitly submitted via Save Record button count here.
+  // Add column AND backfill from best_score once so existing users stay on the board.
+  const lbCol = await pool.query(`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='users' AND column_name='leaderboard_score'
+  `);
+  if (lbCol.rowCount === 0) {
+    await pool.query(`ALTER TABLE users ADD COLUMN leaderboard_score INTEGER NOT NULL DEFAULT 0;`);
+    await pool.query(`UPDATE users SET leaderboard_score = best_score WHERE best_score > 0;`);
+    console.log("[db] migrated leaderboard_score from best_score");
+  }
+
 
   // Shop characters table
   await pool.query(`

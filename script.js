@@ -1931,7 +1931,7 @@ function setGameOverState() {
         const saveBtn = document.getElementById('save-record-btn');
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Save Record';
+            saveBtn.textContent = 'Save record to leaderboard';
             saveBtn.style.display = '';
         }
         gameOverOverlay.classList.remove('hidden');
@@ -1948,10 +1948,19 @@ async function handleSaveRecord(e) {
     }
     btn.disabled = true;
     btn.textContent = 'Saving…';
+    const finalScore = lastFinalScoreForRecord || score;
     try {
-        const ok = await recordRunOnChain(lastFinalScoreForRecord || score);
+        const ok = await recordRunOnChain(finalScore);
         if (ok) {
             btn.textContent = 'Saved ✓';
+            // After on-chain confirmation, register score on the leaderboard
+            try {
+                await fetch(`${BACKEND_URL}/api/leaderboard/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ score: finalScore }),
+                });
+            } catch (_) { /* leaderboard sync is best-effort */ }
         } else {
             btn.textContent = 'Failed — Tap to retry';
             btn.disabled = false;
