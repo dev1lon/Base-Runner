@@ -429,13 +429,13 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-4);
-    padding-top: calc(var(--space-4) + var(--safe-top));
-    padding-bottom: calc(var(--space-4) + var(--safe-bottom));
-    padding-left: calc(var(--space-4) + var(--safe-left));
-    padding-right: calc(var(--space-4) + var(--safe-right));
+    padding: 0.5rem;
+    padding-top: calc(0.5rem + var(--safe-top));
+    padding-bottom: calc(0.5rem + var(--safe-bottom));
+    padding-left: calc(0.5rem + var(--safe-left));
+    padding-right: calc(0.5rem + var(--safe-right));
     z-index: 50;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .overlay.hidden {
@@ -970,12 +970,6 @@ body {
    ============================================ */
 
 @media (max-width: 480px) {
-    .overlay {
-        padding: var(--space-3);
-        padding-top: calc(var(--space-3) + var(--safe-top));
-        padding-bottom: calc(var(--space-3) + var(--safe-bottom));
-    }
-
     .glass-card {
         max-width: 100%;
         border-radius: var(--radius-xl);
@@ -1273,11 +1267,7 @@ body.w3m-modal-open w3m-modal {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Tight padding so card sits close to status/URL bars without stretching sides */
-#overlay-collection {
-    padding-top: calc(0.5rem + var(--safe-top));
-    padding-bottom: calc(0.5rem + var(--safe-bottom));
-}
+/* #overlay-collection inherits padding from .overlay */
 
 .collection-grid {
     display: grid;
