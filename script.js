@@ -64,8 +64,8 @@ const BASE_SPAWN_OFFSET = 150;
 // PHYSICS
 //=============================================================================
 const SPEED_START = 4;
-const SPEED_MAX = 4;
-const SPEED_MAX_SCORE = 10000;
+const SPEED_INCREASE_SCORE_INTERVAL = 10000;
+const SPEED_INCREASE_MULTIPLIER = 1.15;
 const BASE_GRAVITY = 0.8;
 const BASE_JUMP_VELOCITY = -16;
 
@@ -5503,10 +5503,9 @@ function update(timestamp) {
         return;
     }
 
-    // Speed progression
-    const displayScore = Math.floor(scoreFloat);
-    const speedProgress = Math.min(displayScore / SPEED_MAX_SCORE, 1);
-    speed = SPEED_START + (SPEED_MAX - SPEED_START) * speedProgress;
+    // Increase obstacle speed by 15% for each 10,000 visible score earned.
+    const speedTier = Math.floor(score / SPEED_INCREASE_SCORE_INTERVAL);
+    speed = SPEED_START * Math.pow(SPEED_INCREASE_MULTIPLIER, speedTier);
     velocityX = -speed * gameScale;
     const frameVelocityX = velocityX * stepScale;
 

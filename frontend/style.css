@@ -2081,7 +2081,7 @@ body.w3m-modal-open w3m-modal {
     padding: 8px 6px;
     border-radius: 10px;
     font-size: 14px;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.05);
 }
 .lb-col-rank   { font-weight: 700; color: rgba(0,0,0,0.55); font-size: 16px; }
 .lb-col-name   {
@@ -2099,25 +2099,24 @@ body.w3m-modal-open w3m-modal {
 }
 .rank-gold {
     background: linear-gradient(90deg, rgba(255,215,0,0.18), rgba(255,215,0,0.06));
-    border: 1px solid rgba(255,200,0,0.5);
+    box-shadow: inset 0 0 0 1px rgba(255,200,0,0.5);
 }
 .rank-gold .lb-col-rank   { color: #b8860b; font-size: 22px; }
 .rank-gold .lb-col-score  { color: #b8860b; }
 .rank-silver {
     background: linear-gradient(90deg, rgba(180,180,200,0.2), rgba(180,180,200,0.06));
-    border: 1px solid rgba(160,160,180,0.5);
+    box-shadow: inset 0 0 0 1px rgba(160,160,180,0.5);
 }
 .rank-silver .lb-col-rank  { font-size: 22px; }
 .rank-bronze {
     background: linear-gradient(90deg, rgba(205,127,50,0.18), rgba(205,127,50,0.06));
-    border: 1px solid rgba(205,127,50,0.4);
+    box-shadow: inset 0 0 0 1px rgba(205,127,50,0.4);
 }
 .rank-bronze .lb-col-rank  { color: #8b4513; font-size: 22px; }
 .rank-bronze .lb-col-score { color: #8b4513; }
 .lb-row-me {
     background: linear-gradient(90deg, rgba(74,144,217,0.22), rgba(74,144,217,0.06)) !important;
-    border: 2px solid var(--color-base-blue) !important;
-    box-shadow: inset 4px 0 0 var(--color-base-blue), 0 2px 8px rgba(74,144,217,0.3);
+    box-shadow: inset 0 0 0 2px var(--color-base-blue), inset 4px 0 0 var(--color-base-blue), 0 2px 8px rgba(74,144,217,0.3) !important;
 }
 .lb-row-me .lb-col-name,
 .lb-row-me .lb-col-score {
