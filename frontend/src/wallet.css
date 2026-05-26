@@ -101,14 +101,15 @@
 .base-gate-badge {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 15px;
+  gap: 8px;
+  padding: 7px 14px;
   color: var(--color-base-dark);
-  font-family: "Press Start 2P", var(--font-family);
-  font-size: 11px;
+  font-family: var(--font-family);
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
-  letter-spacing: 0;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(74, 144, 217, 0.2);
   border-radius: 20px;
@@ -124,11 +125,11 @@
 .base-gate-title {
   margin: 0;
   color: var(--color-base-dark);
-  font-family: "Press Start 2P", var(--font-family);
-  font-size: 34px;
+  font-family: var(--font-family);
+  font-size: 40px;
   font-weight: 800;
-  line-height: 1.45;
-  letter-spacing: 0;
+  line-height: 1.05;
+  letter-spacing: -1px;
 }
 
 .base-gate-copy {
@@ -142,10 +143,16 @@
 .base-gate-button {
   width: min(292px, 100%);
   min-height: 58px;
-  font-family: "Press Start 2P", var(--font-family);
-  font-size: 12px;
-  line-height: 1.4;
-  letter-spacing: 0;
+  font-family: var(--font-family);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.3px;
+  position: relative;
+  z-index: 5;
+  pointer-events: auto;
+  cursor: pointer;
+  text-decoration: none;
   animation: base-gate-pulse 1.7s ease-in-out infinite;
 }
 

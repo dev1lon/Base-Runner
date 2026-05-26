@@ -67,6 +67,14 @@ function BaseAppOnlyScreen() {
           href={BASE_APP_LINK}
           target="_blank"
           rel="noopener noreferrer"
+          style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+          onTouchEnd={(e) => {
+            // Fallback: some mobile webviews don't follow target=_blank on tap.
+            // Force navigation via JS only when the native anchor didn't take.
+            e.stopPropagation();
+            try { window.open(BASE_APP_LINK, '_blank', 'noopener,noreferrer'); }
+            catch { window.location.href = BASE_APP_LINK; }
+          }}
         >
           Open in Base App
         </a>
