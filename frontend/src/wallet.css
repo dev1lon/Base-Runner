@@ -68,91 +68,115 @@
   align-items: center;
   justify-content: center;
   overflow-y: auto;
-  padding: 24px 20px;
-  color: #f7f8fa;
-  background: #090b10;
+  padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
+  color: var(--color-gray-700);
+  background: linear-gradient(180deg, var(--color-bg-start) 0%, var(--color-bg-end) 100%);
 }
 
 .base-gate-frame {
-  width: min(430px, 100%);
-  min-height: min(680px, calc(100dvh - 48px));
+  position: relative;
+  width: min(600px, 100%);
+  min-height: min(740px, calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom)));
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 22px;
   box-sizing: border-box;
-  padding: 42px 26px;
+  padding: 46px 26px;
   text-align: center;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background-color: #0d111c;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-  background-size: 34px 34px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 200% 100% at 0% 30%, transparent 60%, rgba(180, 195, 215, 0.15) 61%, transparent 62%),
+    radial-gradient(ellipse 200% 100% at 100% 70%, transparent 60%, rgba(180, 195, 215, 0.15) 61%, transparent 62%),
+    repeating-linear-gradient(0deg, rgba(160, 180, 200, 0.08) 0, rgba(160, 180, 200, 0.08) 1px, transparent 1px, transparent 20px),
+    repeating-linear-gradient(90deg, rgba(160, 180, 200, 0.08) 0, rgba(160, 180, 200, 0.08) 1px, transparent 1px, transparent 20px),
+    linear-gradient(180deg, rgba(200, 215, 235, 0.95) 0%, rgba(220, 230, 245, 0.98) 30%, rgba(235, 242, 250, 0.98) 70%, rgba(240, 245, 252, 0.98) 100%);
+  background-size: 100% 100%, 100% 100%, 20px 20px, 20px 20px, 100% 100%;
 }
 
-.base-gate-mark {
-  width: 54px;
-  height: 54px;
-  margin-bottom: 12px;
-  border-radius: 4px;
-  background: #0052ff;
+.base-gate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  color: var(--color-base-dark);
+  font-family: "Press Start 2P", var(--font-family);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(74, 144, 217, 0.2);
+  border-radius: 20px;
 }
 
-.base-gate-kicker {
-  margin: 0;
-  color: #6d99ff;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: 0.12em;
+.base-gate-badge-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-success);
 }
 
 .base-gate-title {
   margin: 0;
-  color: #ffffff;
-  font-size: clamp(32px, 8vw, 40px);
+  color: var(--color-base-dark);
+  font-family: "Press Start 2P", var(--font-family);
+  font-size: 34px;
   font-weight: 800;
-  line-height: 1.12;
+  line-height: 1.45;
   letter-spacing: 0;
 }
 
 .base-gate-copy {
   max-width: 308px;
-  margin: 0 0 12px;
-  color: rgba(247, 248, 250, 0.72);
+  margin: 0 0 16px;
+  color: var(--color-gray-500);
   font-size: 16px;
   line-height: 1.5;
 }
 
 .base-gate-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: min(292px, 100%);
-  min-height: 54px;
-  box-sizing: border-box;
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 700;
-  text-decoration: none;
-  border: 1px solid #3d7dff;
-  border-radius: 8px;
-  background: #0052ff;
-}
-
-.base-gate-button:active {
-  background: #0047de;
+  min-height: 58px;
+  font-family: "Press Start 2P", var(--font-family);
+  font-size: 12px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  animation: base-gate-pulse 1.7s ease-in-out infinite;
 }
 
 .base-gate-link {
-  margin: 6px 0 0;
-  color: rgba(247, 248, 250, 0.48);
+  margin: 7px 0 0;
+  color: var(--color-gray-400);
   font-family: "SF Mono", "Fira Code", monospace;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.base-gate-ground {
+  position: absolute;
+  right: 20px;
+  bottom: 26px;
+  left: 20px;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, rgba(74, 144, 217, 0.55), transparent);
+  border-radius: 2px;
+}
+
+@keyframes base-gate-pulse {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    box-shadow: var(--shadow-button), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  50% {
+    transform: translateY(-1px) scale(1.035);
+    box-shadow: 0 7px 22px rgba(74, 144, 217, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  }
 }
 
 @media (max-height: 580px) {
@@ -162,9 +186,17 @@
     padding: 22px 20px;
   }
 
-  .base-gate-mark {
-    width: 42px;
-    height: 42px;
-    margin-bottom: 2px;
+  .base-gate-title {
+    font-size: 23px;
+  }
+
+  .base-gate-ground {
+    bottom: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .base-gate-title {
+    font-size: 25px;
   }
 }

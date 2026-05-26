@@ -50,16 +50,28 @@ function BaseAppOnlyScreen() {
   return (
     <div className="base-gate">
       <main className="base-gate-frame">
-        <div className="base-gate-mark" aria-hidden="true" />
-        <p className="base-gate-kicker">BASE APP ONLY</p>
+        <div className="card-corner card-corner-tl" />
+        <div className="card-corner card-corner-tr" />
+        <div className="card-corner card-corner-bl" />
+        <div className="card-corner card-corner-br" />
+        <div className="base-gate-badge">
+          <span className="base-gate-badge-dot" aria-hidden="true" />
+          BASE APP ONLY
+        </div>
         <h1 className="base-gate-title">RUG PULL RUN</h1>
         <p className="base-gate-copy">
           Open the game inside Base App to connect your wallet and play.
         </p>
-        <a className="base-gate-button" href={BASE_APP_LINK}>
+        <a
+          className="btn btn-primary btn-large base-gate-button"
+          href={BASE_APP_LINK}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           Open in Base App
         </a>
         <p className="base-gate-link">base.app/app/rugpullrun.app</p>
+        <div className="base-gate-ground" aria-hidden="true" />
       </main>
     </div>
   )
