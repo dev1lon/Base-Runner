@@ -64,8 +64,8 @@ const BASE_SPAWN_OFFSET = 150;
 // PHYSICS
 //=============================================================================
 const SPEED_START = 4;
-const SPEED_INCREASE_SCORE_INTERVAL = 10000;
-const SPEED_INCREASE_MULTIPLIER = 1.15;
+const SPEED_FIRST_INCREASE_SCORE = 10000;
+const SPEED_INCREASE_MULTIPLIER = 1.10;
 const ADMIN_MAX_SPEED_TEST_TIER = 10;
 const BASE_GRAVITY = 0.8;
 const BASE_JUMP_VELOCITY = -16;
@@ -3223,8 +3223,18 @@ function clampAdminSpeedTestTier(value) {
     return Math.max(0, Math.min(ADMIN_MAX_SPEED_TEST_TIER, Math.round(number)));
 }
 
+function getSpeedTierThreshold(tier) {
+    if (tier <= 0) return 0;
+    return SPEED_FIRST_INCREASE_SCORE * Math.pow(2, tier - 1);
+}
+
+function getSpeedTierForScore(currentScore) {
+    if (currentScore < SPEED_FIRST_INCREASE_SCORE) return 0;
+    return Math.floor(Math.log2(currentScore / SPEED_FIRST_INCREASE_SCORE)) + 1;
+}
+
 function formatAdminSpeedTestTier(tier) {
-    const testScore = tier * SPEED_INCREASE_SCORE_INTERVAL;
+    const testScore = getSpeedTierThreshold(tier);
     const multiplier = Math.pow(SPEED_INCREASE_MULTIPLIER, tier).toFixed(2);
     return `${testScore.toLocaleString()} pts · x${multiplier}`;
 }
@@ -5562,8 +5572,8 @@ function update(timestamp) {
         return;
     }
 
-    // Admins can preview a score tier immediately; players progress only from actual score.
-    const earnedSpeedTier = Math.floor(score / SPEED_INCREASE_SCORE_INTERVAL);
+    // Tiers unlock at 10k, 20k, 40k, 80k...; admins may preview a tier immediately.
+    const earnedSpeedTier = getSpeedTierForScore(score);
     const testSpeedTier = walletIsAdmin ? adminSpeedTestTier : 0;
     const speedTier = Math.max(earnedSpeedTier, testSpeedTier);
     speed = SPEED_START * Math.pow(SPEED_INCREASE_MULTIPLIER, speedTier);
