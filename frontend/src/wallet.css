@@ -59,3 +59,112 @@
   text-align: center;
   margin-top: 10px;
 }
+
+.base-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 24px 20px;
+  color: #f7f8fa;
+  background: #090b10;
+}
+
+.base-gate-frame {
+  width: min(430px, 100%);
+  min-height: min(680px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  box-sizing: border-box;
+  padding: 42px 26px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background-color: #0d111c;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+.base-gate-mark {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background: #0052ff;
+}
+
+.base-gate-kicker {
+  margin: 0;
+  color: #6d99ff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.12em;
+}
+
+.base-gate-title {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(32px, 8vw, 40px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: 0;
+}
+
+.base-gate-copy {
+  max-width: 308px;
+  margin: 0 0 12px;
+  color: rgba(247, 248, 250, 0.72);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.base-gate-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(292px, 100%);
+  min-height: 54px;
+  box-sizing: border-box;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid #3d7dff;
+  border-radius: 8px;
+  background: #0052ff;
+}
+
+.base-gate-button:active {
+  background: #0047de;
+}
+
+.base-gate-link {
+  margin: 6px 0 0;
+  color: rgba(247, 248, 250, 0.48);
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-height: 580px) {
+  .base-gate-frame {
+    min-height: 0;
+    gap: 12px;
+    padding: 22px 20px;
+  }
+
+  .base-gate-mark {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 2px;
+  }
+}

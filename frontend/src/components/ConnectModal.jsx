@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useConnect, useAccount, useWalletClient, useDisconnect } from 'wagmi'
+import { useConnect, useAccount, useWalletClient } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { useSIWE } from '../hooks/useSIWE'
 import { useGameBridge } from '../hooks/useGameBridge'
@@ -7,99 +7,126 @@ import { useGameBridge } from '../hooks/useGameBridge'
 const BASE_CHAIN_ID = 8453
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.onrender.com'
 const AUTH_KEY = 'runner_auth_token'
+const BASE_APP_LINK = 'https://base.app/app/rugpullrun.app'
 
 function getStoredToken(address) {
   if (!address) return null
   try {
     const map = JSON.parse(localStorage.getItem(AUTH_KEY) ?? '{}')
     return map[address.toLowerCase()] || null
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
 async function validateToken(token) {
   try {
-    const r = await fetch(`${BACKEND}/api/user/me`, {
-      headers: { Authorization: `Bearer ${token}` }
+    const response = await fetch(`${BACKEND}/api/user/me`, {
+      headers: { Authorization: `Bearer ${token}` },
     })
-    if (!r.ok) return null
-    const data = await r.json()
+    if (!response.ok) return null
+    const data = await response.json()
     return data?.ok ? data : null
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
 function isMobile() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 }
 
-function isWalletApp() {
-  if (!isMobile()) return false  // desktop extensions don't count
+function isBaseAppEnvironment() {
+  if (!isMobile()) return false
   const ua = navigator.userAgent.toLowerCase()
-  if (ua.includes('coinbase') || ua.includes('metamask') || ua.includes('trust') || ua.includes('rainbow')) return true
-  const eth = window.ethereum
-  if (eth && (eth.isCoinbaseWallet || eth.isCoinbaseBrowser || eth.isMetaMask || eth.isTrust)) return true
-  return false
+  const provider = window.ethereum
+  return ua.includes('base app') ||
+    ua.includes('baseapp') ||
+    ua.includes('coinbase') ||
+    !!(provider && (provider.isCoinbaseWallet || provider.isCoinbaseBrowser))
 }
 
-export function ConnectModal({ open, onClose, onReady }) {
-  const { connect, connectors, isPending } = useConnect()
+function BaseAppOnlyScreen() {
+  return (
+    <div className="base-gate">
+      <main className="base-gate-frame">
+        <div className="base-gate-mark" aria-hidden="true" />
+        <p className="base-gate-kicker">BASE APP ONLY</p>
+        <h1 className="base-gate-title">RUG PULL RUN</h1>
+        <p className="base-gate-copy">
+          Open the game inside Base App to connect your wallet and play.
+        </p>
+        <a className="base-gate-button" href={BASE_APP_LINK}>
+          Open in Base App
+        </a>
+        <p className="base-gate-link">base.app/app/rugpullrun.app</p>
+      </main>
+    </div>
+  )
+}
+
+export function ConnectModal({ onReady }) {
+  const { connect } = useConnect()
   const { address, chainId, isConnected } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const { disconnect: wagmiDisconnect } = useDisconnect()
   const { signIn, status: siweStatus, reset: siweReset } = useSIWE()
   const [token, setToken] = useState(null)
   const [error, setError] = useState('')
-  const [showStandard, setShowStandard] = useState(false)
+  const [inBaseApp, setInBaseApp] = useState(() => isBaseAppEnvironment())
   const autoConnectAttempted = useRef(false)
   const autoSignAttempted = useRef(false)
 
+  useEffect(() => {
+    if (inBaseApp) return undefined
+
+    let attempts = 0
+    const timer = window.setInterval(() => {
+      attempts += 1
+      if (isBaseAppEnvironment()) {
+        setInBaseApp(true)
+        window.clearInterval(timer)
+      } else if (attempts >= 20) {
+        window.clearInterval(timer)
+      }
+    }, 150)
+
+    return () => window.clearInterval(timer)
+  }, [inBaseApp])
+
   useGameBridge({
-    address,
+    address: inBaseApp ? address : null,
     chainId: chainId ?? BASE_CHAIN_ID,
-    token,
+    token: inBaseApp ? token : null,
     onDisconnect: () => {
       setToken(null)
-      setShowStandard(false)
+      setError('')
       autoConnectAttempted.current = false
       autoSignAttempted.current = false
       siweReset()
     },
   })
 
-  // Reset auth attempt when wallet disconnects so user can retry
-  useEffect(() => {
-    if (!isConnected) {
-      autoSignAttempted.current = false
-      setError('')
-    }
-  }, [isConnected])
+  const handleConnect = () => {
+    setError('')
+    connect(
+      { connector: injected() },
+      { onError: (err) => setError(err.message ?? 'Wallet connection failed') },
+    )
+  }
 
-  // Auto-close modal on wallet rejection — but only on desktop.
-  // In wallet app (Base App) the modal is always rendered; keep status='cancelled'
-  // so the Sign In retry button stays visible.
   useEffect(() => {
-    if (siweStatus === 'cancelled' && !isWalletApp()) {
-      wagmiDisconnect()
-      siweReset()
-      setError('')
-      autoSignAttempted.current = false
-      autoConnectAttempted.current = false
-      onClose?.()
-    }
-  }, [siweStatus]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-connect when inside Base App / mobile wallet browser
-  useEffect(() => {
-    if (autoConnectAttempted.current || isConnected) return
-    if (!isWalletApp()) return
+    if (!inBaseApp || autoConnectAttempted.current || isConnected) return
     autoConnectAttempted.current = true
-    connect({ connector: injected() })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    connect(
+      { connector: injected() },
+      { onError: (err) => setError(err.message ?? 'Wallet connection failed') },
+    )
+  }, [inBaseApp, isConnected]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignIn = async () => {
-    if (!isConnected || !address) return
+    if (!inBaseApp || !isConnected || !address) return
     setError('')
     try {
-      // Pass walletClient directly — avoids re-fetching connector which can hang
       const data = await signIn(address, chainId ?? BASE_CHAIN_ID, walletClient)
       setToken(data.token)
       onReady?.()
@@ -109,154 +136,30 @@ export function ConnectModal({ open, onClose, onReady }) {
     }
   }
 
-  // Restore existing session OR auto-sign in Base App
   useEffect(() => {
-    if (!isConnected || !address || token) return
-    if (!walletClient) return
+    if (!inBaseApp || !isConnected || !address || token || !walletClient) return
     if (autoSignAttempted.current) return
     autoSignAttempted.current = true
 
     const stored = getStoredToken(address)
     if (stored) {
-      validateToken(stored).then(data => {
+      validateToken(stored).then((data) => {
         if (data) {
           setToken(stored)
           onReady?.()
-        } else if (isWalletApp()) {
-          // Stored token invalid in Base App — auto-sign new one
+        } else {
           handleSignIn()
         }
       })
-    } else if (isWalletApp()) {
-      // No stored token in Base App — auto-sign
-      handleSignIn()
+    } else {
+      Promise.resolve().then(() => handleSignIn())
     }
-    // Desktop without token: shows Sign In button (no auto-sign)
-  }, [isConnected, address, walletClient]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inBaseApp, isConnected, address, walletClient, token]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const smartConnector = connectors.find(c =>
-    c.id === 'coinbaseWalletSDK' || c.id === 'coinbaseWallet' ||
-    c.name?.toLowerCase().includes('coinbase') || c.name?.toLowerCase().includes('smart wallet') ||
-    (c.id !== 'injected' && c.id !== 'metaMask')
-  )
-  const injectedConnectors = connectors.filter(c => c.id !== 'coinbaseWalletSDK')
+  if (!inBaseApp) return <BaseAppOnlyScreen />
+  if (token) return null
 
-  // Unified cancel: in wallet app disconnects the wallet (only way to "close"),
-  // on desktop closes the modal.
-  const handleCancel = () => {
-    if (isWalletApp() || isConnected) {
-      wagmiDisconnect()
-      siweReset()
-      setError('')
-      autoSignAttempted.current = false
-      autoConnectAttempted.current = false
-    }
-    onClose?.()
-  }
-
-  const CancelBtn = () => (
-    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-      <button
-        className="btn btn-ghost btn-sm"
-        onClick={handleCancel}
-        style={{ width: 'auto', minWidth: 0 }}
-      >
-        Cancel
-      </button>
-    </div>
-  )
-
-  const DisconnectX = () => (
-    <button
-      className="btn-disconnect"
-      onClick={handleCancel}
-      title="Disconnect wallet"
-      style={{ marginLeft: 8 }}
-    >
-      ✕
-    </button>
-  )
-
-  // Hooks always run (bridge must stay alive) — only hide rendering when not needed
-  if (token) return null       // authenticated: bridge active, no UI needed
-  if (!open && !isWalletApp()) return null  // desktop: wait for explicit open
-
-  // Inside wallet app — show minimal loading screen while auto-connecting/signing
-  if (isWalletApp()) {
-    const hasError = siweStatus === 'cancelled' || siweStatus === 'error' || !!error
-    return (
-      <div className="rpr-overlay">
-        <div className="rpr-card">
-          <div className="card-corner card-corner-tl" />
-          <div className="card-corner card-corner-tr" />
-          <div className="card-corner card-corner-bl" />
-          <div className="card-corner card-corner-br" />
-          <div className="card-header">
-            <h1 className="card-title">RUG PULL RUN</h1>
-            <p className="card-subtitle">
-              {!isConnected
-                ? 'Connecting…'
-                : siweStatus === 'pending'
-                ? 'Signing…'
-                : hasError
-                ? 'Sign in to play'
-                : 'Sign to continue'}
-            </p>
-          </div>
-          <div className="card-body">
-            {error && <p className="rpr-error" style={{ marginBottom: 12 }}>{error}</p>}
-            {isConnected && siweStatus !== 'pending' && (
-              <button
-                className="btn btn-primary btn-large"
-                style={{ touchAction: 'manipulation' }}
-                onClick={handleSignIn}
-                onTouchEnd={e => { e.preventDefault(); handleSignIn(); }}
-              >
-                Sign In
-              </button>
-            )}
-          </div>
-          <div className="card-ground" />
-        </div>
-      </div>
-    )
-  }
-
-  // Desktop / external browser — Phase 2: connected, need to sign
-  if (isConnected && address) {
-    return (
-      <div className="rpr-overlay">
-        <div className="rpr-card">
-          <div className="card-corner card-corner-tl" />
-          <div className="card-corner card-corner-tr" />
-          <div className="card-corner card-corner-bl" />
-          <div className="card-corner card-corner-br" />
-          <div className="card-header">
-            <h1 className="card-title">RUG PULL RUN</h1>
-            <p className="card-subtitle">Sign to verify ownership</p>
-            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
-              <p className="rpr-address-pill" style={{ margin: '14px 0 0' }}>{address.slice(0, 6)}…{address.slice(-4)}</p>
-              <DisconnectX />
-            </div>
-          </div>
-          <div className="card-body">
-            <button
-              className="btn btn-primary btn-large"
-              onClick={handleSignIn}
-              disabled={siweStatus === 'pending'}
-            >
-              {siweStatus === 'pending' ? 'Signing…' : 'Sign In'}
-            </button>
-            {error && <p className="rpr-error">{error}</p>}
-          </div>
-          {siweStatus !== 'pending' && <CancelBtn />}
-          <div className="card-ground" />
-        </div>
-      </div>
-    )
-  }
-
-  // Desktop — Phase 1: wallet selector
+  const hasError = siweStatus === 'cancelled' || siweStatus === 'error' || !!error
   return (
     <div className="rpr-overlay">
       <div className="rpr-card">
@@ -266,62 +169,37 @@ export function ConnectModal({ open, onClose, onReady }) {
         <div className="card-corner card-corner-br" />
         <div className="card-header">
           <h1 className="card-title">RUG PULL RUN</h1>
-          <p className="card-subtitle">Run. Earn. Unlock.</p>
+          <p className="card-subtitle">
+            {!isConnected
+              ? 'Connecting...'
+              : siweStatus === 'pending'
+                ? 'Signing...'
+                : hasError
+                  ? 'Sign in to play'
+                  : 'Sign to continue'}
+          </p>
         </div>
         <div className="card-body">
-          {!showStandard ? (
-            <>
-              {smartConnector && (
-                <button
-                  className="btn btn-primary btn-large"
-                  onClick={() => connect({ connector: smartConnector })}
-                  disabled={isPending}
-                >
-                  {isPending ? 'Connecting…' : 'Smart Wallet'}
-                </button>
-              )}
-              <button
-                className="btn btn-ghost btn-large"
-                onClick={() => setShowStandard(true)}
-                style={{ marginTop: 10 }}
-              >
-                Standard Wallet
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                className="btn btn-ghost"
-                onClick={() => setShowStandard(false)}
-                style={{ marginBottom: 10, fontSize: 13 }}
-              >
-                ← Back
-              </button>
-              {injectedConnectors.map(c => (
-                <button
-                  key={c.id}
-                  className="btn btn-ghost btn-large"
-                  onClick={() => connect({ connector: c })}
-                  disabled={isPending}
-                  style={{ marginBottom: 8 }}
-                >
-                  {isPending ? 'Connecting…' : c.name}
-                </button>
-              ))}
-            </>
+          {error && <p className="rpr-error" style={{ marginBottom: 12 }}>{error}</p>}
+          {!isConnected && (
+            <button className="btn btn-primary btn-large" onClick={handleConnect}>
+              Connect Wallet
+            </button>
           )}
-          {error && <p className="rpr-error">{error}</p>}
+          {isConnected && siweStatus !== 'pending' && (
+            <button
+              className="btn btn-primary btn-large"
+              style={{ touchAction: 'manipulation' }}
+              onClick={handleSignIn}
+              onTouchEnd={(event) => {
+                event.preventDefault()
+                handleSignIn()
+              }}
+            >
+              Sign In
+            </button>
+          )}
         </div>
-        <div className="card-rules">
-          <p className="rules-title">How to play:</p>
-          <ul className="rules-list">
-            <li>Jump: Space / Arrow Up (tap left on mobile)</li>
-            <li>Duck: Arrow Down / S (hold right on mobile)</li>
-            <li>Avoid coins and birds as obstacles</li>
-            <li>Free: 1 coin / 1,000 pts · Paid: 5 coins / 1,000 pts</li>
-          </ul>
-        </div>
-        <CancelBtn />
         <div className="card-ground" />
       </div>
     </div>

@@ -677,30 +677,20 @@ let activeWalletType = null; // 'injected'
 // App URL for deeplinks
 const APP_URL = 'https://base-runner-k9oj.onrender.com';
 
-// Check if running inside a wallet browser (Coinbase, MetaMask, Trust, etc.)
-function isWalletBrowser() {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes('coinbase') || ua.includes('metamask') || ua.includes('trust') || ua.includes('rainbow')) {
-        return true;
-    }
-    if (window.ethereum) {
-        return window.ethereum.isCoinbaseWallet ||
-               window.ethereum.isCoinbaseBrowser ||
-               window.ethereum.isMetaMask ||
-               window.ethereum.isTrust ||
-               window.ethereum.isWalletBrowser;
-    }
-    return false;
-}
-
-// True only when running inside a mobile wallet app (not a desktop browser extension)
-function isWalletApp() {
-    return isWalletBrowser() && isMobile();
-}
-
 // Check if mobile device
 function isMobile() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+// Base App exposes a Coinbase-compatible provider in its mobile webview.
+function isBaseAppEnvironment() {
+    if (!isMobile()) return false;
+    const ua = navigator.userAgent.toLowerCase();
+    const provider = window.ethereum;
+    return ua.includes('base app') ||
+           ua.includes('baseapp') ||
+           ua.includes('coinbase') ||
+           !!(provider && (provider.isCoinbaseWallet || provider.isCoinbaseBrowser));
 }
 
 function getEthereumProvider() {
@@ -2003,7 +1993,7 @@ function updateWalletUI() {
     const isOnBase = normalizedChainId === BASE_CHAIN_ID;
     const walletConnected = isConnected && isOnBase;
     walletReady = walletConnected && walletAuthenticated;
-    const canPlayNow = walletReady || ALLOW_GUEST_PLAY;
+    const canPlayNow = isBaseAppEnvironment() && (walletReady || ALLOW_GUEST_PLAY);
 
     // Update connect button state and text - always enabled (we have universal options)
     if (connectButton) {
@@ -2098,6 +2088,8 @@ async function disconnectWallet() {
 }
 
 async function applyWalletBridge(detail) {
+    if (!isBaseAppEnvironment()) return;
+
     walletAddress = detail.address;
     walletChainId = BASE_CHAIN_ID;
     activeWalletType = 'injected';
@@ -2172,8 +2164,8 @@ async function initWalletState() {
         provider.on("chainChanged", handleChainChanged);
     }
     
-    // Inside mobile wallet app (Base App, MetaMask mobile) — auto-connect with popup
-    if (isWalletApp()) {
+    // Inside Base App's mobile webview, auto-connect through the injected provider.
+    if (isBaseAppEnvironment()) {
         walletInitializing = true;
         try {
             const accounts = await provider.request({ method: "eth_requestAccounts" });
@@ -2227,6 +2219,8 @@ async function initWalletState() {
 }
 
 async function connectWallet() {
+    if (!isBaseAppEnvironment()) return;
+
     // If already connected, just handle network switch
     if (walletAddress && activeWalletType) {
         await handleNetworkSwitch();
@@ -2242,8 +2236,7 @@ async function connectWallet() {
         clearWalletMessages();
         updateWalletUI();
     }
-    // Delegate to React/wagmi modal if available, otherwise fallback
-    window.dispatchEvent(new CustomEvent('wallet:openModal'));
+    // React auto-connects only after detecting the Base App mobile provider.
 }
 
 // Handle network switch after wallet is connected
@@ -2614,10 +2607,10 @@ window.onload = function() {
     adminSpeedValue = document.getElementById("admin-speed-value");
     adminSpeedValuePause = document.getElementById("admin-speed-value-pause");
 
-    // Disconnect buttons — hide only inside mobile wallet apps (Base App, MetaMask mobile, etc.)
+    // Base App controls the active account, so do not show an in-game disconnect action.
     const disconnectBtn = document.getElementById("disconnect-button");
     const disconnectBtnPause = document.getElementById("disconnect-button-pause");
-    if (isWalletApp()) {
+    if (isBaseAppEnvironment()) {
         if (disconnectBtn) disconnectBtn.style.display = 'none';
         if (disconnectBtnPause) disconnectBtnPause.style.display = 'none';
     } else {
@@ -2923,7 +2916,7 @@ function updateWelcomeVisibility() {
 }
 
 function canPlayGame() {
-    return walletReady || ALLOW_GUEST_PLAY;
+    return isBaseAppEnvironment() && (walletReady || ALLOW_GUEST_PLAY);
 }
 
 // Force exit to menu when wallet disconnects or changes

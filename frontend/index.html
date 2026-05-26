@@ -75,7 +75,7 @@
         </div>
     </div>
 
-    <!-- Connect screen hidden — React renders its own modal -->
+    <!-- Fallback while React mounts. Wallet connection is exposed only in Base App. -->
     <div id="overlay-connect" class="overlay hidden" data-state="connect">
         <div class="overlay-bg"></div>
         <div class="glass-card">
@@ -85,23 +85,14 @@
             <div class="card-corner card-corner-br"></div>
             <div class="card-header">
                 <h1 class="card-title">RUG PULL RUN</h1>
-                <p class="card-subtitle">Run. Earn. Unlock.</p>
+                <p class="card-subtitle">Base App Only</p>
             </div>
             <div class="card-body">
-                <button id="connect-button" class="btn btn-primary btn-large">Connect Wallet</button>
-            </div>
-            <div class="card-rules">
-                <p class="rules-title">How to play:</p>
-                <ul class="rules-list">
-                    <li>Jump: Space / Arrow Up (tap left on mobile)</li>
-                    <li>Duck: Arrow Down / S (hold right on mobile)</li>
-                    <li>Avoid coins and birds as obstacles</li>
-                    <li>Free: 1 coin per 1,000 pts · Paid: 5 coins per 1,000 pts</li>
-                </ul>
+                <a class="btn btn-primary btn-large" href="https://base.app/app/rugpullrun.app">Open in Base App</a>
             </div>
             <div class="card-ground"></div>
             <div class="card-footer">
-                <p class="helper-text">Wallet is required to play in Base App.</p>
+                <p class="helper-text">Open the game through Base App to play.</p>
             </div>
         </div>
     </div>
