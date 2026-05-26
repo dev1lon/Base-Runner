@@ -65,7 +65,8 @@ const BASE_SPAWN_OFFSET = 150;
 //=============================================================================
 const SPEED_START = 4;
 const SPEED_INCREASE_SCORE_INTERVAL = 10000;
-const DEFAULT_SPEED_INCREASE_PERCENT = 15;
+const SPEED_INCREASE_MULTIPLIER = 1.15;
+const ADMIN_MAX_SPEED_TEST_TIER = 10;
 const BASE_GRAVITY = 0.8;
 const BASE_JUMP_VELOCITY = -16;
 
@@ -119,7 +120,7 @@ let _rafId = 0;
 let isPaused = false;
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
 const AUTH_TOKENS_STORAGE_KEY = "runner_auth_token";
-const ADMIN_SPEED_PERCENT_STORAGE_KEY = "runner_admin_speed_percent";
+const ADMIN_SPEED_TIER_STORAGE_KEY = "runner_admin_speed_tier";
 const BASE_CHAIN_ID = "0x2105"; // 8453
 const BASE_CHAIN_PARAMS = {
     chainId: BASE_CHAIN_ID,
@@ -624,7 +625,7 @@ let walletErrorMessage = "";
 let walletInfoMessage = "";
 let walletAuthenticated = false;
 let walletIsAdmin = false;
-let speedIncreasePercent = DEFAULT_SPEED_INCREASE_PERCENT;
+let adminSpeedTestTier = 0;
 let authInProgress = false;
 let authAttempted = false;
 let authToken = "";
@@ -3216,38 +3217,41 @@ function updateTestNotificationAdminControls() {
     updateAdminSpeedControls(showControls);
 }
 
-function clampSpeedIncreasePercent(value) {
+function clampAdminSpeedTestTier(value) {
     const number = Number(value);
-    if (!Number.isFinite(number)) return DEFAULT_SPEED_INCREASE_PERCENT;
-    return Math.max(0, Math.min(100, Math.round(number / 5) * 5));
+    if (!Number.isFinite(number)) return 0;
+    return Math.max(0, Math.min(ADMIN_MAX_SPEED_TEST_TIER, Math.round(number)));
+}
+
+function formatAdminSpeedTestTier(tier) {
+    const testScore = tier * SPEED_INCREASE_SCORE_INTERVAL;
+    const multiplier = Math.pow(SPEED_INCREASE_MULTIPLIER, tier).toFixed(2);
+    return `${testScore.toLocaleString()} pts · x${multiplier}`;
 }
 
 function updateAdminSpeedControls(showControls) {
     if (showControls) {
-        const storedPercent = localStorage.getItem(ADMIN_SPEED_PERCENT_STORAGE_KEY);
-        speedIncreasePercent = storedPercent === null
-            ? DEFAULT_SPEED_INCREASE_PERCENT
-            : clampSpeedIncreasePercent(storedPercent);
+        adminSpeedTestTier = clampAdminSpeedTestTier(localStorage.getItem(ADMIN_SPEED_TIER_STORAGE_KEY));
     } else {
-        speedIncreasePercent = DEFAULT_SPEED_INCREASE_PERCENT;
+        adminSpeedTestTier = 0;
     }
 
     if (adminSpeedRow) adminSpeedRow.classList.toggle("hidden", !showControls);
     if (adminSpeedRowPause) adminSpeedRowPause.classList.toggle("hidden", !showControls);
-    if (adminSpeedSlider) adminSpeedSlider.value = String(speedIncreasePercent);
-    if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(speedIncreasePercent);
-    if (adminSpeedValue) adminSpeedValue.textContent = `${speedIncreasePercent}%`;
-    if (adminSpeedValuePause) adminSpeedValuePause.textContent = `${speedIncreasePercent}%`;
+    if (adminSpeedSlider) adminSpeedSlider.value = String(adminSpeedTestTier);
+    if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(adminSpeedTestTier);
+    if (adminSpeedValue) adminSpeedValue.textContent = formatAdminSpeedTestTier(adminSpeedTestTier);
+    if (adminSpeedValuePause) adminSpeedValuePause.textContent = formatAdminSpeedTestTier(adminSpeedTestTier);
 }
 
 function handleAdminSpeedChange(event) {
     if (!walletIsAdmin) return;
-    speedIncreasePercent = clampSpeedIncreasePercent(event.target.value);
-    localStorage.setItem(ADMIN_SPEED_PERCENT_STORAGE_KEY, String(speedIncreasePercent));
-    if (adminSpeedSlider) adminSpeedSlider.value = String(speedIncreasePercent);
-    if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(speedIncreasePercent);
-    if (adminSpeedValue) adminSpeedValue.textContent = `${speedIncreasePercent}%`;
-    if (adminSpeedValuePause) adminSpeedValuePause.textContent = `${speedIncreasePercent}%`;
+    adminSpeedTestTier = clampAdminSpeedTestTier(event.target.value);
+    localStorage.setItem(ADMIN_SPEED_TIER_STORAGE_KEY, String(adminSpeedTestTier));
+    if (adminSpeedSlider) adminSpeedSlider.value = String(adminSpeedTestTier);
+    if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(adminSpeedTestTier);
+    if (adminSpeedValue) adminSpeedValue.textContent = formatAdminSpeedTestTier(adminSpeedTestTier);
+    if (adminSpeedValuePause) adminSpeedValuePause.textContent = formatAdminSpeedTestTier(adminSpeedTestTier);
 }
 
 function setCheckinStatusText(text, isSuccess) {
@@ -5558,10 +5562,11 @@ function update(timestamp) {
         return;
     }
 
-    // Increase obstacle speed after each 10,000 visible score; admins can test the percentage.
-    const speedTier = Math.floor(score / SPEED_INCREASE_SCORE_INTERVAL);
-    const speedMultiplier = 1 + speedIncreasePercent / 100;
-    speed = SPEED_START * Math.pow(speedMultiplier, speedTier);
+    // Admins can preview a score tier immediately; players progress only from actual score.
+    const earnedSpeedTier = Math.floor(score / SPEED_INCREASE_SCORE_INTERVAL);
+    const testSpeedTier = walletIsAdmin ? adminSpeedTestTier : 0;
+    const speedTier = Math.max(earnedSpeedTier, testSpeedTier);
+    speed = SPEED_START * Math.pow(SPEED_INCREASE_MULTIPLIER, speedTier);
     velocityX = -speed * gameScale;
     const frameVelocityX = velocityX * stepScale;
 
