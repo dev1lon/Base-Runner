@@ -555,6 +555,14 @@ body {
     -webkit-overflow-scrolling: touch;
 }
 
+/* Keep buttons and rows inside scrollable regions at their natural size */
+.glass-card > .menu-body > *,
+.glass-card > .card-body > *,
+.glass-card > .leaderboard-body > *,
+.glass-card > .buy-coins-grid > * {
+    flex-shrink: 0;
+}
+
 /* Corner decorations */
 .card-corner {
     position: absolute;
