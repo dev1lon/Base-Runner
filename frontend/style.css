@@ -528,7 +528,7 @@ body {
 .glass-card {
     position: relative;
     width: 100%;
-    max-width: 420px;
+    max-width: 440px;
     max-height: 100%;
     display: flex;
     flex-direction: column;
@@ -1093,10 +1093,7 @@ body.w3m-modal-open w3m-modal {
    COLLECTION UI
    ============================================ */
 
-.collection-card {
-    max-width: 400px;
-    width: 90%;
-}
+/* .collection-card inherits width from .glass-card */
 
 .collection-title {
     font-size: var(--font-size-xl) !important;
@@ -1576,10 +1573,7 @@ body.w3m-modal-open w3m-modal {
    BUY COINS MODAL
    ============================================ */
 
-.buy-coins-card {
-    max-width: 360px;
-    width: 90%;
-}
+/* .buy-coins-card inherits width from .glass-card */
 
 .buy-coins-subtitle {
     color: var(--color-text-muted);
@@ -2132,11 +2126,7 @@ body.w3m-modal-open w3m-modal {
    Leaderboard
    ============================================ */
 .leaderboard-card {
-    max-width: 480px;
-    width: 100%;
     margin: 0 auto;
-    display: flex;
-    flex-direction: column;
 }
 .leaderboard-title {
     text-align: center;
@@ -2330,10 +2320,7 @@ body.w3m-modal-open w3m-modal {
 /* ============================================
    Rules / How-to-play overlay
    ============================================ */
-.rules-card {
-    max-width: 440px;
-    width: 100%;
-}
+/* .rules-card inherits width from .glass-card */
 .rules-body {
     padding: 0.25rem 1rem 0.5rem !important;
     color: var(--color-gray-600);
