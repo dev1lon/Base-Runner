@@ -127,6 +127,13 @@
                     <button id="checkin-button" class="btn btn-secondary btn-small">Check-in</button>
                     <span id="checkin-status" class="checkin-badge"></span>
                 </div>
+                <div id="admin-speed-row" class="admin-speed-row hidden">
+                    <label class="admin-speed-label" for="admin-speed-slider">
+                        <span>Speed / 10k score</span>
+                        <span id="admin-speed-value" class="admin-speed-value">15%</span>
+                    </label>
+                    <input id="admin-speed-slider" class="admin-speed-slider" type="range" min="0" max="100" step="5" value="15">
+                </div>
                 <button id="start-button" class="btn btn-ghost btn-large">Free Game</button>
                 <button id="pay-game-button" class="btn btn-primary btn-large">Pay Game · $0.01</button>
                 <button id="collection-button" class="btn btn-ghost btn-large">Collection</button>
@@ -166,6 +173,13 @@
                 <div class="checkin-section">
                     <button id="checkin-button-pause" class="btn btn-secondary btn-small">Check-in</button>
                     <span id="checkin-status-pause" class="checkin-badge"></span>
+                </div>
+                <div id="admin-speed-row-pause" class="admin-speed-row hidden">
+                    <label class="admin-speed-label" for="admin-speed-slider-pause">
+                        <span>Speed / 10k score</span>
+                        <span id="admin-speed-value-pause" class="admin-speed-value">15%</span>
+                    </label>
+                    <input id="admin-speed-slider-pause" class="admin-speed-slider" type="range" min="0" max="100" step="5" value="15">
                 </div>
                 <button id="resume-button" class="btn btn-primary btn-large">Resume</button>
                 <button id="home-button-pause" class="btn btn-ghost btn-large">Home</button>

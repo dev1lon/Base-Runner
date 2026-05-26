@@ -65,7 +65,7 @@ const BASE_SPAWN_OFFSET = 150;
 //=============================================================================
 const SPEED_START = 4;
 const SPEED_INCREASE_SCORE_INTERVAL = 10000;
-const SPEED_INCREASE_MULTIPLIER = 1.15;
+const DEFAULT_SPEED_INCREASE_PERCENT = 15;
 const BASE_GRAVITY = 0.8;
 const BASE_JUMP_VELOCITY = -16;
 
@@ -119,6 +119,7 @@ let _rafId = 0;
 let isPaused = false;
 const COIN_STORAGE_KEY = "baseapp_runner_coin_count";
 const AUTH_TOKENS_STORAGE_KEY = "runner_auth_token";
+const ADMIN_SPEED_PERCENT_STORAGE_KEY = "runner_admin_speed_percent";
 const BASE_CHAIN_ID = "0x2105"; // 8453
 const BASE_CHAIN_PARAMS = {
     chainId: BASE_CHAIN_ID,
@@ -584,6 +585,12 @@ let testNotificationAddress;
 let testNotificationAddressPause;
 let testNotificationButton;
 let testNotificationButtonPause;
+let adminSpeedRow;
+let adminSpeedRowPause;
+let adminSpeedSlider;
+let adminSpeedSliderPause;
+let adminSpeedValue;
+let adminSpeedValuePause;
 let collectionButton;
 let collectionButtonPause;
 let collectionCloseBtn;
@@ -617,6 +624,7 @@ let walletErrorMessage = "";
 let walletInfoMessage = "";
 let walletAuthenticated = false;
 let walletIsAdmin = false;
+let speedIncreasePercent = DEFAULT_SPEED_INCREASE_PERCENT;
 let authInProgress = false;
 let authAttempted = false;
 let authToken = "";
@@ -2598,6 +2606,12 @@ window.onload = function() {
     testNotificationAddressPause = document.getElementById("test-notification-address-pause");
     testNotificationButton = document.getElementById("test-notification-button");
     testNotificationButtonPause = document.getElementById("test-notification-button-pause");
+    adminSpeedRow = document.getElementById("admin-speed-row");
+    adminSpeedRowPause = document.getElementById("admin-speed-row-pause");
+    adminSpeedSlider = document.getElementById("admin-speed-slider");
+    adminSpeedSliderPause = document.getElementById("admin-speed-slider-pause");
+    adminSpeedValue = document.getElementById("admin-speed-value");
+    adminSpeedValuePause = document.getElementById("admin-speed-value-pause");
 
     // Disconnect buttons — hide only inside mobile wallet apps (Base App, MetaMask mobile, etc.)
     const disconnectBtn = document.getElementById("disconnect-button");
@@ -2825,6 +2839,12 @@ window.onload = function() {
             e.preventDefault();
             handleTestNotification();
         }, { passive: false });
+    }
+    if (adminSpeedSlider) {
+        adminSpeedSlider.addEventListener("input", handleAdminSpeedChange);
+    }
+    if (adminSpeedSliderPause) {
+        adminSpeedSliderPause.addEventListener("input", handleAdminSpeedChange);
     }
     initWalletState();
     fetchGameConfig(); // fire-and-forget
@@ -3193,6 +3213,41 @@ function updateTestNotificationAdminControls() {
     // Bell buttons live next to wallet-address now; toggle their own visibility
     if (testNotificationButton)      testNotificationButton.classList.toggle("hidden", !showControls);
     if (testNotificationButtonPause) testNotificationButtonPause.classList.toggle("hidden", !showControls);
+    updateAdminSpeedControls(showControls);
+}
+
+function clampSpeedIncreasePercent(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return DEFAULT_SPEED_INCREASE_PERCENT;
+    return Math.max(0, Math.min(100, Math.round(number / 5) * 5));
+}
+
+function updateAdminSpeedControls(showControls) {
+    if (showControls) {
+        const storedPercent = localStorage.getItem(ADMIN_SPEED_PERCENT_STORAGE_KEY);
+        speedIncreasePercent = storedPercent === null
+            ? DEFAULT_SPEED_INCREASE_PERCENT
+            : clampSpeedIncreasePercent(storedPercent);
+    } else {
+        speedIncreasePercent = DEFAULT_SPEED_INCREASE_PERCENT;
+    }
+
+    if (adminSpeedRow) adminSpeedRow.classList.toggle("hidden", !showControls);
+    if (adminSpeedRowPause) adminSpeedRowPause.classList.toggle("hidden", !showControls);
+    if (adminSpeedSlider) adminSpeedSlider.value = String(speedIncreasePercent);
+    if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(speedIncreasePercent);
+    if (adminSpeedValue) adminSpeedValue.textContent = `${speedIncreasePercent}%`;
+    if (adminSpeedValuePause) adminSpeedValuePause.textContent = `${speedIncreasePercent}%`;
+}
+
+function handleAdminSpeedChange(event) {
+    if (!walletIsAdmin) return;
+    speedIncreasePercent = clampSpeedIncreasePercent(event.target.value);
+    localStorage.setItem(ADMIN_SPEED_PERCENT_STORAGE_KEY, String(speedIncreasePercent));
+    if (adminSpeedSlider) adminSpeedSlider.value = String(speedIncreasePercent);
+    if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(speedIncreasePercent);
+    if (adminSpeedValue) adminSpeedValue.textContent = `${speedIncreasePercent}%`;
+    if (adminSpeedValuePause) adminSpeedValuePause.textContent = `${speedIncreasePercent}%`;
 }
 
 function setCheckinStatusText(text, isSuccess) {
@@ -5503,9 +5558,10 @@ function update(timestamp) {
         return;
     }
 
-    // Increase obstacle speed by 15% for each 10,000 visible score earned.
+    // Increase obstacle speed after each 10,000 visible score; admins can test the percentage.
     const speedTier = Math.floor(score / SPEED_INCREASE_SCORE_INTERVAL);
-    speed = SPEED_START * Math.pow(SPEED_INCREASE_MULTIPLIER, speedTier);
+    const speedMultiplier = 1 + speedIncreasePercent / 100;
+    speed = SPEED_START * Math.pow(speedMultiplier, speedTier);
     velocityX = -speed * gameScale;
     const frameVelocityX = velocityX * stepScale;
 
