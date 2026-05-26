@@ -529,11 +529,30 @@ body {
     position: relative;
     width: 100%;
     max-width: 420px;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
     background: var(--color-bg-card);
     border: 1px solid rgba(255, 255, 255, 0.6);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-card);
-    overflow: visible;
+    overflow: hidden;
+}
+
+/* Direct children keep natural size; only the body region scrolls. */
+.glass-card > * {
+    flex-shrink: 0;
+}
+
+.glass-card > .card-body,
+.glass-card > .menu-body,
+.glass-card > .leaderboard-body,
+.glass-card > .buy-coins-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Corner decorations */
