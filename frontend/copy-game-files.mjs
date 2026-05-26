@@ -7,7 +7,7 @@ const game = join(dir, '..')
 const dist = join(dir, 'dist')
 
 copyFileSync(join(game, 'script.js'), join(dist, 'script.js'))
-copyFileSync(join(game, 'style.css'), join(dist, 'style.css'))
+copyFileSync(join(dir, 'style.css'), join(dist, 'style.css'))
 
 const assetsSrc = join(game, 'assets')
 const assetsDst = join(dist, 'assets')
