@@ -734,14 +734,31 @@ body {
 .card-ground {
     height: 4px;
     margin: var(--space-4) var(--space-4) 0;
-    background: linear-gradient(90deg, 
-        transparent 0%, 
-        rgba(74, 144, 217, 0.3) 10%, 
-        rgba(74, 144, 217, 0.5) 50%, 
-        rgba(74, 144, 217, 0.3) 90%, 
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(74, 144, 217, 0.3) 10%,
+        rgba(74, 144, 217, 0.5) 50%,
+        rgba(74, 144, 217, 0.3) 90%,
         transparent 100%
     );
     border-radius: 2px;
+}
+
+/* Created-by credit at the very bottom of cards */
+.card-credit {
+    margin: 0.5rem 0 0.6rem;
+    text-align: center;
+    font-size: 11px;
+    color: var(--color-gray-400);
+    letter-spacing: 0.2px;
+}
+.card-credit a {
+    color: var(--color-base-blue);
+    font-weight: 600;
+    text-decoration: none;
+}
+.card-credit a:hover {
+    text-decoration: underline;
 }
 
 /* Card Footer */

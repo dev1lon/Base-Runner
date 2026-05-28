@@ -164,6 +164,25 @@
   line-height: 1.4;
 }
 
+.base-gate-credit {
+  margin: 14px 0 0;
+  color: var(--color-gray-400);
+  font-family: var(--font-family);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+}
+
+.base-gate-credit a {
+  color: var(--color-base-blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.base-gate-credit a:hover {
+  text-decoration: underline;
+}
+
 .base-gate-ground {
   position: absolute;
   right: 20px;

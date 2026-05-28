@@ -79,6 +79,12 @@ function BaseAppOnlyScreen() {
           Open in Base App
         </a>
         <p className="base-gate-link">base.app/app/rugpullrun.app</p>
+        <p className="base-gate-credit">
+          Created by{' '}
+          <a href="https://x.com/devilonnn" target="_blank" rel="noopener noreferrer">
+            @devilonnn
+          </a>
+        </p>
         <div className="base-gate-ground" aria-hidden="true" />
       </main>
     </div>
