@@ -50,13 +50,14 @@ const { mintCoins } = require("./shared/blockchain");
 const { ethers } = require("ethers");
 
 const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "0xf7d33fBE432eC51330955494083be4824606F3D1";
-const RPC_URL = process.env.RPC_URL || "https://mainnet.base.org";
+// Public Base mainnet RPC for low-traffic on-chain reads (character levels, etc.)
+const PUBLIC_RPC_URL = "https://mainnet.base.org";
 let rpcProvider;
 let characterUpgradeReadContract;
 
 function getRpcProvider() {
   if (!rpcProvider) {
-    rpcProvider = new ethers.JsonRpcProvider(RPC_URL);
+    rpcProvider = new ethers.JsonRpcProvider(PUBLIC_RPC_URL);
   }
   return rpcProvider;
 }
@@ -479,7 +480,9 @@ const BASE_NAME_TTL_MS = 60 * 60 * 1000; // 1 hour
 //   2) L2Resolver.name(node)       -> string
 const BASE_REVERSE_REGISTRAR = "0x79EA96012eEa67A83431F1701B3dFf7e37F9E282";
 const BASE_L2_RESOLVER       = "0xC6d566A56A1aFf6508b41f6c90ff131615583BCD";
-const BASE_RPC_URL           = process.env.RPC_URL || "https://mainnet.base.org";
+// Paid RPC (e.g. Ankr) is used ONLY for the leaderboard basename batch, which
+// fires ~200 requests in a row every 12h. Falls back to RPC_URL then public.
+const BASE_RPC_URL           = process.env.LEADERBOARD_RPC_URL || process.env.RPC_URL || "https://mainnet.base.org";
 
 async function rpcCall(to, data, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {

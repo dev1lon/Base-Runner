@@ -18,7 +18,7 @@ let readContract;
 
 function getContract() {
   if (!readProvider) {
-    readProvider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://mainnet.base.org");
+    readProvider = new ethers.JsonRpcProvider("https://mainnet.base.org");
   }
   if (!readContract) {
     readContract = new ethers.Contract(process.env.NFT_CONTRACT_ADDRESS, NFT_ABI, readProvider);

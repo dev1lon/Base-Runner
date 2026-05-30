@@ -13,10 +13,9 @@ function normalizeAddress(address) {
 
 // viem client for Base mainnet — handles EOA, EIP-1271, and ERC-6492 natively
 function getViemClient() {
-  const rpcUrl = process.env.RPC_URL || "https://mainnet.base.org";
   return createPublicClient({
     chain: base,
-    transport: http(rpcUrl)
+    transport: http("https://mainnet.base.org")
   });
 }
 

@@ -13,12 +13,14 @@ const GAME_COIN_ABI = [
     "function getRemainingDailyMint(address account) external view returns (uint256)"
 ];
 
-// RPC URLs with fallbacks
+// Public Base mainnet RPC pool. Paid RPC is reserved for the leaderboard
+// basename batch only — minting / balance reads here use public endpoints
+// with sequential fallback on failure.
 const RPC_URLS = [
-    process.env.RPC_URL || "https://sepolia.base.org",
-    "https://base-sepolia-rpc.publicnode.com",
-    "https://base-sepolia.blockpi.network/v1/rpc/public",
-    "https://sepolia.base.org"
+    "https://mainnet.base.org",
+    "https://base-rpc.publicnode.com",
+    "https://base.blockpi.network/v1/rpc/public",
+    "https://base.llamarpc.com"
 ];
 
 const GAME_COIN_ADDRESS = process.env.GAME_COIN_ADDRESS || "";
