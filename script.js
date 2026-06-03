@@ -526,6 +526,7 @@ const RUN_RECORDER_ABI = [
 
 // Record completed run on-chain, then notify backend.
 // Returns true if on-chain tx confirmed, false otherwise.
+const RECORD_RUN_TIMEOUT_MS = 45_000;
 async function recordRunOnChain(finalScore) {
     if (!RUN_RECORDER_ADDRESS || !walletReady) return false;
     try {
@@ -535,7 +536,15 @@ async function recordRunOnChain(finalScore) {
         const signer = await ethersProvider.getSigner();
         const contract = new ethers.Contract(RUN_RECORDER_ADDRESS, RUN_RECORDER_ABI, signer);
         const tx = await sendWithBuilderCode(signer, contract, 'recordRun', [finalScore]);
-        await tx.wait();
+        // Race tx.wait() against a hard timeout so a hung RPC doesn't lock
+        // the Save Record button forever.
+        await Promise.race([
+            tx.wait(),
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('record-run-timeout')),
+                RECORD_RUN_TIMEOUT_MS
+            )),
+        ]);
         return true;
     } catch (e) {
         console.error('recordRunOnChain failed:', e);
@@ -1785,6 +1794,10 @@ async function startPaidBackendSession(txHash) {
 }
 
 async function startBackendSession() {
+    // Wait for any in-flight submit to settle so backend writes stay in order.
+    if (pendingSubmitPromise) {
+        try { await pendingSubmitPromise; } catch { /* ignored */ }
+    }
     const savedStartMs = backendSessionStartMs; // set by restartGame() before this call
     resetBackendSession();
     backendSessionStartMs = savedStartMs;
@@ -1887,9 +1900,14 @@ async function submitBackendRun(finalScore) {
 
 let lastFinalScoreForRecord = 0;
 
+let pendingSubmitPromise = null;
+
 function handleGameOver() {
-    // Submit raw score to backend for best-score tracking (backend applies multiplier server-side)
-    submitBackendRun(rawScore);
+    // Fire-and-track: a new session start must wait for the prior submit to
+    // settle so the backend writes don't arrive out of order.
+    pendingSubmitPromise = submitBackendRun(rawScore).finally(() => {
+        pendingSubmitPromise = null;
+    });
     // Remember the multiplied score for the manual Save Record button
     lastFinalScoreForRecord = score;
     // Paid game is one-shot — consume the flag so any restart becomes a free game
@@ -2573,6 +2591,7 @@ let birdImg;
 let scoreFloat = 0;
 
 const GAME_STATE = {
+    IDLE: "IDLE",
     RUNNING: "RUNNING",
     GAME_OVER: "GAME_OVER"
 };
@@ -2960,8 +2979,8 @@ function forceExitToMenu(reason) {
     gameState = GAME_STATE.GAME_OVER;
     
     // Clear session
-    currentSession = null;
-    
+    resetFullSession();
+
     // Clear sprite cache (new wallet = need to reload sprites)
     // Revoke blob URLs to free memory
     Object.values(spriteCache).forEach(url => {
@@ -3892,7 +3911,7 @@ async function handleBuyCoinsPackage(coins) {
                 });
                 const callsId = extractCallsId(raw);
                 if (!callsId) throw new Error('sendCalls returned no id');
-                if (statusEl) statusEl.textContent = 'ConfirmingвЂ¦';
+                if (statusEl) statusEl.textContent = 'Confirming…';
                 txHash = await waitForBridgeCallsTxHash(callsId);
             } catch (e) {
                 if (e.code !== -32601) throw e;
@@ -3930,20 +3949,20 @@ async function handleBuyCoinsPackage(coins) {
         // Fallback: two separate transactions (approve then buyCoins)
         if (!txHash && bridge?.sendTransaction) {
             const ethersProvider = provider ? new ethers.BrowserProvider(provider) : null;
-            if (statusEl) statusEl.textContent = 'Approve USDCвЂ¦';
+            if (statusEl) statusEl.textContent = 'Approve USDC…';
             const approveHash = await bridge.sendTransaction({
                 to: USDC_CONTRACT,
                 value: 0n,
                 data: approveData
             });
             if (ethersProvider) await ethersProvider.waitForTransaction(approveHash);
-            if (statusEl) statusEl.textContent = 'Buying coinsвЂ¦';
+            if (statusEl) statusEl.textContent = 'Buying coins…';
             txHash = await bridge.sendTransaction({
                 to: PAYMENTS_CONTRACT,
                 value: 0n,
                 data: buyData
             });
-            if (statusEl) statusEl.textContent = 'ConfirmingвЂ¦';
+            if (statusEl) statusEl.textContent = 'Confirming…';
             if (ethersProvider) await ethersProvider.waitForTransaction(txHash);
         } else if (!txHash) {
             const ethersProvider = new ethers.BrowserProvider(provider);
@@ -5087,6 +5106,7 @@ async function backendOnlyFreeMint() {
 
 // Record successful blockchain mint on backend
 async function recordFreeMintOnBackend(txHash) {
+    let serverAccepted = false;
     try {
         const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
             method: 'POST',
@@ -5097,9 +5117,10 @@ async function recordFreeMintOnBackend(txHash) {
             body: JSON.stringify({ txHash, characterId: 0 })
         });
         const data = await response.json();
-        
+
         const alreadyClaimed = !data.ok && data.error?.includes('Already claimed');
         if (data.ok || alreadyClaimed) {
+            serverAccepted = true;
             if (Array.isArray(data.ownedCharacters)) {
                 ownedCharacters = data.ownedCharacters;
             } else {
@@ -5109,6 +5130,14 @@ async function recordFreeMintOnBackend(txHash) {
         }
     } catch (e) {
         console.warn('Failed to record mint on backend:', e);
+    }
+
+    // Roll back optimistic unlock if the backend rejected the claim (e.g. txHash
+    // not yet indexed, signature mismatch, etc.). The on-chain mint is real, so
+    // the next openCollection -> reconcileFreeMint will retry the backend write.
+    if (!serverAccepted) {
+        hasFreeMint = false;
+        ownedCharacters = ownedCharacters.filter((id) => id !== 0);
     }
 
     // Auto-select Vitalik

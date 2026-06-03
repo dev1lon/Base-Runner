@@ -153,7 +153,7 @@ export function ConnectModal({ onReady }) {
     if (!inBaseApp || !isConnected || !address) return
     setError('')
     try {
-      const data = await signIn(address, chainId ?? BASE_CHAIN_ID, walletClient)
+      const data = await signIn(address, chainId ?? BASE_CHAIN_ID)
       setToken(data.token)
       onReady?.()
     } catch (err) {

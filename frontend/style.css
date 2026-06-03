@@ -2305,9 +2305,9 @@ body.w3m-modal-open w3m-modal {
 .game-over-buttons .game-over-save-btn { margin: 0; }
 .game-over-home-btn {
     padding: 10px 24px;
-    background: rgba(255,255,255,0.12);
-    color: #fff;
-    border: 1px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.55);
+    color: var(--color-gray-700);
+    border: 1px solid rgba(255,255,255,0.75);
     border-radius: 14px;
     font-weight: 700;
     font-size: 15px;
@@ -2315,6 +2315,7 @@ body.w3m-modal-open w3m-modal {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     min-width: 180px;
+    box-shadow: 0 2px 8px rgba(30, 58, 95, 0.18);
 }
 
 .game-over-score-line .go-raw,
