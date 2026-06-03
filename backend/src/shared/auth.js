@@ -1,10 +1,7 @@
-const { verifyMessage: ethersVerifyMessage, ethers, hashMessage } = require("ethers");
+const { verifyMessage: ethersVerifyMessage } = require("ethers");
 const { createPublicClient, http } = require("viem");
 const { base } = require("viem/chains");
 const jwt = require("jsonwebtoken");
-
-// EIP-1271 magic value
-const EIP1271_MAGIC = "0x1626ba7e";
 
 function normalizeAddress(address) {
   if (!address || typeof address !== "string") return null;

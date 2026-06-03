@@ -33,7 +33,6 @@ const { getOrCreateUser, addCoins } = require("./modules/user/userRepo");
 const { applyScore } = require("./modules/user/userService");
 const {
   getCharacters,
-  getCharacter,
   addCharacter,
   startPurchase,
   confirmPurchase,
@@ -51,8 +50,9 @@ const { ethers } = require("ethers");
 
 const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "0xf7d33fBE432eC51330955494083be4824606F3D1";
 // Public Base mainnet RPC for low-traffic on-chain reads (character levels, etc.)
-const PUBLIC_RPC_URL = "https://mainnet.base.org";
-let rpcProvider;
+const PUBLIC_RPC_URL    = "https://mainnet.base.org";
+const FALLBACK_RPC_URL  = process.env.LEADERBOARD_RPC_URL || process.env.RPC_URL || "";
+let rpcProvider, fallbackRpcProvider;
 let characterUpgradeReadContract;
 
 function getRpcProvider() {
@@ -60,6 +60,31 @@ function getRpcProvider() {
     rpcProvider = new ethers.JsonRpcProvider(PUBLIC_RPC_URL);
   }
   return rpcProvider;
+}
+function getFallbackRpcProvider() {
+  if (!FALLBACK_RPC_URL) return null;
+  if (!fallbackRpcProvider) {
+    fallbackRpcProvider = new ethers.JsonRpcProvider(FALLBACK_RPC_URL);
+  }
+  return fallbackRpcProvider;
+}
+
+// Race an RPC call against a timeout; on timeout or failure, retry with the
+// paid fallback (LEADERBOARD_RPC_URL) if configured.
+async function withRpcFallback(callFn, timeoutMs = 8000) {
+  const publicProvider = getRpcProvider();
+  const race = (provider) => Promise.race([
+    callFn(provider),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("rpc-timeout")), timeoutMs)),
+  ]);
+  try {
+    return await race(publicProvider);
+  } catch (e) {
+    const fb = getFallbackRpcProvider();
+    if (!fb) throw e;
+    console.warn("[rpc] public failed, falling back to paid RPC:", e.message);
+    return await race(fb);
+  }
 }
 
 // Minimal ABI for reading character XP on-chain
@@ -73,10 +98,10 @@ const LEVEL_SCORE_MULTIPLIER = [1.0, 1.1, 1.2, 1.3, 1.5, 2.0];
 async function getCharacterLevel(playerAddress, characterId) {
   if (!CHARACTER_UPGRADE_ADDRESS) return 0;
   try {
-    if (!characterUpgradeReadContract) {
-      characterUpgradeReadContract = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, getRpcProvider());
-    }
-    const info = await characterUpgradeReadContract.getCharacterInfo(playerAddress, characterId);
+    const info = await withRpcFallback(async (provider) => {
+      const c = new ethers.Contract(CHARACTER_UPGRADE_ADDRESS, CHARACTER_UPGRADE_ABI, provider);
+      return c.getCharacterInfo(playerAddress, characterId);
+    });
     return Number(info.lvl);
   } catch (e) {
     console.warn("[level] Failed to read character level:", e.message);
@@ -96,22 +121,37 @@ const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || "").toLowerCase().split(
 const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "3000000000000");
 const GC_PER_COIN = 5;
 
-// In-memory set to prevent reusing the same tx for multiple paid sessions
-const usedPaidTxHashes = new Set();
+// Persisted in `used_tx_hashes` table — prevents tx replay across backend restarts.
+async function isTxHashUsed(txHash, kind) {
+  const { query } = require("./shared/db");
+  const r = await query(`SELECT 1 FROM used_tx_hashes WHERE tx_hash = $1 AND kind = $2`, [txHash, kind]);
+  return r.rowCount > 0;
+}
+async function markTxHashUsed(txHash, kind, address) {
+  const { query } = require("./shared/db");
+  try {
+    await query(
+      `INSERT INTO used_tx_hashes (tx_hash, kind, address) VALUES ($1, $2, $3)
+       ON CONFLICT (tx_hash, kind) DO NOTHING`,
+      [txHash, kind, address || null]
+    );
+    return true;
+  } catch (e) {
+    console.error("[tx-replay] failed to persist", kind, txHash, e.message);
+    return false;
+  }
+}
 
 // Payments contract (RugPullRunPayments) — handles paid game + coin purchases
 const PAYMENTS_CONTRACT = (process.env.PAYMENTS_CONTRACT || "").toLowerCase();
 const PAID_GAME_EVENT_TOPIC   = ethers.id("PaidGame(address,uint256,uint256,uint256)");
 const COINS_PURCHASED_TOPIC   = ethers.id("CoinsPurchased(address,uint256,uint256,uint256,uint256)");
 
-// USDC on Base mainnet (kept for reference / fallback)
-const USDC_CONTRACT = (process.env.USDC_CONTRACT || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").toLowerCase();
 const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
 const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000, 5000]);
 const COIN_PACKAGE_USDC = new Map([
   [5000, BigInt(400_000_000)] // $400.00
 ]);
-const usedCoinPurchaseTxHashes = new Set();
 
 if (ALLOWED_ORIGIN === "*") {
   console.warn("⚠️  ALLOWED_ORIGIN is '*' — set a specific domain for production!");
@@ -277,17 +317,19 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
   if (!TREASURY_ADDRESS) {
     return res.status(503).json({ ok: false, error: "Paid games not configured" });
   }
-  if (usedPaidTxHashes.has(txHash)) {
+  if (await isTxHashUsed(txHash, "paid_game")) {
     return res.status(400).json({ ok: false, error: "Transaction already used" });
   }
 
   try {
-    const provider = getRpcProvider();
     // Verify txHash is a real confirmed tx on Base mainnet (not fabricated).
-    // Retry a few times — backend RPC may lag behind the wallet.
+    // Retry a few times — backend RPC may lag behind the wallet; on timeout
+    // withRpcFallback retries via the paid LEADERBOARD_RPC_URL.
     let receipt = null;
     for (let i = 0; i < 5; i++) {
-      receipt = await provider.getTransactionReceipt(txHash);
+      try {
+        receipt = await withRpcFallback((p) => p.getTransactionReceipt(txHash));
+      } catch { /* timeout — try next iteration */ }
       if (receipt) break;
       await new Promise((r) => setTimeout(r, 1500));
     }
@@ -317,7 +359,7 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
       }
     }
 
-    usedPaidTxHashes.add(txHash);
+    await markTxHashUsed(txHash, "paid_game", req.user.address);
 
     const addressNorm = req.user.address;
     const seed = randomSeed();
@@ -391,14 +433,6 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   
   console.log("⏱️ Duration:", { clientElapsedMs, serverDurationMs, gameDurationMs });
 
-  // SIMULATION DISABLED - uncomment to enable
-  // const simResult = simulateRun({
-  //   seed: session.seed,
-  //   durationMs: gameDurationMs,
-  //   inputEvents: inputLog
-  // });
-  // const simScore = simResult.score;
-
   const reported = Number.isFinite(Number(reportedScore))
     ? Number(reportedScore)
     : null;
@@ -434,8 +468,10 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   const coinsAwarded     = Math.floor(adjustedScore / 1000) * (baseCoins + levelCoinBonus);
 
   console.log("💰 Awarding:", { rawScore, adjustedScore, coinsAwarded, paid: session.paid, charLevel, address: addressNorm });
-  markSessionUsed(sessionId);
+  // Apply score first; only mark session used after a successful write so that
+  // a transient DB error doesn't burn the session.
   const result = await applyScore(addressNorm, adjustedScore, coinsAwarded);
+  markSessionUsed(sessionId);
 
   res.json({
     ok: true,
@@ -676,7 +712,7 @@ app.post("/api/admin/leaderboard/refresh", requireAuth, async (req, res) => {
 
 // Kick off first refresh on startup, then every 12h
 setTimeout(() => refreshLeaderboard(), 5000);
-setInterval(() => refreshLeaderboard(), LEADERBOARD_REFRESH_MS);
+setInterval(() => refreshLeaderboard(), LEADERBOARD_REFRESH_MS).unref();
 
 app.get("/api/checkin/status", requireAuth, async (req, res) => {
   try {
@@ -936,15 +972,16 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
   if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
     return res.status(400).json({ ok: false, error: "Invalid txHash" });
   }
-  if (usedCoinPurchaseTxHashes.has(txHash)) {
+  if (await isTxHashUsed(txHash, "coin_purchase")) {
     return res.status(400).json({ ok: false, error: "Transaction already used" });
   }
 
   try {
-    const provider = getRpcProvider();
     let receipt = null;
     for (let i = 0; i < 5; i++) {
-      receipt = await provider.getTransactionReceipt(txHash);
+      try {
+        receipt = await withRpcFallback((p) => p.getTransactionReceipt(txHash));
+      } catch { /* timeout — try next iteration */ }
       if (receipt) break;
       await new Promise(r => setTimeout(r, 1500));
     }
@@ -974,7 +1011,7 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
       }
     }
 
-    usedCoinPurchaseTxHashes.add(txHash);
+    await markTxHashUsed(txHash, "coin_purchase", req.user.address);
     const updatedUser = await addCoins(req.user.address, Number(coins));
     res.json({ ok: true, coinsAdded: Number(coins), newBalance: updatedUser?.coins ?? 0 });
   } catch (err) {
@@ -1201,8 +1238,8 @@ app.post("/api/user/test-notification", requireAuth, async (req, res) => {
 
 // Hourly job: remind users whose 24h cooldown expired before their streak times out
 setTimeout(runCheckinReminderJob, 30 * 1000);
-setInterval(runCheckinReminderJob, 60 * 60 * 1000);
-setInterval(cleanupSessions, 60 * 1000);
+setInterval(runCheckinReminderJob, 60 * 60 * 1000).unref();
+setInterval(cleanupSessions, 60 * 1000).unref();
 
 async function startServer() {
   try {

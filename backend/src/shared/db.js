@@ -57,6 +57,18 @@ async function ensureSchema() {
   // Base.dev wallet-address notifications
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ;`);
 
+  // Persist used on-chain tx hashes so replays survive backend restarts.
+  // kind = 'paid_game' | 'coin_purchase' | 'shop_claim_free' | 'shop_purchase'
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS used_tx_hashes (
+      tx_hash TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      address TEXT,
+      used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (tx_hash, kind)
+    );
+  `);
+
   // Leaderboard: only scores explicitly submitted via Save Record button count here.
   // Add column AND backfill from best_score once so existing users stay on the board.
   const lbCol = await pool.query(`

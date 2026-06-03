@@ -251,8 +251,8 @@ async function generateMintSignature(userAddress, characterId, nonce, expiryTime
   return signature;
 }
 
-// Run cleanup every minute
-setInterval(cleanupExpiredPurchases, 60 * 1000);
+// Run cleanup every minute (.unref so the timer doesn't keep the event loop alive in tests)
+setInterval(cleanupExpiredPurchases, 60 * 1000).unref();
 
 module.exports = {
   getCharacters,
