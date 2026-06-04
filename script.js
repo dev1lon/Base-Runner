@@ -463,7 +463,6 @@ const BACKEND_URL = "https://base-runner-k9oj.onrender.com";
 const BACKEND_TIMEOUT_MS = 25000;
 const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const CHECKIN_STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
-const ALLOW_GUEST_PLAY = false;
 
 // Payments contract (RugPullRunPayments on Base mainnet)
 const PAYMENTS_CONTRACT = "0x33e269ae12e0d1E4226A199fd6042d2fe9742855";
@@ -577,9 +576,6 @@ let overlayMenu;
 let overlayPause;
 let overlayCollection;
 let pauseButton;
-let connectButton;
-let connectStandardBtn;
-let walletStatus;
 let walletAddressDisplay;
 let startButton;
 let payGameButton;
@@ -589,10 +585,6 @@ let checkinButton;
 let checkinStatus;
 let checkinButtonPause;
 let checkinStatusPause;
-let testNotificationAdminRow;
-let testNotificationAdminRowPause;
-let testNotificationAddress;
-let testNotificationAddressPause;
 let testNotificationButton;
 let testNotificationButtonPause;
 let adminSpeedRow;
@@ -604,8 +596,6 @@ let adminSpeedValuePause;
 let collectionButton;
 let collectionButtonPause;
 let collectionCloseBtn;
-let mintVitalikBtn;
-let mintTrumpBtn;
 let collectionHint;
 let ethImg;
 // Game UI elements
@@ -711,614 +701,6 @@ function getEthereumProvider() {
     }
     // Return EIP-6963 selected provider or injected
     return window._activeProvider || window.ethereum || null;
-}
-
-// Initialize Web3Modal on demand
-async function initWeb3Modal() {
-    if (window.web3modal) return window.web3modal;
-    if (window.web3modalLoading) {
-        // Wait for loading to complete
-        return new Promise((resolve) => {
-            const check = setInterval(() => {
-                if (window.web3modal) {
-                    clearInterval(check);
-                    resolve(window.web3modal);
-                }
-            }, 100);
-            setTimeout(() => {
-                clearInterval(check);
-                resolve(null);
-            }, 10000);
-        });
-    }
-    
-    window.web3modalLoading = true;
-    
-    try {
-        const { createWeb3Modal, defaultConfig } = await import('https://esm.sh/@web3modal/ethers@5.1.11?bundle');
-        
-        // WalletConnect Cloud Project ID
-        const projectId = '2b1bf48533e65943f2d6f749c353b1c9';
-        
-        const baseMainnet = {
-            chainId: 8453,
-            name: 'Base',
-            currency: 'ETH',
-            explorerUrl: 'https://basescan.org',
-            rpcUrl: 'https://mainnet.base.org'
-        };
-        
-        const metadata = {
-            name: 'Rug Pull Run',
-            description: 'Run and earn on Base',
-            url: window.location.origin,
-            icons: [window.location.origin + '/assets/eth.png']
-        };
-        
-        const ethersConfig = defaultConfig({
-            metadata,
-            enableEIP6963: true,
-            enableInjected: true,
-            enableCoinbase: true,
-            rpcUrl: 'https://mainnet.base.org'
-        });
-
-        const modal = createWeb3Modal({
-            ethersConfig,
-            chains: [baseMainnet],
-            projectId,
-            enableAnalytics: false,
-            themeMode: 'dark'
-        });
-        
-        window.web3modal = modal;
-        window.web3modalLoading = false;
-        // Setup provider listener - only react to actual connections/disconnections
-        let wasConnectedViaModal = false;
-        modal.subscribeProvider(async (state) => {
-            if (state.isConnected && state.address) {
-                const previousAddress = walletAddress;
-                wasConnectedViaModal = true;
-                walletAddress = state.address;
-                walletChainId = state.chainId ? '0x' + state.chainId.toString(16) : null;
-                activeWalletType = 'walletconnect';
-                if (state.provider) {
-                    window.web3modalProvider = state.provider;
-                    // Set up listeners on the provider too
-                    if (state.provider.on) {
-                        state.provider.on("accountsChanged", handleAccountsChanged);
-                        state.provider.on("chainChanged", handleChainChanged);
-                    }
-                }
-                // Check if wallet changed (not first connect)
-                if (previousAddress && previousAddress.toLowerCase() !== state.address.toLowerCase()) {
-                    forceExitToMenu('Wallet changed');
-                }
-                // Close modal UI so it doesn't block the screen
-                try { modal.close(); } catch (e) {}
-                const restored = await restoreAuthSession();
-                if (!restored) {
-                    await authenticateWallet();
-                }
-                updateWalletUI();
-            } else if (!state.isConnected && wasConnectedViaModal && activeWalletType === 'walletconnect') {
-                // Only disconnect if user was actually connected via this modal
-                wasConnectedViaModal = false;
-                walletAddress = null;
-                activeWalletType = null;
-                window.web3modalProvider = null;
-                resetAuthState();
-                forceExitToMenu('Wallet disconnected');
-                updateWalletUI();
-            }
-        });
-        
-        return modal;
-    } catch (err) {
-        console.error('Failed to load Web3Modal:', err);
-        window.web3modalLoading = false;
-        return null;
-    }
-}
-// Wait for ethereum provider to be injected (some wallets inject asynchronously)
-function waitForEthereumProvider(maxWaitMs = 3000) {
-    return new Promise((resolve) => {
-        if (window.ethereum) {
-            resolve(window.ethereum);
-            return;
-        }
-        
-        let resolved = false;
-        
-        // Listen for provider injection event
-        const handleEthereum = () => {
-            if (!resolved && window.ethereum) {
-                resolved = true;
-                window.removeEventListener("ethereum#initialized", handleEthereum);
-                resolve(window.ethereum);
-            }
-        };
-        
-        window.addEventListener("ethereum#initialized", handleEthereum);
-        
-        // Also poll in case the event doesn't fire
-        const startTime = Date.now();
-        const checkInterval = setInterval(() => {
-            if (window.ethereum) {
-                resolved = true;
-                clearInterval(checkInterval);
-                window.removeEventListener("ethereum#initialized", handleEthereum);
-                resolve(window.ethereum);
-            } else if (Date.now() - startTime > maxWaitMs) {
-                clearInterval(checkInterval);
-                window.removeEventListener("ethereum#initialized", handleEthereum);
-                resolve(null);
-            }
-        }, 100);
-    });
-}
-
-// Discover installed wallets via EIP-6963
-function discoverEIP6963Providers() {
-    return new Promise((resolve) => {
-        const providers = [];
-        const handler = (event) => {
-            providers.push(event.detail);
-        };
-        window.addEventListener('eip6963:announceProvider', handler);
-        window.dispatchEvent(new Event('eip6963:requestProvider'));
-        // Wallets respond synchronously or within a tick
-        setTimeout(() => {
-            window.removeEventListener('eip6963:announceProvider', handler);
-            resolve(providers);
-        }, 200);
-    });
-}
-
-// Show wallet type selection first (Smart Wallet vs Standard), then wallet picker
-async function showWalletSelector() {
-    const existingModal = document.getElementById('wallet-modal');
-    if (existingModal) existingModal.remove();
-
-    const modal = document.createElement('div');
-    modal.id = 'wallet-modal';
-    modal.innerHTML = `
-        <div class="wallet-modal-backdrop"></div>
-        <div class="wallet-modal-content">
-            <h3>Connect Wallet</h3>
-            <div class="wallet-options">
-                <button type="button" class="wallet-option" id="btn-smart-wallet">
-                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
-                    <span>Smart Wallet</span>
-                </button>
-                <button type="button" class="wallet-option" id="btn-standard-wallet">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Standard" width="32" height="32">
-                    <span>Standard Wallet</span>
-                </button>
-            </div>
-            <button type="button" class="wallet-modal-close">Cancel</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-
-    if (!document.getElementById('wallet-modal-styles')) {
-        const styles = document.createElement('style');
-        styles.id = 'wallet-modal-styles';
-        styles.textContent = `
-            #wallet-modal { position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;display:flex;align-items:center;justify-content:center; }
-            .wallet-modal-backdrop { position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:1; }
-            .wallet-modal-content { position:relative;z-index:2;background:linear-gradient(180deg,#1a1a2e 0%,#16213e 100%);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;min-width:320px;max-width:90%;box-shadow:0 20px 40px rgba(0,0,0,0.4); }
-            .wallet-modal-content h3 { color:white;margin:0 0 20px 0;text-align:center;font-size:18px; }
-            .wallet-options { display:flex;flex-direction:column;gap:12px; }
-            .wallet-option { display:flex;align-items:center;gap:12px;padding:16px 18px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:white;cursor:pointer;font-size:16px;width:100%;text-align:left;touch-action:manipulation; }
-            .wallet-option:hover,.wallet-option:active { background:rgba(255,255,255,0.15);border-color:#0052ff; }
-            .wallet-option img { border-radius:8px;width:32px;height:32px; }
-            .wallet-badge { margin-left:auto;font-size:11px;padding:3px 8px;background:#0052ff;border-radius:4px;color:white; }
-            .wallet-badge-secondary { margin-left:auto;font-size:11px;padding:3px 8px;background:rgba(255,255,255,0.2);border-radius:4px;color:white; }
-            .wallet-modal-close { width:100%;margin-top:16px;padding:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:rgba(255,255,255,0.7);cursor:pointer;font-size:15px;touch-action:manipulation; }
-            .wallet-modal-close:hover,.wallet-modal-close:active { background:rgba(255,255,255,0.1); }
-        `;
-        document.head.appendChild(styles);
-    }
-
-    const closeModal = (e) => { if (e) { e.preventDefault(); e.stopPropagation(); } modal.remove(); };
-    modal.querySelector('.wallet-modal-backdrop').addEventListener('click', closeModal);
-    modal.querySelector('.wallet-modal-close').addEventListener('click', closeModal);
-    modal.querySelector('.wallet-modal-close').addEventListener('touchend', closeModal);
-
-    // Smart Wallet button
-    const smartBtn = modal.querySelector('#btn-smart-wallet');
-    const handleSmart = (e) => { e.preventDefault(); e.stopPropagation(); modal.remove(); connectWithCoinbaseSmartWallet(); };
-    smartBtn.addEventListener('click', handleSmart);
-    smartBtn.addEventListener('touchend', handleSmart);
-
-    // Standard Wallet button — show full wallet picker
-    const standardBtn = modal.querySelector('#btn-standard-wallet');
-    const handleStandard = (e) => { e.preventDefault(); e.stopPropagation(); modal.remove(); showStandardWalletPicker(); };
-    standardBtn.addEventListener('click', handleStandard);
-    standardBtn.addEventListener('touchend', handleStandard);
-}
-
-// Full wallet picker (MetaMask, WalletConnect, etc.)
-async function showStandardWalletPicker() {
-    const existingModal = document.getElementById('wallet-modal');
-    if (existingModal) existingModal.remove();
-
-    const mobile = isMobile();
-    const modal = document.createElement('div');
-    modal.id = 'wallet-modal';
-
-    let buttonsHtml = '';
-
-    if (!mobile) {
-        // Desktop — discover installed wallets via EIP-6963
-        const eip6963Wallets = await discoverEIP6963Providers();
-        window._lastEIP6963Wallets = eip6963Wallets;
-
-        if (eip6963Wallets.length > 0) {
-            // Render a button for each discovered wallet
-            eip6963Wallets.forEach((w, i) => {
-                const icon = w.info.icon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
-                buttonsHtml += `
-                    <button type="button" class="wallet-option" data-eip6963-idx="${i}">
-                        <img src="${icon}" alt="${w.info.name}" width="32" height="32">
-                        <span>${w.info.name}</span>
-                    </button>`;
-            });
-        } else if (window.ethereum) {
-            // Fallback — single injected provider, no EIP-6963
-            buttonsHtml = `
-                <button type="button" class="wallet-option" id="btn-injected-fallback">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="Wallet" width="32" height="32">
-                    <span>Browser Wallet</span>
-                </button>`;
-        }
-
-        // Coinbase Wallet (Smart Wallet — no extension needed)
-        const hasCoinbaseEIP6963 = eip6963Wallets.some(w => w.info.rdns === 'com.coinbase.wallet');
-        if (!hasCoinbaseEIP6963) {
-            buttonsHtml += `
-                <button type="button" class="wallet-option" id="btn-coinbase-desktop">
-                    <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase Wallet" width="32" height="32">
-                    <span>Coinbase Wallet</span>
-                    <span class="wallet-badge">Smart Wallet</span>
-                </button>`;
-        }
-
-        // Always offer WalletConnect as last option
-        buttonsHtml += `
-            <button type="button" class="wallet-option" id="btn-walletconnect">
-                <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
-                <span>WalletConnect</span>
-            </button>`;
-    } else {
-        // Mobile browser
-        buttonsHtml = `
-            <button type="button" class="wallet-option" id="btn-coinbase">
-                <img src="https://avatars.githubusercontent.com/u/18060234?s=200&v=4" alt="Coinbase" width="32" height="32">
-                <span>Coinbase Wallet</span>
-            </button>
-            <button type="button" class="wallet-option" id="btn-walletconnect">
-                <img src="https://avatars.githubusercontent.com/u/37784886?s=200&v=4" alt="WalletConnect" width="32" height="32">
-                <span>Other Wallets</span>
-            </button>`;
-    }
-
-    modal.innerHTML = `
-        <div class="wallet-modal-backdrop"></div>
-        <div class="wallet-modal-content">
-            <h3>Connect Wallet</h3>
-            <div class="wallet-options">${buttonsHtml}</div>
-            <button type="button" class="wallet-modal-close">Cancel</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    
-    // Add styles if not already added
-    if (!document.getElementById('wallet-modal-styles')) {
-        const styles = document.createElement('style');
-        styles.id = 'wallet-modal-styles';
-        styles.textContent = `
-            #wallet-modal {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                z-index: 10000;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .wallet-modal-backdrop {
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.6);
-                backdrop-filter: blur(4px);
-                z-index: 1;
-            }
-            .wallet-modal-content {
-                position: relative;
-                z-index: 2;
-                background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 16px;
-                padding: 24px;
-                min-width: 320px;
-                max-width: 90%;
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-                pointer-events: auto;
-            }
-            .wallet-modal-content h3 {
-                color: white;
-                margin: 0 0 8px 0;
-                text-align: center;
-                font-size: 18px;
-            }
-            .wallet-modal-subtitle {
-                color: rgba(255,255,255,0.6);
-                margin: 0 0 20px 0;
-                text-align: center;
-                font-size: 14px;
-            }
-            .wallet-options {
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-            }
-            .wallet-option {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 16px 18px;
-                background: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 12px;
-                color: white;
-                cursor: pointer;
-                transition: all 0.15s;
-                font-size: 16px;
-                text-decoration: none;
-                width: 100%;
-                text-align: left;
-                -webkit-tap-highlight-color: rgba(0,82,255,0.3);
-                touch-action: manipulation;
-                pointer-events: auto;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            .wallet-option:hover,
-            .wallet-option:focus,
-            .wallet-option:active {
-                background: rgba(255, 255, 255, 0.15);
-                border-color: #0052ff;
-                outline: none;
-            }
-            .wallet-option img {
-                border-radius: 8px;
-                width: 32px;
-                height: 32px;
-            }
-            .wallet-badge {
-                margin-left: auto;
-                font-size: 11px;
-                padding: 3px 8px;
-                background: #0052ff;
-                border-radius: 4px;
-                color: white;
-            }
-            .wallet-badge-secondary {
-                margin-left: auto;
-                font-size: 11px;
-                padding: 3px 8px;
-                background: rgba(255,255,255,0.2);
-                border-radius: 4px;
-                color: white;
-            }
-            .wallet-modal-close {
-                width: 100%;
-                margin-top: 16px;
-                padding: 14px;
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 8px;
-                color: rgba(255, 255, 255, 0.7);
-                cursor: pointer;
-                font-size: 15px;
-                pointer-events: auto;
-                touch-action: manipulation;
-                -webkit-tap-highlight-color: rgba(255,255,255,0.1);
-            }
-            .wallet-modal-close:hover,
-            .wallet-modal-close:active {
-                background: rgba(255, 255, 255, 0.1);
-            }
-        `;
-        document.head.appendChild(styles);
-    }
-    
-    // Handle close
-    const backdrop = modal.querySelector('.wallet-modal-backdrop');
-    const closeBtn = modal.querySelector('.wallet-modal-close');
-    
-    const closeModal = (e) => {
-        if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        modal.remove();
-    };
-    
-    backdrop.addEventListener('click', closeModal);
-    backdrop.addEventListener('touchend', closeModal);
-    closeBtn.addEventListener('click', closeModal);
-    closeBtn.addEventListener('touchend', closeModal);
-    
-    // --- Button handlers ---
-
-    // EIP-6963 wallet buttons (desktop)
-    if (!mobile) {
-        const eip6963Wallets = window._lastEIP6963Wallets || [];
-        modal.querySelectorAll('[data-eip6963-idx]').forEach(btn => {
-            const idx = parseInt(btn.getAttribute('data-eip6963-idx'));
-            const handler = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                modal.remove();
-                connectWithInjected(eip6963Wallets[idx]?.provider);
-            };
-            btn.addEventListener('click', handler);
-            btn.addEventListener('touchend', handler);
-        });
-
-        // Fallback injected
-        const fallbackBtn = modal.querySelector('#btn-injected-fallback');
-        if (fallbackBtn) {
-            const handler = (e) => { e.preventDefault(); e.stopPropagation(); modal.remove(); connectWithInjected(); };
-            fallbackBtn.addEventListener('click', handler);
-            fallbackBtn.addEventListener('touchend', handler);
-        }
-    }
-
-    // WalletConnect button (desktop & mobile)
-    const wcBtn = modal.querySelector('#btn-walletconnect');
-    if (wcBtn) {
-        const handleWC = async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            wcBtn.innerHTML = '<span>Loading...</span>';
-            wcBtn.disabled = true;
-            try {
-                const web3modal = await initWeb3Modal();
-                modal.remove();
-                if (web3modal) { await web3modal.open(); return; }
-            } catch (err) {
-                console.error('Web3Modal error:', err);
-            }
-            modal.remove();
-        };
-        wcBtn.addEventListener('click', handleWC);
-        wcBtn.addEventListener('touchend', handleWC);
-    }
-
-    // Coinbase Smart Wallet (desktop, no extension)
-    const coinbaseDesktopBtn = modal.querySelector('#btn-coinbase-desktop');
-    if (coinbaseDesktopBtn) {
-        const handleCBDesktop = async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            modal.remove();
-            await connectWithCoinbaseSmartWallet();
-        };
-        coinbaseDesktopBtn.addEventListener('click', handleCBDesktop);
-        coinbaseDesktopBtn.addEventListener('touchend', handleCBDesktop);
-    }
-
-    // Coinbase deeplink (mobile only)
-    const coinbaseBtn = modal.querySelector('#btn-coinbase');
-    if (coinbaseBtn) {
-        const handleCB = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            modal.remove();
-            const link = `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(APP_URL)}`;
-            window.location.href = link;
-        };
-        coinbaseBtn.addEventListener('click', handleCB);
-        coinbaseBtn.addEventListener('touchend', handleCB);
-    }
-}
-
-// Connect with injected wallet (MetaMask, etc.)
-// Accepts optional EIP-6963 provider; falls back to window.ethereum
-// Connect via Coinbase Smart Wallet SDK (no extension required)
-async function connectWithCoinbaseSmartWallet() {
-    try {
-        const { CoinbaseWalletSDK } = await import('https://esm.sh/@coinbase/wallet-sdk@4?bundle');
-        const sdk = new CoinbaseWalletSDK({
-            appName: 'Rug Pull Run',
-            appLogoUrl: 'https://rugpullrun.app/assets/coin.png',
-        });
-        const cbProvider = sdk.makeWeb3Provider({ options: 'smartWalletOnly' });
-        await connectWithInjected(cbProvider);
-    } catch (err) {
-        console.error('Coinbase Smart Wallet error:', err);
-        isConnectingWallet = false;
-        setWalletError('Failed to connect Coinbase Wallet');
-        updateWalletUI();
-    }
-}
-
-async function connectWithInjected(eip6963Provider) {
-    const provider = eip6963Provider || window.ethereum;
-    if (!provider) {
-        setWalletError("No browser wallet found");
-        return;
-    }
-
-    const myAttempt = ++connectAttemptId;
-    try {
-        activeWalletType = 'injected';
-        isConnectingWallet = true;
-        updateWalletUI();
-
-        const accounts = await provider.request({ method: "eth_requestAccounts" });
-        if (myAttempt !== connectAttemptId) return; // user clicked connect again, ignore this stale response
-        walletAddress = accounts[0] || null;
-
-        // Get chain id
-        const chainId = await provider.request({ method: "eth_chainId" });
-        walletChainId = normalizeChainId(chainId) || chainId;
-
-        // Switch to Base if needed
-        if (walletChainId !== BASE_CHAIN_ID) {
-            try {
-                await provider.request({
-                    method: "wallet_switchEthereumChain",
-                    params: [{ chainId: BASE_CHAIN_ID }]
-                });
-                walletChainId = BASE_CHAIN_ID;
-            } catch (e) {
-                console.warn("Chain switch failed:", e);
-            }
-        }
-
-        // If a custom provider was passed (EIP-6963), override window.ethereum for this session
-        if (eip6963Provider) {
-            window._activeProvider = eip6963Provider;
-        }
-
-        // Set up event listeners on the provider
-        if (provider.on) {
-            provider.on("accountsChanged", handleAccountsChanged);
-            provider.on("chainChanged", handleChainChanged);
-        }
-
-        // Authenticate with backend
-        resetAuthState();
-        const restored = await restoreAuthSession();
-        if (!restored && walletAddress) {
-            await authenticateWallet();
-        }
-        resolveBasename(walletAddress);
-
-        isConnectingWallet = false;
-        updateWalletUI();
-    } catch (err) {
-        if (myAttempt !== connectAttemptId) return; // stale — a newer attempt is already running
-        console.error("Injected wallet connect error:", err);
-        if (err.code === 4001 || (err.message && err.message.toLowerCase().includes('reject'))) {
-            setWalletError("Cancelled in wallet.");
-        } else {
-            setWalletError(err.message || "Connection failed");
-        }
-        isConnectingWallet = false;
-        activeWalletType = null;
-        updateWalletUI();
-    }
 }
 
 function formatAddress(address) {
@@ -1990,12 +1372,6 @@ async function handleSaveRecord(e) {
     }
 }
 
-function setWalletStatus(message, isError) {
-    if (!walletStatus) return;
-    walletStatus.textContent = message;
-    walletStatus.style.color = isError ? "#a00000" : "#333";
-}
-
 function setWalletError(message) {
     walletErrorMessage = message || "";
 }
@@ -2009,60 +1385,13 @@ function clearWalletMessages() {
     walletInfoMessage = "";
 }
 
-function setConnectButtonText(text) {
-    if (!connectButton) return;
-    connectButton.textContent = text;
-}
-
 function updateWalletUI() {
     const isConnected = !!walletAddress;
     const normalizedChainId = normalizeChainId(walletChainId);
     const isOnBase = normalizedChainId === BASE_CHAIN_ID;
     const walletConnected = isConnected && isOnBase;
     walletReady = walletConnected && walletAuthenticated;
-    const canPlayNow = isBaseAppEnvironment() && (walletReady || ALLOW_GUEST_PLAY);
-
-    // Update connect button state and text - always enabled (we have universal options)
-    if (connectButton) {
-        connectButton.disabled = isDetectingWallet || isConnectingWallet || authInProgress;
-        if (isDetectingWallet) {
-            setConnectButtonText("Loading...");
-        } else if (isConnectingWallet) {
-            setConnectButtonText("Connecting...");
-        } else if (authInProgress) {
-            setConnectButtonText("Signing...");
-        } else if (isConnected && !isOnBase) {
-            setConnectButtonText("Switch Network");
-        } else {
-            setConnectButtonText("Connect Wallet");
-        }
-    }
-
-    // Update status message
-    if (walletStatus) {
-        if (walletErrorMessage && !walletReady) {
-            walletStatus.textContent = walletErrorMessage;
-            walletStatus.classList.add("error");
-        } else if (isConnectingWallet && walletInfoMessage) {
-            walletStatus.textContent = walletInfoMessage;
-            walletStatus.classList.remove("error");
-        } else if (!isConnected && !isConnectingWallet) {
-            walletStatus.textContent = "";
-            walletStatus.classList.remove("error");
-        } else if (!isConnected) {
-            walletStatus.textContent = "";
-            walletStatus.classList.remove("error");
-        } else if (!isOnBase) {
-            walletStatus.textContent = "Please switch to Base network.";
-            walletStatus.classList.remove("error");
-        } else if (!walletAuthenticated) {
-            walletStatus.textContent = "";
-            walletStatus.classList.remove("error");
-        } else {
-            walletStatus.textContent = "";
-            walletStatus.classList.remove("error");
-        }
-    }
+    const canPlayNow = isBaseAppEnvironment() && walletReady;
 
     // Transition UI state based on wallet status
     if (!canPlayNow) {
@@ -2146,11 +1475,6 @@ async function applyWalletBridge(detail) {
     }
 }
 
-function isReactBridgePresent() {
-    // React mounts into #wallet-root. If it exists, React handles wallet/auth.
-    return !!document.getElementById('wallet-root');
-}
-
 async function initWalletState() {
     // If React bridge already fired before DOMContentLoaded, use it
     if (window.__walletBridge?.token) {
@@ -2164,85 +1488,9 @@ async function initWalletState() {
         if (e.detail?.token) await applyWalletBridge(e.detail);
     });
 
-    // If React is present, skip script.js's own connect/auth flow entirely
-    // (React handles: wallet selection, SIWE sign, session restore).
-    if (isReactBridgePresent()) {
-        isDetectingWallet = false;
-        updateWalletUI();
-        return;
-    }
-
-    // Wait for provider to be injected (some wallets load asynchronously)
-    isDetectingWallet = true;
-    updateWalletUI();
-
-    const provider = await waitForEthereumProvider(3000);
+    // React handles wallet/auth in Base App; no fallback path is reachable.
     isDetectingWallet = false;
-    
-    // No provider available
-    if (!provider) {
-        updateWalletUI();
-        return;
-    }
-    
-    // ALWAYS set up event listeners first
-    if (provider && provider.on) {
-        provider.on("accountsChanged", handleAccountsChanged);
-        provider.on("chainChanged", handleChainChanged);
-    }
-    
-    // Inside Base App's mobile webview, auto-connect through the injected provider.
-    if (isBaseAppEnvironment()) {
-        walletInitializing = true;
-        try {
-            const accounts = await provider.request({ method: "eth_requestAccounts" });
-            if (accounts && accounts.length > 0) {
-                walletAddress = accounts[0];
-                activeWalletType = 'injected';
-                const chainId = await provider.request({ method: "eth_chainId" });
-                walletChainId = normalizeChainId(chainId) || chainId;
-                if (walletChainId !== BASE_CHAIN_ID) {
-                    await switchToBase();
-                    const newChainId = await provider.request({ method: "eth_chainId" });
-                    walletChainId = normalizeChainId(newChainId) || newChainId;
-                }
-                walletInitializing = false;
-                const restored = await restoreAuthSession();
-                if (!restored) await authenticateWallet();
-                resolveBasename(walletAddress);
-                updateWalletUI();
-                return;
-            }
-        } catch (err) {
-            console.error("Auto-connect error:", err);
-            walletInitializing = false;
-            isConnectingWallet = false;
-            updateWalletUI();
-        }
-    }
-
-    // Desktop / mobile browser — silently check if already connected and session exists
-    try {
-        if (provider) {
-            const accounts = await provider.request({ method: "eth_accounts" });
-            if (accounts && accounts.length) {
-                const savedToken = getAuthTokenForAddress(accounts[0]);
-                if (savedToken) {
-                    // Previous session exists — restore silently
-                    walletAddress = accounts[0];
-                    activeWalletType = 'injected';
-                    const chainId = await provider.request({ method: "eth_chainId" });
-                    walletChainId = normalizeChainId(chainId) || chainId;
-                    await restoreAuthSession();
-                }
-                // No saved token = don't auto-connect, wait for user to click Connect
-            }
-        }
-    } catch (err) {
-        // ignore
-    } finally {
-        updateWalletUI();
-    }
+    updateWalletUI();
 }
 
 async function connectWallet() {
@@ -2299,76 +1547,6 @@ async function handleNetworkSwitch() {
     } finally {
         isConnectingWallet = false;
         clearWalletMessages();
-        updateWalletUI();
-    }
-}
-
-// Legacy connectWallet logic (now used by connectWithInjected/connectWithCoinbase)
-async function connectWalletLegacy() {
-    const provider = getEthereumProvider();
-    if (!provider || isConnectingWallet) {
-        setWalletError("Wallet not found.");
-        updateWalletUI();
-        return;
-    }
-
-    clearWalletMessages();
-    isConnectingWallet = true;
-    setWalletInfo(walletAddress ? "Opening network switch..." : "Opening wallet...");
-    updateWalletUI();
-    try {
-        if (!walletAddress) {
-            const accounts = await provider.request({ method: "eth_requestAccounts" });
-            handleAccountsChanged(accounts);
-        }
-        let chainId = null;
-        try {
-            chainId = await provider.request({ method: "eth_chainId" });
-            handleChainChanged(chainId);
-        } catch (err) {
-            // Some providers may not support eth_chainId at this moment
-        }
-        const normalizedChainId = normalizeChainId(chainId || walletChainId);
-        if (!normalizedChainId || normalizedChainId !== BASE_CHAIN_ID) {
-            const switchResult = await trySwitchToBase();
-            if (!switchResult.ok) {
-                if (switchResult.error && switchResult.error.code === 4001) {
-                    setWalletError("Cancelled in wallet.");
-                } else if (switchResult.error && switchResult.error.code === -32002) {
-                    setWalletError("Waiting for wallet confirmation.");
-                } else if (switchResult.error && switchResult.error.code === 4200) {
-                    setWalletError("Wallet does not support network switching. Switch manually.");
-                } else if (switchResult.error && switchResult.error.code === -32601) {
-                    setWalletError("Wallet does not support network switching. Switch manually.");
-                } else {
-                    setWalletError("Failed to switch network. Try manually.");
-                }
-            } else {
-                const nextChainId = await provider.request({ method: "eth_chainId" });
-                handleChainChanged(nextChainId);
-            }
-        }
-        const activeChainId = normalizeChainId(walletChainId);
-        if (walletAddress && activeChainId === BASE_CHAIN_ID && !walletAuthenticated) {
-            const restored = await restoreAuthSession();
-            if (!restored) {
-                authAttempted = false;
-                await authenticateWallet();
-            }
-        }
-    } catch (err) {
-        if (err && err.code === 4001) {
-            setWalletError("Cancelled in wallet.");
-        } else if (err && err.code === -32002) {
-            setWalletError("Waiting for wallet confirmation.");
-        } else if (err && err.code === 4200) {
-            setWalletError("Wallet does not support network switching. Switch manually.");
-        } else {
-            setWalletError("Failed to connect wallet. Check permissions.");
-        }
-    } finally {
-        isConnectingWallet = false;
-        setWalletInfo("");
         updateWalletUI();
     }
 }
@@ -2610,9 +1788,6 @@ window.onload = function() {
     overlayMenu = document.getElementById("overlay-menu");
     overlayPause = document.getElementById("overlay-pause");
     pauseButton = document.getElementById("pause-button");
-    connectButton = document.getElementById("connect-button");
-    connectStandardBtn = document.getElementById("connect-standard-btn");
-    walletStatus = document.getElementById("wallet-status");
     walletAddressDisplay = document.getElementById("wallet-address");
     startButton = document.getElementById("start-button");
     payGameButton = document.getElementById("pay-game-button");
@@ -2622,10 +1797,6 @@ window.onload = function() {
     checkinStatus = document.getElementById("checkin-status");
     checkinButtonPause = document.getElementById("checkin-button-pause");
     checkinStatusPause = document.getElementById("checkin-status-pause");
-    testNotificationAdminRow = document.getElementById("test-notification-admin-row");
-    testNotificationAdminRowPause = document.getElementById("test-notification-admin-row-pause");
-    testNotificationAddress = document.getElementById("test-notification-address");
-    testNotificationAddressPause = document.getElementById("test-notification-address-pause");
     testNotificationButton = document.getElementById("test-notification-button");
     testNotificationButtonPause = document.getElementById("test-notification-button-pause");
     adminSpeedRow = document.getElementById("admin-speed-row");
@@ -2662,8 +1833,6 @@ window.onload = function() {
     collectionButton = document.getElementById("collection-button");
     collectionButtonPause = document.getElementById("collection-button-pause");
     collectionCloseBtn = document.getElementById("collection-close-btn");
-    mintVitalikBtn = document.getElementById("mint-vitalik-btn");
-    mintTrumpBtn = document.getElementById("mint-trump-btn");
     collectionHint = document.getElementById("collection-hint");
     
     // Game UI elements
@@ -2846,14 +2015,6 @@ window.onload = function() {
             togglePause();
         }, { passive: false });
     }
-    if (connectButton) {
-        connectButton.addEventListener("click", connectWallet);
-        connectButton.addEventListener("touchstart", function(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            connectWallet();
-        }, { passive: false });
-    }
     if (checkinButton) {
         checkinButton.addEventListener("click", handleCheckin);
         checkinButton.addEventListener("touchstart", function(e) {
@@ -2894,11 +2055,6 @@ window.onload = function() {
     }
     initWalletState();
     fetchGameConfig(); // fire-and-forget
-
-    // Pre-load Web3Modal only for WalletConnect fallback (lazy, non-blocking)
-    if (!isMobile() && !window.ethereum) {
-        initWeb3Modal().catch(() => {});
-    }
 
     context = board.getContext("2d");
 
@@ -2962,13 +2118,8 @@ window.onload = function() {
     document.addEventListener("touchcancel", handleTouchEnd, { passive: false });
 }
 
-function updateWelcomeVisibility() {
-    // Legacy function - now handled by updateUIState
-    updateUIState();
-}
-
 function canPlayGame() {
-    return isBaseAppEnvironment() && (walletReady || ALLOW_GUEST_PLAY);
+    return isBaseAppEnvironment() && walletReady;
 }
 
 // Force exit to menu when wallet disconnects or changes
@@ -3016,12 +2167,6 @@ function forceExitToMenu(reason) {
     // Force to connect screen
     currentUIState = UI_STATE.CONNECT;
     updateUIState();
-    
-    // Show message
-    if (walletStatus) {
-        walletStatus.textContent = reason;
-        walletStatus.classList.add('error');
-    }
 }
 
 function updateUIState() {
@@ -3140,14 +2285,6 @@ function updateGameUI() {
         newRecordEl.style.display = isNewRecord ? '' : 'none';
         _prevIsNewRecord = isNewRecord;
     }
-}
-
-function updateMenuState() {
-    // Legacy function - most logic moved to updateUIState
-    if (startButton) {
-        startButton.disabled = !canPlayGame();
-    }
-    updateCheckinUI();
 }
 
 function clampCharacterLevel(level) {
@@ -3701,95 +2838,6 @@ async function handlePayGame() {
 }
 
 // ============ Shop Functions ============
-
-// Shop state
-let shopState = {
-    characters: [],
-    inventory: [],
-    availableCoins: 0,
-    hasClaimedFree: false,
-    loading: false,
-    pendingPurchase: null
-};
-
-// Load shop characters
-async function loadShopCharacters() {
-    try {
-        const response = await fetch(`${BACKEND_URL}/api/shop/characters`);
-        const data = await response.json();
-        if (data.ok) {
-            shopState.characters = data.characters;
-        }
-    } catch (err) {
-        console.warn("Failed to load shop characters", err);
-    }
-}
-
-// Load user inventory
-async function loadUserInventory() {
-    if (!walletReady || !authToken) return;
-    
-    try {
-        const response = await fetch(`${BACKEND_URL}/api/shop/inventory`, {
-            headers: { Authorization: `Bearer ${authToken}` }
-        });
-        const data = await response.json();
-        if (data.ok) {
-            shopState.inventory = data.inventory;
-            shopState.availableCoins = data.availableCoins;
-            shopState.hasClaimedFree = data.hasClaimedFree;
-        }
-    } catch (err) {
-        console.warn("Failed to load inventory", err);
-    }
-}
-
-// Claim free character
-async function claimFreeCharacter() {
-    if (!walletReady || !NFT_CONTRACT_ADDRESS) {
-        console.warn("Cannot claim: wallet not ready or contract not set");
-        return { ok: false, error: "Wallet not ready" };
-    }
-    
-    shopState.loading = true;
-    
-    try {
-        const provider = getEthereumProvider();
-        const ethersProvider = new ethers.BrowserProvider(provider);
-        const signer = await ethersProvider.getSigner();
-        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-        
-        // Check if can claim
-        const canClaim = await contract.canClaimFreeMint(walletAddress);
-        if (!canClaim) {
-            return { ok: false, error: "Already claimed or not available" };
-        }
-        
-        // Send transaction
-        const tx = await sendWithBuilderCode(signer, contract, 'mintFreeCharacter');
-        const receipt = await tx.wait();
-
-        // Mark as claimed on backend
-        await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ txHash: receipt.hash })
-        });
-        
-        shopState.hasClaimedFree = true;
-        await loadUserInventory();
-        
-        return { ok: true, txHash: receipt.hash };
-    } catch (err) {
-        console.warn("Claim free character failed", err);
-        return { ok: false, error: err.message || "Transaction failed" };
-    } finally {
-        shopState.loading = false;
-    }
-}
 
 // Request purchase signature from backend
 async function requestPurchaseSignature(charId) {
@@ -4724,84 +3772,6 @@ function closeCollection() {
     }
     collectionOpenedFrom = null;
     updateUIState();
-}
-
-async function handleMintVitalik() {
-    const ownsVitalik = hasFreeMint || ownedCharacters.includes(0);
-    
-    // If already owns, this is a Select action
-    if (ownsVitalik) {
-        selectCharacter(0);
-        return;
-    }
-    
-    if (collectionLoading) return;
-    
-    collectionLoading = true;
-    if (mintVitalikBtn) {
-        mintVitalikBtn.textContent = 'Minting...';
-        mintVitalikBtn.disabled = true;
-    }
-    
-    try {
-        const provider = getEthereumProvider();
-        const ethersProvider = new ethers.BrowserProvider(provider);
-        const signer = await ethersProvider.getSigner();
-        const contract = new ethers.Contract(NFT_CONTRACT_ADDRESS, NFT_ABI, signer);
-        
-        // Check if can claim
-        const canClaim = await contract.canClaimFreeMint(walletAddress);
-        if (!canClaim) {
-            alert('Already claimed or not available');
-            collectionLoading = false;
-            updateCollectionUI();
-            return;
-        }
-        
-        // Send transaction
-        const tx = await sendWithBuilderCode(signer, contract, 'mintFreeCharacter');
-        if (mintVitalikBtn) mintVitalikBtn.textContent = 'Confirming...';
-        const receipt = await tx.wait();
-        
-        // Record on backend
-        try {
-            const response = await fetch(`${BACKEND_URL}/api/shop/claim-free`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: JSON.stringify({ txHash: receipt.hash, characterId: 0 })
-            });
-            const data = await response.json();
-            if (data.ok && Array.isArray(data.ownedCharacters)) {
-                ownedCharacters = data.ownedCharacters;
-                hasFreeMint = ownedCharacters.includes(0);
-            }
-        } catch (e) {
-            console.warn('Failed to record mint on backend:', e);
-        }
-
-        // Fallback state update if backend call failed
-        if (!hasFreeMint) {
-            hasFreeMint = true;
-            if (!ownedCharacters.includes(0)) ownedCharacters.push(0);
-        }
-        selectedCharacter = 0; // Auto-select after mint
-        
-        updateCollectionUI();
-        updateStartButtonState();
-    } catch (err) {
-        console.error('Mint failed:', err);
-        if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
-            alert('Transaction cancelled');
-        } else {
-            alert('Mint failed: ' + (err.message || 'Unknown error'));
-        }
-        updateCollectionUI();
-    } finally {
-        collectionLoading = false;
-    }
 }
 
 // Character data - NO local sprites, all loaded from backend
