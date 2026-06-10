@@ -1,19 +1,12 @@
-const { getOrCreateUser, updateUser } = require("./userRepo");
+const { getOrCreateUser, applyRunResult } = require("./userRepo");
 
 /**
- * Apply score and award coins (DB only, no blockchain)
+ * Apply score and award coins (DB only, no blockchain).
+ * Uses an atomic increment so concurrent submits can't lose a coin award.
  */
 async function applyScore(address, score, coinsAwarded) {
-  const user = await getOrCreateUser(address);
-  const nextBest = Math.max(user.best_score, score);
-  const nextCoins = user.coins + coinsAwarded;
-
-  const updatedUser = await updateUser(address, {
-    coins: nextCoins,
-    best_score: nextBest
-  });
-
-  return updatedUser;
+  await getOrCreateUser(address); // ensure row exists
+  return applyRunResult(address, score, coinsAwarded);
 }
 
 module.exports = { applyScore };

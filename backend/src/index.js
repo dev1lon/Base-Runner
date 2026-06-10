@@ -26,7 +26,8 @@ const PRIVATE_SPRITE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 const {
   createSession,
   getSession,
-  markSessionUsed,
+  claimSession,
+  releaseSession,
   cleanupSessions
 } = require("./modules/session/sessionStore");
 const { getOrCreateUser, addCoins } = require("./modules/user/userRepo");
@@ -127,15 +128,19 @@ async function isTxHashUsed(txHash, kind) {
   const r = await query(`SELECT 1 FROM used_tx_hashes WHERE tx_hash = $1 AND kind = $2`, [txHash, kind]);
   return r.rowCount > 0;
 }
+// Returns true ONLY if this call inserted the row (i.e. won the claim). On a
+// conflict the row already existed, so the caller lost the replay race and
+// must NOT credit. This is the atomic gate against concurrent double-spend.
 async function markTxHashUsed(txHash, kind, address) {
   const { query } = require("./shared/db");
   try {
-    await query(
+    const r = await query(
       `INSERT INTO used_tx_hashes (tx_hash, kind, address) VALUES ($1, $2, $3)
-       ON CONFLICT (tx_hash, kind) DO NOTHING`,
+       ON CONFLICT (tx_hash, kind) DO NOTHING
+       RETURNING tx_hash`,
       [txHash, kind, address || null]
     );
-    return true;
+    return r.rowCount > 0;
   } catch (e) {
     console.error("[tx-replay] failed to persist", kind, txHash, e.message);
     return false;
@@ -158,6 +163,38 @@ if (ALLOWED_ORIGIN === "*") {
 }
 app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
+app.set("trust proxy", 1); // Render terminates TLS at a proxy — trust X-Forwarded-For
+
+// Lightweight in-memory rate limiter (single Render instance). Returns an
+// Express middleware that allows `max` requests per `windowMs` per client IP.
+function rateLimit({ windowMs, max, message = "Too many requests" }) {
+  const hits = new Map(); // ip -> { count, resetAt }
+  // Periodically drop stale buckets so the map can't grow unbounded.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, b] of hits) if (b.resetAt <= now) hits.delete(ip);
+  }, windowMs).unref();
+  return (req, res, next) => {
+    const ip = req.ip || req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+    const now = Date.now();
+    let b = hits.get(ip);
+    if (!b || b.resetAt <= now) {
+      b = { count: 0, resetAt: now + windowMs };
+      hits.set(ip, b);
+    }
+    b.count += 1;
+    if (b.count > max) {
+      res.set("Retry-After", String(Math.ceil((b.resetAt - now) / 1000)));
+      return res.status(429).json({ ok: false, error: message });
+    }
+    next();
+  };
+}
+
+// Anonymous auth endpoints create DB rows / do RPC — throttle hard.
+const authLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: "Too many auth attempts" });
+// RPC-heavy read endpoints — looser but still bounded.
+const readLimiter = rateLimit({ windowMs: 60 * 1000, max: 60 });
 
 function randomSeed() {
   return `seed-${Math.random().toString(16).slice(2)}`;
@@ -201,7 +238,7 @@ function requireAuth(req, res, next) {
   }
 }
 
-app.post("/auth/nonce", async (req, res) => {
+app.post("/auth/nonce", authLimiter, async (req, res) => {
   const { address, chainId } = req.body || {};
   const addressNorm = normalizeAddress(address);
   if (!addressNorm || !chainId) {
@@ -213,7 +250,7 @@ app.post("/auth/nonce", async (req, res) => {
   res.json({ ok: true, nonce: result.nonce, issuedAt: result.issuedAt });
 });
 
-app.post("/auth/verify", async (req, res) => {
+app.post("/auth/verify", authLimiter, async (req, res) => {
   const { address, signature } = req.body || {};
   const addressNorm = normalizeAddress(address);
   if (!addressNorm || !signature) {
@@ -242,7 +279,7 @@ app.post("/auth/verify", async (req, res) => {
 });
 
 // SIWE verify — parses EIP-4361 message to extract address, then reuses existing nonce/JWT flow
-app.post("/auth/siwe-verify", async (req, res) => {
+app.post("/auth/siwe-verify", authLimiter, async (req, res) => {
   const { message, signature } = req.body || {};
   if (!message || !signature) {
     return res.status(400).json({ ok: false, error: "Missing message or signature" });
@@ -359,7 +396,10 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
       }
     }
 
-    await markTxHashUsed(txHash, "paid_game", req.user.address);
+    // Atomic claim — if a concurrent request already claimed this tx, bail.
+    if (!(await markTxHashUsed(txHash, "paid_game", req.user.address))) {
+      return res.status(400).json({ ok: false, error: "Transaction already used" });
+    }
 
     const addressNorm = req.user.address;
     const seed = randomSeed();
@@ -424,13 +464,17 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
     return;
   }
 
-  // Use client-reported game duration
+  // Anti-cheat: the score ceiling must be derived from SERVER time only.
+  // Trusting client-reported gameElapsedMs let a tampered client claim an
+  // arbitrary duration and therefore an arbitrary score (→ unlimited coins).
+  // The client value is accepted only when SHORTER than server time (a real
+  // run can never last longer than wall-clock since session start).
   const clientElapsedMs = Number.isFinite(Number(gameElapsedMs)) ? Number(gameElapsedMs) : 0;
   const serverDurationMs = Date.now() - session.issuedAt;
-  
-  // Use client time, fallback to server time
-  const gameDurationMs = clientElapsedMs > 0 ? clientElapsedMs : serverDurationMs;
-  
+  const gameDurationMs = clientElapsedMs > 0
+    ? Math.min(clientElapsedMs, serverDurationMs)
+    : serverDurationMs;
+
   console.log("⏱️ Duration:", { clientElapsedMs, serverDurationMs, gameDurationMs });
 
   const reported = Number.isFinite(Number(reportedScore))
@@ -468,10 +512,22 @@ app.post("/api/session/submit", requireAuth, async (req, res) => {
   const coinsAwarded     = Math.floor(adjustedScore / 1000) * (baseCoins + levelCoinBonus);
 
   console.log("💰 Awarding:", { rawScore, adjustedScore, coinsAwarded, paid: session.paid, charLevel, address: addressNorm });
-  // Apply score first; only mark session used after a successful write so that
-  // a transient DB error doesn't burn the session.
-  const result = await applyScore(addressNorm, adjustedScore, coinsAwarded);
-  markSessionUsed(sessionId);
+  // Atomically claim the session BEFORE the DB write so two concurrent submits
+  // of the same session can't both be credited. Release on failure so a
+  // transient DB error doesn't burn the session.
+  if (!claimSession(sessionId)) {
+    res.status(400).json({ ok: false, error: "Session already used" });
+    return;
+  }
+  let result;
+  try {
+    result = await applyScore(addressNorm, adjustedScore, coinsAwarded);
+  } catch (err) {
+    releaseSession(sessionId);
+    console.error("submit applyScore failed:", err);
+    res.status(500).json({ ok: false, error: "Failed to apply score" });
+    return;
+  }
 
   res.json({
     ok: true,
@@ -590,7 +646,13 @@ async function resolveBaseName(address) {
       } else {
         const decoded = decodeAbiString(nameResult);
         if (!decoded.ok) lastError = `decode failed (len=${nameResult.length})`;
-        else if (decoded.name && decoded.name.includes(".")) name = decoded.name;
+        // Defense-in-depth: only accept basename-shaped strings. The reverse
+        // record is attacker-controlled, so reject anything with characters
+        // that don't belong in an ENS/Basename to keep HTML/script payloads
+        // out of the leaderboard entirely (frontend also escapes on render).
+        else if (decoded.name && decoded.name.includes(".") && /^[a-zA-Z0-9.\-_]+$/.test(decoded.name)) {
+          name = decoded.name;
+        }
         // else: empty string = no basename set, not an error
       }
     }
@@ -714,7 +776,7 @@ app.post("/api/admin/leaderboard/refresh", requireAuth, async (req, res) => {
 setTimeout(() => refreshLeaderboard(), 5000);
 setInterval(() => refreshLeaderboard(), LEADERBOARD_REFRESH_MS).unref();
 
-app.get("/api/checkin/status", requireAuth, async (req, res) => {
+app.get("/api/checkin/status", readLimiter, requireAuth, async (req, res) => {
   try {
     const status = await getCheckinStatus(req.user.address);
     res.json({ ok: true, ...status });
@@ -924,7 +986,11 @@ app.post("/api/shop/purchase/cancel", requireAuth, async (req, res) => {
 
 // Mark free character as claimed (after successful on-chain claim)
 app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
-  const { txHash, characterId = 0 } = req.body || {};
+  const { txHash } = req.body || {};
+
+  // The free character is ALWAYS character 0 (Vitalik). The client used to be
+  // able to pass any characterId here and unlock a premium character for free.
+  const FREE_CHARACTER_ID = 0;
 
   // txHash is optional for backend-only free mint (no blockchain)
   if (txHash && !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
@@ -933,23 +999,23 @@ app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
 
   try {
     const user = await getOrCreateUser(req.user.address);
-    
+
     if (user.has_claimed_free) {
       res.status(400).json({ ok: false, error: "Already claimed free character" });
       return;
     }
-    
+
     const { updateUser, addOwnedCharacter } = require("./modules/user/userRepo");
     await updateUser(req.user.address, { has_claimed_free: true });
-    await addOwnedCharacter(req.user.address, characterId);
-    
+    await addOwnedCharacter(req.user.address, FREE_CHARACTER_ID);
+
     const updatedUser = await getOrCreateUser(req.user.address);
-    
+
     res.json({
       ok: true,
       txHash,
       hasFreeMint: true,
-      ownedCharacters: updatedUser.owned_characters || [characterId]
+      ownedCharacters: updatedUser.owned_characters || [FREE_CHARACTER_ID]
     });
   } catch (err) {
     console.error("Claim free error:", err);
@@ -1011,7 +1077,11 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
       }
     }
 
-    await markTxHashUsed(txHash, "coin_purchase", req.user.address);
+    // Atomic claim — if a concurrent request already claimed this tx, bail
+    // before crediting so the purchase can't be double-counted.
+    if (!(await markTxHashUsed(txHash, "coin_purchase", req.user.address))) {
+      return res.status(400).json({ ok: false, error: "Transaction already used" });
+    }
     const updatedUser = await addCoins(req.user.address, Number(coins));
     res.json({ ok: true, coinsAdded: Number(coins), newBalance: updatedUser?.coins ?? 0 });
   } catch (err) {

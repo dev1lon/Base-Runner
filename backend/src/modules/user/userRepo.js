@@ -112,6 +112,22 @@ async function addCoins(address, amount) {
   return result.rows[0];
 }
 
+// Atomically credit a finished run: increment coins and raise best_score.
+// Avoids the read-modify-write race where two concurrent submits both read the
+// same coin balance and one increment is lost.
+async function applyRunResult(address, score, coinsAwarded) {
+  const result = await query(
+    `UPDATE users
+     SET coins = coins + $2,
+         best_score = GREATEST(best_score, $3),
+         updated_at = NOW()
+     WHERE address = $1
+     RETURNING ${USER_COLUMNS}`,
+    [address, coinsAwarded, score]
+  );
+  return result.rows[0];
+}
+
 // Deduct coins (returns null if insufficient)
 async function deductCoins(address, amount) {
   const result = await query(
@@ -132,5 +148,6 @@ module.exports = {
   addOwnedCharacter,
   ownsCharacter,
   addCoins,
+  applyRunResult,
   deductCoins
 };

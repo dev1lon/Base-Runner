@@ -3297,6 +3297,19 @@ function openCollection(from = 'menu') {
 
 // ============ Leaderboard ============
 
+// Escape untrusted text before putting it into innerHTML. Basenames are
+// attacker-controlled (anyone can set their reverse record), so an unescaped
+// name on the public leaderboard is a stored-XSS vector that could steal the
+// JWT from localStorage of everyone who opens the board.
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function formatLeaderboardName(entry) {
     if (entry.name) return entry.name;
     const a = entry.address || '';
@@ -3330,7 +3343,7 @@ async function refreshLeaderboardAsAdmin() {
         await openLeaderboard();
     } catch (e) {
         console.warn('Leaderboard refresh failed:', e.message);
-        if (list) list.innerHTML = `<div class="leaderboard-empty">Refresh failed: ${e.message}</div>`;
+        if (list) list.innerHTML = `<div class="leaderboard-empty">Refresh failed: ${escapeHtml(e.message)}</div>`;
     } finally {
         btn.classList.remove('spinning');
         btn.disabled = false;
@@ -3375,7 +3388,7 @@ async function openLeaderboard() {
             const isMe   = e.address.toLowerCase() === myAddr;
             const meClass = isMe ? 'lb-row-me' : '';
             const medal   = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : `${e.rank}`;
-            const nameDisplay = formatLeaderboardName(e) + (isMe ? ' <span class="lb-you-badge">YOU</span>' : '');
+            const nameDisplay = escapeHtml(formatLeaderboardName(e)) + (isMe ? ' <span class="lb-you-badge">YOU</span>' : '');
             return `
               <div class="lb-row ${rankClass} ${meClass}">
                 <span class="lb-col-rank">${medal}</span>
@@ -3385,7 +3398,7 @@ async function openLeaderboard() {
             `;
         }).join('');
     } catch (e) {
-        list.innerHTML = `<div class="leaderboard-empty">Failed to load: ${e.message}</div>`;
+        list.innerHTML = `<div class="leaderboard-empty">Failed to load: ${escapeHtml(e.message)}</div>`;
     }
 }
 

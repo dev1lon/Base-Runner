@@ -3,6 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <!--
+      Content-Security-Policy: defense-in-depth against injected markup (the
+      leaderboard renders attacker-controllable basenames). 'unsafe-inline' is
+      required because the game uses inline event handlers; the primary XSS fix
+      is output-escaping in script.js. object-src/base-uri are locked down so an
+      injected payload can't load plugins or hijack the document base URL.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: https:;
+      connect-src 'self' https: wss:;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+    ">
     <title>Rug Pull Run</title>
     <link rel="icon" href="/favicon.ico">
     <meta name="base:app_id" content="69c6ca460fc9d441dd5179fb" />

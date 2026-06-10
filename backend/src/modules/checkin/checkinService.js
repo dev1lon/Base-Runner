@@ -44,6 +44,23 @@ async function getOnChainLastCheckin(address) {
   }
 }
 
+/**
+ * Read on-chain lastCheckin, retrying until it advances past `afterMs`.
+ * The backend's RPC node can lag behind the wallet's node right after the
+ * check-in tx confirms, so a single read may still return the stale value.
+ * Without this, the reward gets silently skipped while the tx is real, which
+ * leaves the user checked-in on-chain but with no coin credited.
+ */
+async function getFreshOnChainLastCheckin(address, afterMs) {
+  let last = 0;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    last = await getOnChainLastCheckin(address);
+    if (last > afterMs) return last;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return last;
+}
+
 async function getCheckinStatus(address) {
   const user = await getOrCreateUser(address);
   const dbLastCheckinAt = user.last_checkin_at ? new Date(user.last_checkin_at).getTime() : 0;
@@ -79,14 +96,18 @@ async function getCheckinStatus(address) {
 async function doCheckin(address, txHash) {
   if (!txHash) return { ok: false, error: "txHash required" };
 
-  const onChainMs = await getOnChainLastCheckin(address);
-  if (onChainMs === 0) {
-    return { ok: false, error: "On-chain check-in not found" };
-  }
-
   const user = await getOrCreateUser(address);
   const dbLastCheckinAt = user.last_checkin_at ? new Date(user.last_checkin_at).getTime() : 0;
   const now = Date.now();
+
+  // Read on-chain lastCheckin, waiting for the backend RPC node to catch up
+  // past the last recorded check-in. Without the retry the node may still
+  // return the stale value right after the tx confirms, which would skip the
+  // reward even though the on-chain check-in is real.
+  const onChainMs = await getFreshOnChainLastCheckin(address, dbLastCheckinAt);
+  if (onChainMs === 0) {
+    return { ok: false, error: "On-chain check-in not found" };
+  }
 
   // Don't reward twice for the same on-chain check-in
   if (dbLastCheckinAt > 0 && onChainMs <= dbLastCheckinAt) {
@@ -107,30 +128,27 @@ async function doCheckin(address, txHash) {
   }
 
   const reward = calcReward(newStreak);
-  const newCoins = (user.coins || 0) + reward;
-  const newCount = (user.checkin_count || 0) + 1;
+  const cooldownSec = Math.floor(CHECKIN_COOLDOWN_MS / 1000);
 
+  // Atomic credit: increment coins (never overwrite) and only when the
+  // cooldown has actually elapsed. The WHERE guard means two concurrent
+  // submits can't both pass — the loser updates 0 rows.
   const updated = await query(
     `UPDATE users
-     SET coins = $1, streak = $2, checkin_count = $3, last_checkin_at = NOW(), updated_at = NOW()
-     WHERE address = $4
+     SET coins = coins + $2,
+         streak = $3,
+         checkin_count = checkin_count + 1,
+         last_checkin_at = NOW(),
+         updated_at = NOW()
+     WHERE address = $1
+       AND (last_checkin_at IS NULL OR last_checkin_at <= NOW() - make_interval(secs => $4))
      RETURNING streak, coins, checkin_count`,
-    [newCoins, newStreak, newCount, address.toLowerCase()]
+    [address.toLowerCase(), reward, newStreak, cooldownSec]
   );
 
   if (!updated.rows[0]) {
-    // No row matched — try upsert with correct lowercase key
-    const upserted = await query(
-      `INSERT INTO users (address, coins, streak, checkin_count, last_checkin_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (address) DO UPDATE
-       SET coins = EXCLUDED.coins, streak = EXCLUDED.streak,
-           checkin_count = EXCLUDED.checkin_count, last_checkin_at = NOW(), updated_at = NOW()
-       RETURNING streak, coins, checkin_count`,
-      [address.toLowerCase(), newCoins, newStreak, newCount]
-    );
-    const saved = upserted.rows[0];
-    return { ok: true, streak: saved ? saved.streak : newStreak, reward, newBalance: saved ? saved.coins : newCoins, checkinCount: saved ? saved.checkin_count : newCount };
+    // Lost the race or cooldown not elapsed — already credited elsewhere.
+    return { ok: false, error: "Already recorded this check-in" };
   }
 
   const saved = updated.rows[0];
