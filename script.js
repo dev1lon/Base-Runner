@@ -2062,9 +2062,15 @@ window.onload = function() {
     setupCrispCanvas();
     let _resizeTimer;
     window.addEventListener("resize", () => {
+        fitCards();
         clearTimeout(_resizeTimer);
         _resizeTimer = setTimeout(setupCrispCanvas, 150);
     });
+    window.addEventListener("orientationchange", () => fitCards());
+    // Re-fit once webfonts finish loading (they shift text height slightly).
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => fitCards());
+    }
     
     // Load platform PNG sprite
     platformImg = new Image();
@@ -2169,6 +2175,34 @@ function forceExitToMenu(reason) {
     updateUIState();
 }
 
+let _fitRaf = 0;
+// Uniformly scale auto-fit cards (main menu / pause) so they fill the viewport
+// like the game canvas does — shrink to fit small screens, grow on large ones.
+// Keeps the rounded corners and content perfectly proportioned on any display.
+function fitCards() {
+    if (_fitRaf) cancelAnimationFrame(_fitRaf);
+    _fitRaf = requestAnimationFrame(() => {
+        _fitRaf = 0;
+        const cards = document.querySelectorAll('.overlay:not(.hidden) .glass-card.fit-card');
+        cards.forEach(card => {
+            const overlay = card.closest('.overlay');
+            if (!overlay) return;
+            // Measure natural size with no transform applied.
+            card.style.transform = 'none';
+            const cs = getComputedStyle(overlay);
+            const availW = overlay.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+            const availH = overlay.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+            const w = card.offsetWidth;
+            const h = card.offsetHeight;
+            if (!w || !h || availW <= 0 || availH <= 0) return;
+            // Fit within the available box (0.98 keeps the shadow/corners off the
+            // edge); clamp so buttons never get absurd.
+            const scale = Math.max(0.45, Math.min((availW / w) * 0.98, (availH / h) * 0.98, 1.7));
+            card.style.transform = Math.abs(scale - 1) < 0.01 ? 'none' : `scale(${scale})`;
+        });
+    });
+}
+
 function updateUIState() {
     // Hide all overlays first
     if (overlayConnect) overlayConnect.classList.add("hidden");
@@ -2227,6 +2261,9 @@ function updateUIState() {
     showWelcome = currentUIState !== UI_STATE.RUNNING;
     isPaused = currentUIState === UI_STATE.PAUSED;
     gameActive = currentUIState === UI_STATE.RUNNING || currentUIState === UI_STATE.PAUSED;
+
+    // Re-fit the auto-scaling menu/pause cards for the current viewport.
+    fitCards();
 }
 
 function saveCoins() {
@@ -2434,6 +2471,8 @@ function updateAdminSpeedControls(showControls) {
     if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(adminSpeedTestTier);
     if (adminSpeedValue) adminSpeedValue.textContent = formatAdminSpeedTestTier(adminSpeedTestTier);
     if (adminSpeedValuePause) adminSpeedValuePause.textContent = formatAdminSpeedTestTier(adminSpeedTestTier);
+    // The admin row changes card height — re-fit the scaled card.
+    if (typeof fitCards === "function") fitCards();
 }
 
 function handleAdminSpeedChange(event) {

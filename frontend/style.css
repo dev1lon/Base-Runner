@@ -564,6 +564,23 @@ body {
     flex-shrink: 0;
 }
 
+/*
+   Auto-scaling cards (main menu / pause): take the natural height of their
+   content and let JS uniformly scale the whole card to fit the viewport — and
+   grow it on large screens — the same way the game canvas scales. The body
+   region must NOT scroll here; the whole card is scaled instead.
+*/
+.glass-card.fit-card {
+    height: auto;
+    max-height: none;
+    transform-origin: center center;
+    will-change: transform;
+}
+.glass-card.fit-card > .menu-body {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
 /* Corner decorations */
 .card-corner {
     position: absolute;
