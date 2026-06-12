@@ -52,10 +52,7 @@ const { ethers } = require("ethers");
 const CHARACTER_UPGRADE_ADDRESS = process.env.CHARACTER_UPGRADE_ADDRESS || "0xf7d33fBE432eC51330955494083be4824606F3D1";
 // Public Base mainnet RPC for low-traffic on-chain reads (character levels, etc.)
 const PUBLIC_RPC_URL    = "https://mainnet.base.org";
-// First configured paid endpoint (LEADERBOARD_RPC_URL may be comma-separated) —
-// used as the fallback when the public RPC stalls on receipt/level reads.
-const FALLBACK_RPC_URL  = (process.env.LEADERBOARD_RPC_URL || process.env.RPC_URL || "")
-  .split(",").map(s => s.trim()).filter(Boolean)[0] || "";
+const FALLBACK_RPC_URL  = process.env.LEADERBOARD_RPC_URL || process.env.RPC_URL || "";
 let rpcProvider, fallbackRpcProvider;
 let characterUpgradeReadContract;
 
@@ -575,23 +572,14 @@ const BASE_NAME_TTL_MS = 60 * 60 * 1000; // 1 hour
 //   2) L2Resolver.name(node)       -> string
 const BASE_REVERSE_REGISTRAR = "0x79EA96012eEa67A83431F1701B3dFf7e37F9E282";
 const BASE_L2_RESOLVER       = "0xC6d566A56A1aFf6508b41f6c90ff131615583BCD";
-// Paid RPC(s) (e.g. Alchemy, Ankr) are used for the leaderboard basename batch,
-// which fires ~200 requests in a row every 12h. LEADERBOARD_RPC_URL may be a
-// comma-separated list; on failure rpcCall rotates to the next endpoint. The
-// public RPC is always appended as a last resort.
-const LEADERBOARD_RPC_URLS = [
-  ...(process.env.LEADERBOARD_RPC_URL || process.env.RPC_URL || "")
-    .split(",").map(s => s.trim()).filter(Boolean),
-  "https://mainnet.base.org",
-];
+// Paid RPC (e.g. Ankr) is used ONLY for the leaderboard basename batch, which
+// fires ~200 requests in a row every 12h. Falls back to RPC_URL then public.
+const BASE_RPC_URL           = process.env.LEADERBOARD_RPC_URL || process.env.RPC_URL || "https://mainnet.base.org";
 
-async function rpcCall(to, data, retries = 4) {
+async function rpcCall(to, data, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {
-    // Rotate across configured endpoints so a single slow/limited provider
-    // doesn't stall the batch.
-    const url = LEADERBOARD_RPC_URLS[attempt % LEADERBOARD_RPC_URLS.length];
     try {
-      const res = await fetch(url, {
+      const res = await fetch(BASE_RPC_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
