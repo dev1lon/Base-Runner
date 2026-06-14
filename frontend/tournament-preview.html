@@ -30,9 +30,9 @@
   /* === real modal styles (copied from style.css) === */
   .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:.5rem;
     z-index:200;background:rgba(20,30,50,.55);backdrop-filter:blur(2px);}
-  .tournament-modal{position:relative;width:100%;max-width:380px;max-height:100%;overflow-y:auto;
+  .tournament-modal{position:relative;width:90%;max-width:320px;
     background:var(--color-white);border-radius:var(--radius-2xl);box-shadow:var(--shadow-card);
-    text-align:center;padding-bottom:1rem;}
+    text-align:center;padding-bottom:.85rem;transform-origin:center center;}
   .tournament-close{position:absolute;top:8px;right:10px;width:30px;height:30px;border:none;
     background:rgba(255,255,255,.25);color:#fff;font-size:20px;line-height:1;border-radius:50%;cursor:pointer;z-index:2;}
   .tournament-head{background:linear-gradient(135deg,#4A90D9,#2A6BB8);padding:1.4rem 1rem 1.6rem;color:#fff;
@@ -114,6 +114,17 @@
       return d+'d '+String(h).padStart(2,'0')+'h '+String(m).padStart(2,'0')+'m';}
     function tick(){document.getElementById('tournament-timer').textContent=fmt(END-Date.now());}
     tick(); setInterval(tick,30000);
+    // autoscale-to-fit (shrinks only) so it never scrolls on small screens
+    function fit(){
+      var ov=document.querySelector('.overlay'), card=document.querySelector('.tournament-modal');
+      card.style.transform='none';
+      var cs=getComputedStyle(ov);
+      var aw=ov.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+      var ah=ov.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
+      var s=Math.min(aw/card.offsetWidth*0.98, ah/card.offsetHeight*0.98, 1);
+      card.style.transform = s<0.999 ? 'scale('+s+')' : 'none';
+    }
+    fit(); window.addEventListener('resize',fit);
   </script>
 </body>
 </html>

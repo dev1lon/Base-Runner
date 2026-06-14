@@ -2422,15 +2422,15 @@ body.w3m-modal-open w3m-modal {
 }
 .tournament-modal {
     position: relative;
-    width: 100%;
-    max-width: 380px;
-    max-height: 100%;
-    overflow-y: auto;
+    width: 90%;
+    max-width: 320px;
     background: var(--color-white);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-card);
     text-align: center;
-    padding-bottom: 1rem;
+    padding-bottom: 0.85rem;
+    transform-origin: center center;
+    will-change: transform;
 }
 .tournament-close {
     position: absolute;

@@ -2203,7 +2203,9 @@ function fitCards() {
     if (_fitRaf) cancelAnimationFrame(_fitRaf);
     _fitRaf = requestAnimationFrame(() => {
         _fitRaf = 0;
-        const cards = document.querySelectorAll('.overlay:not(.hidden) .glass-card.fit-card');
+        const cards = document.querySelectorAll(
+            '.overlay:not(.hidden) .glass-card.fit-card, #overlay-tournament:not(.hidden) .tournament-modal'
+        );
         cards.forEach(card => {
             const overlay = card.closest('.overlay');
             if (!overlay) return;
@@ -2216,8 +2218,9 @@ function fitCards() {
             const h = card.offsetHeight;
             if (!w || !h || availW <= 0 || availH <= 0) return;
             // Fit within the available box (0.98 keeps the shadow/corners off the
-            // edge); clamp so buttons never get absurd.
-            const scale = Math.max(0.45, Math.min((availW / w) * 0.98, (availH / h) * 0.98, 1.7));
+            // edge); clamp so it never gets absurd. Per-element cap via data-max-scale.
+            const maxScale = parseFloat(card.dataset.maxScale) || 1.7;
+            const scale = Math.max(0.4, Math.min((availW / w) * 0.98, (availH / h) * 0.98, maxScale));
             card.style.transform = Math.abs(scale - 1) < 0.01 ? 'none' : `scale(${scale})`;
         });
     });
@@ -3492,6 +3495,7 @@ function showTournamentModal() {
     if (!overlay) return;
     overlay.classList.remove('hidden');
     updateTournamentTimer();
+    fitCards(); // autoscale to fit the screen — never scrolls
     if (_tournamentTimer) clearInterval(_tournamentTimer);
     _tournamentTimer = setInterval(updateTournamentTimer, 1000 * 30);
 }
