@@ -1907,6 +1907,26 @@ window.onload = function() {
         rulesCloseBtn.addEventListener("touchstart", closeRules, { passive: false });
     }
 
+    // Tournament announcement buttons
+    const tournamentClose = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } hideTournamentModal(); };
+    for (const id of ["tournament-close-btn", "tournament-gotit-btn"]) {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener("click", tournamentClose);
+            btn.addEventListener("touchstart", tournamentClose, { passive: false });
+        }
+    }
+    const tournamentLbBtn = document.getElementById("tournament-leaderboard-btn");
+    if (tournamentLbBtn) {
+        const openFromTournament = (e) => {
+            if (e) { e.stopPropagation(); e.preventDefault(); }
+            hideTournamentModal();
+            openLeaderboard();
+        };
+        tournamentLbBtn.addEventListener("click", openFromTournament);
+        tournamentLbBtn.addEventListener("touchstart", openFromTournament, { passive: false });
+    }
+
     // Initial state
     showWelcome = true;
     gameActive = false;
@@ -2217,6 +2237,7 @@ function updateUIState() {
             break;
         case UI_STATE.MENU:
             if (overlayMenu) overlayMenu.classList.remove("hidden");
+            maybeShowTournament();
             break;
         case UI_STATE.PAUSED:
             if (overlayPause) overlayPause.classList.remove("hidden");
@@ -3444,6 +3465,49 @@ async function openLeaderboard() {
 function closeLeaderboard() {
     const overlay = document.getElementById('overlay-leaderboard');
     if (overlay) overlay.classList.add('hidden');
+}
+
+// ============ Tournament announcement ============
+// Deadline: 2026-06-22 00:00 GMT+3 (night of Sun 21 -> Mon 22).
+const TOURNAMENT_END_MS = Date.parse('2026-06-22T00:00:00+03:00');
+let _tournamentTimer = 0;
+
+function formatTournamentCountdown(ms) {
+    if (ms <= 0) return 'Ended';
+    const totalMin = Math.floor(ms / 60000);
+    const d = Math.floor(totalMin / 1440);
+    const h = Math.floor((totalMin % 1440) / 60);
+    const m = totalMin % 60;
+    return `${d}d ${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`;
+}
+
+function updateTournamentTimer() {
+    const el = document.getElementById('tournament-timer');
+    if (!el) return;
+    el.textContent = formatTournamentCountdown(TOURNAMENT_END_MS - Date.now());
+}
+
+function showTournamentModal() {
+    const overlay = document.getElementById('overlay-tournament');
+    if (!overlay) return;
+    overlay.classList.remove('hidden');
+    updateTournamentTimer();
+    if (_tournamentTimer) clearInterval(_tournamentTimer);
+    _tournamentTimer = setInterval(updateTournamentTimer, 1000 * 30);
+}
+
+function hideTournamentModal() {
+    const overlay = document.getElementById('overlay-tournament');
+    if (overlay) overlay.classList.add('hidden');
+    if (_tournamentTimer) { clearInterval(_tournamentTimer); _tournamentTimer = 0; }
+}
+
+// Show once per session on first entry to the menu, while the tournament is live.
+function maybeShowTournament() {
+    if (Date.now() >= TOURNAMENT_END_MS) return;
+    try { if (sessionStorage.getItem('rpr_tournament_seen')) return; } catch (_) {}
+    try { sessionStorage.setItem('rpr_tournament_seen', '1'); } catch (_) {}
+    showTournamentModal();
 }
 
 async function reconcileFreeMint() {
