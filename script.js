@@ -3544,12 +3544,21 @@ function closeLeaderboard() {
 // ============ Tournament announcement / winners ============
 // Deadline: 2026-06-22 00:00 GMT+3 (night of Sun 21 -> Mon 22).
 const TOURNAMENT_END_MS = Date.parse('2026-06-22T00:00:00+03:00');
+// Winners plaque stays up for 7 days after the deadline, then disappears.
+const TOURNAMENT_WINNERS_END_MS = TOURNAMENT_END_MS + 7 * 24 * 60 * 60 * 1000;
 const TOURNAMENT_PRIZES = [25, 15, 10]; // USD for ranks 1, 2, 3
 const TOURNAMENT_MEDALS = ['🥇', '🥈', '🥉'];
 let _tournamentTimer = 0;
 
 function tournamentEnded() {
     return Date.now() >= TOURNAMENT_END_MS;
+}
+function tournamentLivePhase() {
+    return Date.now() < TOURNAMENT_END_MS;
+}
+function tournamentWinnersPhase() {
+    const n = Date.now();
+    return n >= TOURNAMENT_END_MS && n < TOURNAMENT_WINNERS_END_MS;
 }
 
 function formatTournamentCountdown(ms) {
@@ -3619,9 +3628,13 @@ function hideTournamentModal() {
 }
 
 // Show once per session on first entry to the menu. Before the deadline this is
-// the LIVE announcement; after it, the winners plaque (top 3 + prizes).
+// the LIVE announcement; for the 7 days after, the winners plaque (top 3 +
+// prizes). After that window, nothing shows.
 function maybeShowTournament() {
-    const key = tournamentEnded() ? 'rpr_tournament_winners_seen' : 'rpr_tournament_seen';
+    const live = tournamentLivePhase();
+    const winners = tournamentWinnersPhase();
+    if (!live && !winners) return;
+    const key = live ? 'rpr_tournament_seen' : 'rpr_tournament_winners_seen';
     try { if (sessionStorage.getItem(key)) return; } catch (_) {}
     try { sessionStorage.setItem(key, '1'); } catch (_) {}
     showTournamentModal();
