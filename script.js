@@ -1387,11 +1387,11 @@ async function handleSaveRecord(e) {
 async function handleTestScoreSave(e) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     const btn = document.getElementById('test-score-save-btn');
-    const slider = document.getElementById('test-score-slider');
-    if (!btn || !slider || btn.disabled) return;
+    const input = document.getElementById('test-score-input');
+    if (!btn || !input || btn.disabled) return;
     if (!isTestScoreWallet() || !authToken) { btn.textContent = 'Not allowed'; return; }
-    const score = Math.floor(Number(slider.value)) || 0;
-    if (score < 1) return;
+    const score = Math.floor(Number(input.value)) || 0;
+    if (score < 1) { btn.textContent = 'Enter a score'; return; }
     const orig = 'Save test score → leaderboard';
     btn.disabled = true;
     btn.textContent = 'Saving…';
@@ -1971,14 +1971,15 @@ window.onload = function() {
         tournamentLbBtn.addEventListener("touchstart", openFromTournament, { passive: false });
     }
 
-    // QA test-score slider (only the 3 test wallets ever see this row)
-    const testScoreSlider = document.getElementById("test-score-slider");
+    // QA test-score input (only the 3 test wallets ever see this row)
+    const testScoreInput = document.getElementById("test-score-input");
     const testScoreValue = document.getElementById("test-score-value");
-    if (testScoreSlider && testScoreValue) {
+    if (testScoreInput && testScoreValue) {
         const updTestScore = () => {
-            testScoreValue.textContent = `${Number(testScoreSlider.value).toLocaleString()} pts`;
+            const n = Math.floor(Number(testScoreInput.value)) || 0;
+            testScoreValue.textContent = `${n.toLocaleString()} pts`;
         };
-        testScoreSlider.addEventListener("input", updTestScore);
+        testScoreInput.addEventListener("input", updTestScore);
         updTestScore();
     }
     const testScoreSaveBtn = document.getElementById("test-score-save-btn");
