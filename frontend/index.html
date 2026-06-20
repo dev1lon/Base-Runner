@@ -401,25 +401,45 @@
     <div id="overlay-tournament" class="overlay hidden">
         <div class="tournament-modal" data-max-scale="1">
             <button id="tournament-close-btn" class="tournament-close" aria-label="Close">&times;</button>
-            <div class="tournament-head">
-                <span class="tournament-live"><span class="tournament-live-dot"></span>LIVE</span>
-                <h2 class="tournament-title">🏆 RugPullRun Tournament</h2>
-                <div class="tournament-pool">$50 Prize Pool</div>
+
+            <!-- LIVE announcement (shown while the tournament is running) -->
+            <div id="tournament-announce">
+                <div class="tournament-head">
+                    <span class="tournament-live"><span class="tournament-live-dot"></span>LIVE</span>
+                    <h2 class="tournament-title">🏆 RugPullRun Tournament</h2>
+                    <div class="tournament-pool">$50 Prize Pool</div>
+                </div>
+                <div class="tournament-prizes">
+                    <div class="tournament-prize"><span class="tp-medal">🥇</span><span class="tp-place">1st</span><span class="tp-amount">$25</span></div>
+                    <div class="tournament-prize"><span class="tp-medal">🥈</span><span class="tp-place">2nd</span><span class="tp-amount">$15</span></div>
+                    <div class="tournament-prize"><span class="tp-medal">🥉</span><span class="tp-place">3rd</span><span class="tp-amount">$10</span></div>
+                </div>
+                <p class="tournament-desc">Climb the <b>Leaderboard</b> — the top 3 players when the timer ends win. Hit <b>Save record to leaderboard</b> after a run to enter!</p>
+                <div class="tournament-countdown">
+                    <span class="tc-label">Ends in</span>
+                    <span id="tournament-timer" class="tc-time">--d --h --m</span>
+                </div>
+                <p class="tournament-note">Prizes are sent manually from <b>devilon.base.eth</b> to the top 3 — no claim needed.</p>
+                <div class="tournament-actions">
+                    <button id="tournament-leaderboard-btn" class="btn btn-primary btn-large">View Leaderboard 🏆</button>
+                    <button id="tournament-gotit-btn" class="btn btn-ghost btn-large">Got it</button>
+                </div>
             </div>
-            <div class="tournament-prizes">
-                <div class="tournament-prize"><span class="tp-medal">🥇</span><span class="tp-place">1st</span><span class="tp-amount">$25</span></div>
-                <div class="tournament-prize"><span class="tp-medal">🥈</span><span class="tp-place">2nd</span><span class="tp-amount">$15</span></div>
-                <div class="tournament-prize"><span class="tp-medal">🥉</span><span class="tp-place">3rd</span><span class="tp-amount">$10</span></div>
-            </div>
-            <p class="tournament-desc">Climb the <b>Leaderboard</b> — the top 3 players when the timer ends win. Hit <b>Save record to leaderboard</b> after a run to enter!</p>
-            <div class="tournament-countdown">
-                <span class="tc-label">Ends in</span>
-                <span id="tournament-timer" class="tc-time">--d --h --m</span>
-            </div>
-            <p class="tournament-note">Prizes are sent manually from <b>devilon.base.eth</b> to the top 3 — no claim needed.</p>
-            <div class="tournament-actions">
-                <button id="tournament-leaderboard-btn" class="btn btn-primary btn-large">View Leaderboard 🏆</button>
-                <button id="tournament-gotit-btn" class="btn btn-ghost btn-large">Got it</button>
+
+            <!-- Winners (shown after the tournament ends) -->
+            <div id="tournament-winners" class="hidden">
+                <div class="tournament-head">
+                    <h2 class="tournament-title">🏆 Tournament Ended</h2>
+                    <div class="tournament-pool">Winners</div>
+                </div>
+                <div id="tournament-winners-list" class="tournament-winners-list">
+                    <div class="tournament-winners-loading">Loading winners…</div>
+                </div>
+                <p class="tournament-note">Prizes will be sent <b>within 1 week</b> from <b>devilon.base.eth</b> to the top 3 — no claim needed. Congrats! 🎉</p>
+                <div class="tournament-actions">
+                    <button id="tournament-winners-lb-btn" class="btn btn-primary btn-large">View Leaderboard 🏆</button>
+                    <button id="tournament-winners-close-btn" class="btn btn-ghost btn-large">Close</button>
+                </div>
             </div>
         </div>
     </div>

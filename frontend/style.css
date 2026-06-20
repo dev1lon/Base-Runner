@@ -2554,3 +2554,44 @@ body.w3m-modal-open w3m-modal {
     gap: 0.5rem;
     padding: 0 1.2rem;
 }
+
+/* Winners list (shown after the tournament ends) */
+.tournament-winners-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 1.1rem 1.2rem 0.4rem;
+}
+.tournament-winners-loading {
+    padding: 1rem;
+    font-size: 0.85rem;
+    color: var(--color-gray-400);
+}
+.tw-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    background: var(--color-gray-50);
+    border: 1px solid rgba(74, 144, 217, 0.15);
+    border-radius: var(--radius-lg);
+}
+.tw-row.tw-1 { background: linear-gradient(180deg, #FFF7DA, #FFEFB0); border-color: rgba(255, 196, 0, 0.5); }
+.tw-medal { font-size: 1.3rem; line-height: 1; flex-shrink: 0; }
+.tw-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--color-base-dark);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tw-prize {
+    flex-shrink: 0;
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--color-base-dark);
+}

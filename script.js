@@ -1951,24 +1951,26 @@ window.onload = function() {
         rulesCloseBtn.addEventListener("touchstart", closeRules, { passive: false });
     }
 
-    // Tournament announcement buttons
+    // Tournament modal buttons (announcement + winners)
     const tournamentClose = (e) => { if (e) { e.stopPropagation(); e.preventDefault(); } hideTournamentModal(); };
-    for (const id of ["tournament-close-btn", "tournament-gotit-btn"]) {
+    for (const id of ["tournament-close-btn", "tournament-gotit-btn", "tournament-winners-close-btn"]) {
         const btn = document.getElementById(id);
         if (btn) {
             btn.addEventListener("click", tournamentClose);
             btn.addEventListener("touchstart", tournamentClose, { passive: false });
         }
     }
-    const tournamentLbBtn = document.getElementById("tournament-leaderboard-btn");
-    if (tournamentLbBtn) {
-        const openFromTournament = (e) => {
-            if (e) { e.stopPropagation(); e.preventDefault(); }
-            hideTournamentModal();
-            openLeaderboard();
-        };
-        tournamentLbBtn.addEventListener("click", openFromTournament);
-        tournamentLbBtn.addEventListener("touchstart", openFromTournament, { passive: false });
+    const openFromTournament = (e) => {
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        hideTournamentModal();
+        openLeaderboard();
+    };
+    for (const id of ["tournament-leaderboard-btn", "tournament-winners-lb-btn"]) {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener("click", openFromTournament);
+            btn.addEventListener("touchstart", openFromTournament, { passive: false });
+        }
     }
 
     // QA test-score input (only the 3 test wallets ever see this row)
@@ -3539,10 +3541,16 @@ function closeLeaderboard() {
     if (overlay) overlay.classList.add('hidden');
 }
 
-// ============ Tournament announcement ============
+// ============ Tournament announcement / winners ============
 // Deadline: 2026-06-22 00:00 GMT+3 (night of Sun 21 -> Mon 22).
 const TOURNAMENT_END_MS = Date.parse('2026-06-22T00:00:00+03:00');
+const TOURNAMENT_PRIZES = [25, 15, 10]; // USD for ranks 1, 2, 3
+const TOURNAMENT_MEDALS = ['🥇', '🥈', '🥉'];
 let _tournamentTimer = 0;
+
+function tournamentEnded() {
+    return Date.now() >= TOURNAMENT_END_MS;
+}
 
 function formatTournamentCountdown(ms) {
     if (ms <= 0) return 'Ended';
@@ -3559,14 +3567,49 @@ function updateTournamentTimer() {
     el.textContent = formatTournamentCountdown(TOURNAMENT_END_MS - Date.now());
 }
 
+// Fetch the final leaderboard and render the top-3 winners with their prizes.
+async function populateTournamentWinners() {
+    const list = document.getElementById('tournament-winners-list');
+    if (!list) return;
+    list.innerHTML = '<div class="tournament-winners-loading">Loading winners…</div>';
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/leaderboard`).then(r => r.json());
+        const top3 = (res.ok && Array.isArray(res.entries)) ? res.entries.slice(0, 3) : [];
+        if (!top3.length) {
+            list.innerHTML = '<div class="tournament-winners-loading">No qualifying scores.</div>';
+        } else {
+            list.innerHTML = top3.map((e, i) => `
+              <div class="tw-row tw-${i + 1}">
+                <span class="tw-medal">${TOURNAMENT_MEDALS[i] || (i + 1)}</span>
+                <span class="tw-name">${escapeHtml(formatLeaderboardName(e))}</span>
+                <span class="tw-prize">$${TOURNAMENT_PRIZES[i] ?? 0}</span>
+              </div>
+            `).join('');
+        }
+    } catch (e) {
+        list.innerHTML = `<div class="tournament-winners-loading">Failed to load winners.</div>`;
+    }
+    fitCards();
+}
+
 function showTournamentModal() {
     const overlay = document.getElementById('overlay-tournament');
+    const announce = document.getElementById('tournament-announce');
+    const winners = document.getElementById('tournament-winners');
     if (!overlay) return;
+    const ended = tournamentEnded();
+    if (announce) announce.classList.toggle('hidden', ended);
+    if (winners) winners.classList.toggle('hidden', !ended);
     overlay.classList.remove('hidden');
-    updateTournamentTimer();
-    fitCards(); // autoscale to fit the screen — never scrolls
-    if (_tournamentTimer) clearInterval(_tournamentTimer);
-    _tournamentTimer = setInterval(updateTournamentTimer, 1000 * 30);
+    if (ended) {
+        if (_tournamentTimer) { clearInterval(_tournamentTimer); _tournamentTimer = 0; }
+        populateTournamentWinners();
+    } else {
+        updateTournamentTimer();
+        fitCards(); // autoscale to fit the screen — never scrolls
+        if (_tournamentTimer) clearInterval(_tournamentTimer);
+        _tournamentTimer = setInterval(updateTournamentTimer, 1000 * 30);
+    }
 }
 
 function hideTournamentModal() {
@@ -3575,11 +3618,12 @@ function hideTournamentModal() {
     if (_tournamentTimer) { clearInterval(_tournamentTimer); _tournamentTimer = 0; }
 }
 
-// Show once per session on first entry to the menu, while the tournament is live.
+// Show once per session on first entry to the menu. Before the deadline this is
+// the LIVE announcement; after it, the winners plaque (top 3 + prizes).
 function maybeShowTournament() {
-    if (Date.now() >= TOURNAMENT_END_MS) return;
-    try { if (sessionStorage.getItem('rpr_tournament_seen')) return; } catch (_) {}
-    try { sessionStorage.setItem('rpr_tournament_seen', '1'); } catch (_) {}
+    const key = tournamentEnded() ? 'rpr_tournament_winners_seen' : 'rpr_tournament_seen';
+    try { if (sessionStorage.getItem(key)) return; } catch (_) {}
+    try { sessionStorage.setItem(key, '1'); } catch (_) {}
     showTournamentModal();
 }
 
