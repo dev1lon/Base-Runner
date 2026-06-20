@@ -149,6 +149,14 @@
                     </label>
                     <input id="admin-speed-slider" class="admin-speed-slider" type="range" min="0" max="10" step="1" value="0">
                 </div>
+                <div id="test-score-row" class="admin-speed-row hidden">
+                    <label class="admin-speed-label" for="test-score-slider">
+                        <span>TEST: simulate run</span>
+                        <span id="test-score-value" class="admin-speed-value">50,000 pts</span>
+                    </label>
+                    <input id="test-score-slider" class="admin-speed-slider" type="range" min="1000" max="200000" step="1000" value="50000">
+                    <button id="test-score-save-btn" class="btn btn-primary btn-small" style="margin-top:8px;width:100%;">Save test score → leaderboard</button>
+                </div>
                 <button id="start-button" class="btn btn-ghost btn-large">Free Game</button>
                 <button id="pay-game-button" class="btn btn-primary btn-large">Pay Game · $0.01</button>
                 <button id="collection-button" class="btn btn-ghost btn-large">Collection</button>

@@ -118,6 +118,13 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || "").toLowerCase();
 const PAYMASTER_URL = process.env.PAYMASTER_URL || "";
 const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || "").toLowerCase().split(",").filter(Boolean);
+// QA-only wallets allowed to inject a simulated run (score+coins+leaderboard)
+// for testing. NOT in ADMIN_ADDRESSES so their scores still appear on the board.
+const TEST_SCORE_WALLETS = new Set([
+  "0x4fdf2cc5d445293e09c7da012f2210ad7410bb3a",
+  "0x59fdccf5cac0307b6ad5de1026cb73e7c1180eab",
+  "0x8cf8f773ac2b49e0be887a3361ab36df83409372",
+]);
 // Default: 3000000000000 wei = 0.000003 ETH ≈ $0.01 at ~$3333/ETH
 const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "3000000000000");
 const GC_PER_COIN = 5;
@@ -760,6 +767,46 @@ app.post("/api/leaderboard/save", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("leaderboard/save error:", e);
     res.status(500).json({ ok: false, error: "Failed to save record" });
+  }
+});
+
+// QA-only: inject a simulated run for the test wallets. Bypasses the time-based
+// anti-cheat so a score can be written instantly. Sets best_score, credits coins
+// (free-run rate), and writes leaderboard_score — as if the wallet really ran it.
+app.post("/api/admin/test-score", requireAuth, async (req, res) => {
+  if (!TEST_SCORE_WALLETS.has(req.user.address)) {
+    return res.status(403).json({ ok: false, error: "Not allowed" });
+  }
+  const score = Math.floor(Number(req.body?.score));
+  if (!Number.isFinite(score) || score < 1 || score > 10_000_000) {
+    return res.status(400).json({ ok: false, error: "Invalid score" });
+  }
+  try {
+    const db = require("./shared/db");
+    await getOrCreateUser(req.user.address);
+    const coins = Math.floor(score / 1000); // free-run rate: 1 coin / 1000 pts
+    const { rows } = await db.query(
+      `UPDATE users
+       SET coins = coins + $2,
+           best_score = GREATEST(best_score, $3),
+           leaderboard_score = GREATEST(leaderboard_score, $3),
+           updated_at = NOW()
+       WHERE address = $1
+       RETURNING coins, best_score, leaderboard_score`,
+      [req.user.address, coins, score]
+    );
+    const u = rows[0] || {};
+    res.json({
+      ok: true,
+      score,
+      coinsAdded: coins,
+      coinBalance: Number(u.coins) || 0,
+      bestScore: Number(u.best_score) || score,
+      leaderboardScore: Number(u.leaderboard_score) || score,
+    });
+  } catch (e) {
+    console.error("test-score error:", e);
+    res.status(500).json({ ok: false, error: "Failed to set test score" });
   }
 });
 

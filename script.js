@@ -625,6 +625,15 @@ let walletInfoMessage = "";
 let walletAuthenticated = false;
 let walletIsAdmin = false;
 let adminSpeedTestTier = 0;
+// QA-only wallets that get the "simulate run" test slider (gate also enforced backend-side).
+const TEST_SCORE_WALLETS = new Set([
+    "0x4fdf2cc5d445293e09c7da012f2210ad7410bb3a",
+    "0x59fdccf5cac0307b6ad5de1026cb73e7c1180eab",
+    "0x8cf8f773ac2b49e0be887a3361ab36df83409372",
+]);
+function isTestScoreWallet() {
+    return !!walletAddress && TEST_SCORE_WALLETS.has(walletAddress.toLowerCase());
+}
 let authInProgress = false;
 let authAttempted = false;
 let authToken = "";
@@ -1372,6 +1381,41 @@ async function handleSaveRecord(e) {
     }
 }
 
+// QA-only: simulate a finished run for the test wallets. Writes score+coins+
+// leaderboard to the backend (bypassing the time anti-cheat), then fires the
+// real on-chain recordRun tx so it looks exactly like a genuine save.
+async function handleTestScoreSave(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const btn = document.getElementById('test-score-save-btn');
+    const slider = document.getElementById('test-score-slider');
+    if (!btn || !slider || btn.disabled) return;
+    if (!isTestScoreWallet() || !authToken) { btn.textContent = 'Not allowed'; return; }
+    const score = Math.floor(Number(slider.value)) || 0;
+    if (score < 1) return;
+    const orig = 'Save test score → leaderboard';
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/test-score`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ score }),
+        }).then(r => r.json());
+        if (!res.ok) throw new Error(res.error || 'failed');
+        if (Number.isFinite(res.coinBalance)) { coinCount = res.coinBalance; saveCoins(); updateCollectionCoins(); }
+        if (Number.isFinite(res.bestScore)) { bestScore = Math.max(bestScore, res.bestScore); }
+        // Fire the real on-chain recordRun tx (the visible "save leaderboard" tx)
+        btn.textContent = 'Confirm in wallet…';
+        const onchain = await recordRunOnChain(score);
+        btn.textContent = onchain ? 'Saved ✓ (tx sent)' : 'Saved ✓ (DB only)';
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+    } catch (err) {
+        console.error('test-score save failed:', err);
+        btn.textContent = 'Failed — tap to retry';
+        btn.disabled = false;
+    }
+}
+
 function setWalletError(message) {
     walletErrorMessage = message || "";
 }
@@ -1927,6 +1971,22 @@ window.onload = function() {
         tournamentLbBtn.addEventListener("touchstart", openFromTournament, { passive: false });
     }
 
+    // QA test-score slider (only the 3 test wallets ever see this row)
+    const testScoreSlider = document.getElementById("test-score-slider");
+    const testScoreValue = document.getElementById("test-score-value");
+    if (testScoreSlider && testScoreValue) {
+        const updTestScore = () => {
+            testScoreValue.textContent = `${Number(testScoreSlider.value).toLocaleString()} pts`;
+        };
+        testScoreSlider.addEventListener("input", updTestScore);
+        updTestScore();
+    }
+    const testScoreSaveBtn = document.getElementById("test-score-save-btn");
+    if (testScoreSaveBtn) {
+        testScoreSaveBtn.addEventListener("click", handleTestScoreSave);
+        testScoreSaveBtn.addEventListener("touchstart", handleTestScoreSave, { passive: false });
+    }
+
     // Initial state
     showWelcome = true;
     gameActive = false;
@@ -2458,6 +2518,14 @@ function updateTestNotificationAdminControls() {
     if (testNotificationButton)      testNotificationButton.classList.toggle("hidden", !showControls);
     if (testNotificationButtonPause) testNotificationButtonPause.classList.toggle("hidden", !showControls);
     updateAdminSpeedControls(showControls);
+    updateTestScoreControls();
+}
+
+function updateTestScoreControls() {
+    const row = document.getElementById("test-score-row");
+    if (!row) return;
+    const show = walletReady && !!authToken && isTestScoreWallet();
+    row.classList.toggle("hidden", !show);
 }
 
 function clampAdminSpeedTestTier(value) {
