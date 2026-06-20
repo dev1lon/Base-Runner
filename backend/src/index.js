@@ -682,6 +682,10 @@ async function resolveBaseName(address) {
 // snapshot instantly.
 const LEADERBOARD_REFRESH_MS = 12 * 60 * 60 * 1000;
 const LEADERBOARD_LIMIT = 100;
+// Tournament: standings freeze at the deadline and stay frozen for the prize
+// week so late runs can't change the winners shown on the plaque.
+const TOURNAMENT_END_MS = Date.parse("2026-06-22T00:00:00+03:00");
+const TOURNAMENT_WINNERS_END_MS = TOURNAMENT_END_MS + 7 * 24 * 60 * 60 * 1000;
 let leaderboardSnapshot = {
   entries: [],
   refreshedAt: null,
@@ -689,8 +693,14 @@ let leaderboardSnapshot = {
   refreshing: false,
 };
 
-async function refreshLeaderboard() {
+async function refreshLeaderboard(opts = {}) {
   if (leaderboardSnapshot.refreshing) return;
+  // Freeze the snapshot during the prize week (deadline -> +7d). `force` is the
+  // scheduled deadline capture; an empty snapshot (e.g. after a restart) is
+  // repopulated so the board is never blank.
+  const nowMs = Date.now();
+  const inWinnersWindow = nowMs >= TOURNAMENT_END_MS && nowMs < TOURNAMENT_WINNERS_END_MS;
+  if (!opts.force && inWinnersWindow && leaderboardSnapshot.entries.length > 0) return;
   leaderboardSnapshot.refreshing = true;
   const startedAt = Date.now();
   try {
@@ -815,13 +825,27 @@ app.post("/api/admin/leaderboard/refresh", requireAuth, async (req, res) => {
   if (!isAdminAddress(req.user.address)) {
     return res.status(403).json({ ok: false, error: "Not authorized" });
   }
-  refreshLeaderboard().catch(() => {});
+  // force so admin can refresh even while the snapshot is frozen for the prize week
+  refreshLeaderboard({ force: true }).catch(() => {});
   res.json({ ok: true, message: "Refresh started" });
 });
 
 // Kick off first refresh on startup, then every 12h
 setTimeout(() => refreshLeaderboard(), 5000);
 setInterval(() => refreshLeaderboard(), LEADERBOARD_REFRESH_MS).unref();
+
+// One-shot: refresh exactly at the tournament deadline (00:00 22nd GMT+3) so the
+// snapshot captures the final standings, which then stay frozen for the week.
+{
+  const msToEnd = TOURNAMENT_END_MS - Date.now();
+  // < 24 days keeps the delay under setInterval/Timeout's 32-bit ceiling.
+  if (msToEnd > 0 && msToEnd < 24 * 24 * 60 * 60 * 1000) {
+    setTimeout(() => {
+      console.log("[leaderboard] tournament deadline — capturing final standings");
+      refreshLeaderboard({ force: true }).catch(() => {});
+    }, msToEnd).unref();
+  }
+}
 
 app.get("/api/checkin/status", readLimiter, requireAuth, async (req, res) => {
   try {
