@@ -9,39 +9,6 @@ const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://base-runner-k9oj.on
 const AUTH_KEY = 'runner_auth_token'
 const BASE_APP_LINK = 'https://base.app/app/rugpullrun.app'
 
-// Tournament deadline: 2026-06-22 00:00 GMT+3 (night of Sun 21 -> Mon 22).
-const TOURNAMENT_END_MS = Date.parse('2026-06-22T00:00:00+03:00')
-
-function formatTournamentCountdown(ms) {
-  if (ms <= 0) return 'Ended'
-  const t = Math.floor(ms / 60000)
-  const d = Math.floor(t / 1440)
-  const h = Math.floor((t % 1440) / 60)
-  const m = t % 60
-  return `${d}d ${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`
-}
-
-function TournamentBanner() {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30000)
-    return () => clearInterval(id)
-  }, [])
-  if (now >= TOURNAMENT_END_MS) return null
-  return (
-    <div className="gate-tournament">
-      <div className="gate-tournament-row">
-        <span className="gate-tournament-live"><span className="gate-tournament-dot" aria-hidden="true" />LIVE</span>
-        <span className="gate-tournament-title">🏆 Tournament</span>
-        <span className="gate-tournament-pool">$50</span>
-      </div>
-      <div className="gate-tournament-sub">
-        Top 3 on the leaderboard win · ends in {formatTournamentCountdown(TOURNAMENT_END_MS - now)}
-      </div>
-    </div>
-  )
-}
-
 function getStoredToken(address) {
   if (!address) return null
   try {
@@ -91,7 +58,6 @@ function BaseAppOnlyScreen() {
           <span className="base-gate-badge-dot" aria-hidden="true" />
           BASE APP ONLY
         </div>
-        <TournamentBanner />
         <h1 className="base-gate-title">RUG PULL RUN</h1>
         <p className="base-gate-copy">
           Open the game inside Base App to connect your wallet and play.
