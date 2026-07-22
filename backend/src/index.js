@@ -680,7 +680,7 @@ async function resolveBaseName(address) {
 // Periodic leaderboard snapshot: refresh runs once per 12h, basename
 // resolution amortized across the whole interval. Client gets cached
 // snapshot instantly.
-const LEADERBOARD_REFRESH_MS = 12 * 60 * 60 * 1000;
+const LEADERBOARD_REFRESH_MS = 24 * 60 * 60 * 1000;
 const LEADERBOARD_LIMIT = 100;
 // Tournament: standings freeze at the deadline and stay frozen for the prize
 // week so late runs can't change the winners shown on the plaque.

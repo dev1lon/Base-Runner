@@ -2520,7 +2520,8 @@ function updateTestNotificationAdminControls() {
     // Bell buttons live next to wallet-address now; toggle their own visibility
     if (testNotificationButton)      testNotificationButton.classList.toggle("hidden", !showControls);
     if (testNotificationButtonPause) testNotificationButtonPause.classList.toggle("hidden", !showControls);
-    updateAdminSpeedControls(showControls);
+    // Speed test is admin-only, but hidden for the 3 QA test wallets.
+    updateAdminSpeedControls(showControls && !isTestScoreWallet());
     updateTestScoreControls();
 }
 
