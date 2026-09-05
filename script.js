@@ -468,13 +468,19 @@ const CHECKIN_STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
 // can't drift from the price actually charged.
 const PAY_GAME_LABEL = "Pay Game · $1";
 
-// Payments contract (RugPullRunPaymentsV2 on Base mainnet)
-// V1 was 0x33e269ae12e0d1E4226A199fd6042d2fe9742855 (no saveLeaderboard) — retired.
-const PAYMENTS_CONTRACT = "0xd2c7739c702032E4Fb505081Ceb81d7832f5694D";
+// Payments contract (RugPullRunPaymentsV3 on Base mainnet).
+// V3 prices the ETH fees in USD cents and converts them through the Chainlink
+// ETH/USD feed on every call, so $1 stays $1 as ETH moves. The exact wei to send
+// comes from the contract itself via /api/game-config — never hardcode it here.
+// Retired: V1 0x33e269ae12e0d1E4226A199fd6042d2fe9742855 (no saveLeaderboard),
+//          V2 0xd2c7739c702032E4Fb505081Ceb81d7832f5694D (fixed wei prices).
+const PAYMENTS_CONTRACT = "0x4dd2aB92083F5A59B1c69f4796fb5103e6871E0D";
 const PAYMENTS_ABI = [
     "function playPaidGame() payable",
     "function saveLeaderboard(uint256 score) payable",
-    "function buyCoins(uint256 coinsAmount, uint256 usdcAmount)"
+    "function buyCoins(uint256 coinsAmount, uint256 usdcAmount)",
+    "function quotePaidGameWei() view returns (uint256)",
+    "function quoteSaveLeaderboardWei() view returns (uint256)"
 ];
 
 // Character upgrade contracts (set after deploy)
