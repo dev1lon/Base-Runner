@@ -465,12 +465,11 @@ const CHECKIN_STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
 
 // Payments contract (RugPullRunPaymentsV2 on Base mainnet)
 // TODO: swap to the V2 address after deploying contracts/RugPullRunPaymentsV2.sol.
-// The V1 address below has no saveLeaderboard()/donate() — those calls revert until swapped.
+// The V1 address below has no saveLeaderboard() — that call reverts until swapped.
 const PAYMENTS_CONTRACT = "0x33e269ae12e0d1E4226A199fd6042d2fe9742855";
 const PAYMENTS_ABI = [
     "function playPaidGame() payable",
     "function saveLeaderboard(uint256 score) payable",
-    "function donate() payable",
     "function buyCoins(uint256 coinsAmount, uint256 usdcAmount)"
 ];
 

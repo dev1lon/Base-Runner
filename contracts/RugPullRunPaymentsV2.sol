@@ -91,10 +91,9 @@ abstract contract ReentrancyGuard {
  * @title Rug Pull Run Payments V2
  * @notice Single payment entry point for the game. Replaces V1
  *         (0x33e269ae12e0d1E4226A199fd6042d2fe9742855) and adds paid leaderboard
- *         saves plus donations:
+ *         saves:
  *           - playPaidGame()          ETH  — paid run
  *           - saveLeaderboard(score)  ETH  — paid leaderboard record
- *           - donate()                ETH  — free-form tip
  *           - buyCoins(...)           USDC — coin packages
  * @dev    Every payment emits an indexed event so the backend can verify a tx
  *         from its receipt alone (no transfer-topic scraping). Non-indexed event
@@ -124,7 +123,6 @@ contract RugPullRunPaymentsV2 is Ownable, Pausable, ReentrancyGuard {
     error InsufficientPayment();
     error ZeroCoins();
     error ZeroScore();
-    error ZeroDonation();
     error InsufficientUSDC();
     error ZeroAddress();
     error NoBalance();
@@ -140,7 +138,6 @@ contract RugPullRunPaymentsV2 is Ownable, Pausable, ReentrancyGuard {
         uint256 nonce,
         uint256 timestamp
     );
-    event Donation(address indexed donor, uint256 value, uint256 nonce, uint256 timestamp);
     event CoinsPurchased(
         address indexed buyer,
         uint256 coinsAmount,
@@ -186,13 +183,7 @@ contract RugPullRunPaymentsV2 is Ownable, Pausable, ReentrancyGuard {
         emit LeaderboardSaved(msg.sender, score, msg.value, nonce, block.timestamp);
     }
 
-    /// @notice Free-form tip. Any non-zero amount.
-    function donate() external payable whenNotPaused nonReentrant {
-        if (msg.value == 0) revert ZeroDonation();
-        uint256 nonce = ++userNonce[msg.sender];
-        emit Donation(msg.sender, msg.value, nonce, block.timestamp);
-    }
-
+    /// @notice Buy coin packages with USDC. This is the game's "top up" path.
     function buyCoins(uint256 coinsAmount, uint256 usdcAmount)
         external
         whenNotPaused
