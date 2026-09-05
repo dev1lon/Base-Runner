@@ -1,68 +1,31 @@
-const crypto = require("crypto");
+﻿const crypto = require('crypto');
+const db = require('../../shared/db');
 
-const sessions = new Map();
-
-function createSession({ address, seed, ttlMs, paid = false, characterId = 0, characterLevel = 0 }) {
-  const sessionId = crypto.randomUUID();
+async function createSession({ address, seed, ttlMs, paid = false, characterId = 0, characterLevel = 0, boardWidth = 750, speedTesting = false, speedTestTier = 0 }, client = db) {
   const issuedAt = Date.now();
-  const expiresAt = issuedAt + ttlMs;
-  const session = {
-    sessionId,
-    address: address || null,
-    seed,
-    issuedAt,
-    expiresAt,
-    used: false,
-    paid,
-    characterId,
-    characterLevel,
-  };
-  sessions.set(sessionId, session);
+  const session = {sessionId: crypto.randomUUID(), address, seed, issuedAt, expiresAt: issuedAt + ttlMs,
+    paid, characterId, characterLevel, boardWidth, speedTesting, speedTestTier, gameVersion: 2};
+  await client.query('INSERT INTO game_sessions (session_id, address, state, expires_at) VALUES ($1, $2, $3, $4)',
+    [session.sessionId, address, JSON.stringify(session), new Date(session.expiresAt)]);
   return session;
 }
 
-function getSession(sessionId) {
-  return sessions.get(sessionId);
+async function completeSession(sessionId, address, work) {
+  return db.withTransaction(async client => {
+    const {rows} = await client.query('SELECT address, state, result FROM game_sessions WHERE session_id = $1 FOR UPDATE', [sessionId]);
+    if (!rows.length) throw new Error('Unknown session');
+    const row = rows[0];
+    if (row.address !== address) throw new Error('Session address mismatch');
+    if (row.result) return row.result;
+    if (row.state.expiresAt <= Date.now()) throw new Error('Session expired');
+    const result = await work(row.state, client);
+    await client.query('UPDATE game_sessions SET result = $2 WHERE session_id = $1', [sessionId, JSON.stringify(result)]);
+    return result;
+  });
 }
 
-function markSessionUsed(sessionId) {
-  const session = sessions.get(sessionId);
-  if (session) {
-    session.used = true;
-  }
-  return session;
+async function cleanupSessions() {
+  await db.query("DELETE FROM game_sessions WHERE expires_at < NOW() - INTERVAL '1 day'");
 }
 
-// Atomically claim a session: returns true only if it was unused and we just
-// flipped it to used. Node runs this synchronously with no await inside, so two
-// concurrent submits can't both win — the second sees used=true and gets false.
-function claimSession(sessionId) {
-  const session = sessions.get(sessionId);
-  if (!session || session.used) return false;
-  session.used = true;
-  return true;
-}
-
-// Release a claim (e.g. when the score write failed) so the player can retry.
-function releaseSession(sessionId) {
-  const session = sessions.get(sessionId);
-  if (session) session.used = false;
-}
-
-function cleanupSessions() {
-  const now = Date.now();
-  for (const [id, session] of sessions.entries()) {
-    if (session.used || session.expiresAt <= now) {
-      sessions.delete(id);
-    }
-  }
-}
-
-module.exports = {
-  createSession,
-  getSession,
-  markSessionUsed,
-  claimSession,
-  releaseSession,
-  cleanupSessions
-};
+module.exports = { createSession, completeSession, cleanupSessions };

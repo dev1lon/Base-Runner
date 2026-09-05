@@ -68,6 +68,16 @@ async function ensureSchema() {
       PRIMARY KEY (tx_hash, kind)
     );
   `);
+  await pool.query(`ALTER TABLE used_tx_hashes ADD COLUMN IF NOT EXISTS result JSONB;`);
+  // Keep historical rows intact, including hashes written with mixed case.
+  await pool.query(`CREATE INDEX IF NOT EXISTS used_tx_hashes_normalized ON used_tx_hashes (lower(tx_hash), kind);`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS game_sessions (
+    session_id UUID PRIMARY KEY,
+    address TEXT NOT NULL,
+    state JSONB NOT NULL,
+    result JSONB,
+    expires_at TIMESTAMPTZ NOT NULL
+  );`);
 
   // Leaderboard: only scores explicitly submitted via Save Record button count here.
   // Add column AND backfill from best_score once so existing users stay on the board.
@@ -133,7 +143,23 @@ async function query(text, params) {
   return pool.query(text, params);
 }
 
+async function withTransaction(work) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await work(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   query,
+  withTransaction,
   ensureSchema
 };
