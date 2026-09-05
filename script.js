@@ -1417,6 +1417,13 @@ async function handleSaveRecord(e) {
         return;
     }
     btn.disabled = true;
+    // The run's score reaches the backend through submitBackendRun, which is
+    // fire-and-forget. Paying before it lands means the backend still has the
+    // old best_score and rejects the save — with the $0.10 already spent.
+    if (pendingSubmitPromise) {
+        btn.textContent = 'Syncing score…';
+        try { await pendingSubmitPromise; } catch { /* submit logs its own failure */ }
+    }
     btn.textContent = 'Confirm payment…';
     try {
         const txHash = await sendPaymentsCall(
@@ -1439,7 +1446,14 @@ async function handleSaveRecord(e) {
     } catch (err) {
         console.error('Save record failed:', err);
         const rejected = err.code === 4001 || /reject|denied/i.test(err.message || '');
-        btn.textContent = rejected ? 'Cancelled — Tap to retry' : 'Failed — Tap to retry';
+        // Show the backend's own reason. A bare "Failed" hides the important
+        // case: the on-chain payment went through and the server refused the
+        // save (stale score, unrecognised event), which needs a different fix
+        // than a rejected signature — and the player has already been charged.
+        const detail = String(err.message || '').slice(0, 60);
+        btn.textContent = rejected
+            ? 'Cancelled — Tap to retry'
+            : (detail ? `${detail} — Tap to retry` : 'Failed — Tap to retry');
         btn.disabled = false;
     }
 }
