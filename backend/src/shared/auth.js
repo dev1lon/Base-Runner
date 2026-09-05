@@ -49,10 +49,15 @@ async function verifySignature(address, message, signature) {
   return false;
 }
 
+// Tokens expire: a leaked token (localStorage, a shared device, a log line) was
+// otherwise valid forever. The frontend already re-signs on a 401, so expiry is
+// invisible to the player.
+const JWT_TTL = process.env.JWT_TTL || "30d";
+
 function signJwt(address) {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET is missing");
-  return jwt.sign({ address }, secret);
+  return jwt.sign({ address }, secret, { expiresIn: JWT_TTL });
 }
 
 function verifyJwt(token) {

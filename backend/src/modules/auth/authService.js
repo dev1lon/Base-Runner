@@ -33,7 +33,20 @@ async function verifyNonce({ address, signature, originalAddress, signedMessage 
     await deleteNonce(address);
     return { ok: false, error: "Nonce expired" };
   }
-  // Use signedMessage if provided (SIWE), otherwise rebuild with legacy format
+  // Use signedMessage if provided (SIWE), otherwise rebuild with legacy format.
+  // A client-supplied message must still be bound to THIS login: it has to carry
+  // the nonce we just issued and the address it claims. Without that check any
+  // signature by the victim over any text (one harvested from another dapp, say)
+  // would authenticate as them.
+  if (signedMessage) {
+    const msg = String(signedMessage);
+    if (!msg.includes(record.nonce)) {
+      return { ok: false, error: "Message does not contain the issued nonce" };
+    }
+    if (!msg.toLowerCase().includes(address.toLowerCase())) {
+      return { ok: false, error: "Message does not contain the address" };
+    }
+  }
   const msgAddress = record.original_address || originalAddress || address;
   const message = signedMessage || buildAuthMessage({
     address: msgAddress,

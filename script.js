@@ -614,8 +614,12 @@ let checkinState = {
 };
 let gameConfig = {
     treasuryAddress: null,
-    paidGamePriceWei: "3000000000000",
-    saveLeaderboardPriceWei: "30000000000000",
+    // Fallback only — the real price comes from /api/game-config, which reads it
+    // from the payments contract. These must stay close to the on-chain value:
+    // 407000000000000 wei = 0.000407 ETH ~= $1.00, 40700000000000 ~= $0.10.
+    // A stale value here makes the wallet send too little and the tx reverts.
+    paidGamePriceWei: "407000000000000",
+    saveLeaderboardPriceWei: "40700000000000",
     paymasterUrl: ""
 };
 let isPaidGame = false;
@@ -1099,8 +1103,8 @@ async function fetchGameConfig() {
             if (res.ok) {
                 const data = await res.json();
                 gameConfig.treasuryAddress = data.treasuryAddress || null;
-                gameConfig.paidGamePriceWei = data.paidGamePriceWei || "3000000000000";
-                gameConfig.saveLeaderboardPriceWei = data.saveLeaderboardPriceWei || "30000000000000";
+                gameConfig.paidGamePriceWei = data.paidGamePriceWei || gameConfig.paidGamePriceWei;
+                gameConfig.saveLeaderboardPriceWei = data.saveLeaderboardPriceWei || gameConfig.saveLeaderboardPriceWei;
                 gameConfig.paymasterUrl = data.paymasterUrl || "";
                 PAYMASTER_URL = gameConfig.paymasterUrl;
                 return;

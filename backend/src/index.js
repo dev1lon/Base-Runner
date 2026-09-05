@@ -118,8 +118,9 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || "").toLowerCase();
 const PAYMASTER_URL = process.env.PAYMASTER_URL || "";
 const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || "").toLowerCase().split(",").filter(Boolean);
-// Default: 3000000000000 wei = 0.000003 ETH ≈ $0.01 at ~$3333/ETH
-const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "3000000000000");
+// Boot-time fallback only — the live price is read from the contract (see
+// refreshOnChainPrices). 407000000000000 wei = 0.000407 ETH ≈ $1.00.
+const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "407000000000000");
 const GC_PER_COIN = 5;
 
 // Persisted in `used_tx_hashes` table — prevents tx replay across backend restarts.
@@ -149,12 +150,100 @@ async function markTxHashUsed(txHash, kind, address) {
 
 // Payments contract (RugPullRunPayments) — handles paid game + coin purchases
 const PAYMENTS_CONTRACT = (process.env.PAYMENTS_CONTRACT || "").toLowerCase();
-const PAID_GAME_EVENT_TOPIC   = ethers.id("PaidGame(address,uint256,uint256,uint256)");
-const COINS_PURCHASED_TOPIC   = ethers.id("CoinsPurchased(address,uint256,uint256,uint256,uint256)");
-const LEADERBOARD_SAVED_TOPIC = ethers.id("LeaderboardSaved(address,uint256,uint256,uint256,uint256)");
-// Price to register a score on the leaderboard (PaymentsV2.saveLeaderboard).
-// Default 30000000000000 wei = 0.00003 ETH ~= $0.10 at ~$3333/ETH.
-const SAVE_LEADERBOARD_PRICE_WEI = BigInt(process.env.SAVE_LEADERBOARD_PRICE_WEI || "30000000000000");
+// Accept both the V2 and V3 signatures: V3 adds a trailing `priceWei` field, so
+// the topic hash changes while the leading data words we read stay in place.
+// Matching both means deploying V3 is a PAYMENTS_CONTRACT env change, nothing more.
+const PAID_GAME_TOPICS = new Set([
+  ethers.id("PaidGame(address,uint256,uint256,uint256)"),            // V2
+  ethers.id("PaidGame(address,uint256,uint256,uint256,uint256)")     // V3
+]);
+const COINS_PURCHASED_TOPICS = new Set([
+  ethers.id("CoinsPurchased(address,uint256,uint256,uint256,uint256)")
+]);
+const LEADERBOARD_SAVED_TOPICS = new Set([
+  ethers.id("LeaderboardSaved(address,uint256,uint256,uint256,uint256)"),          // V2
+  ethers.id("LeaderboardSaved(address,uint256,uint256,uint256,uint256,uint256)")   // V3
+]);
+// Boot-time fallback for the leaderboard save price.
+// 40700000000000 wei = 0.0000407 ETH ≈ $0.10.
+const SAVE_LEADERBOARD_PRICE_WEI = BigInt(process.env.SAVE_LEADERBOARD_PRICE_WEI || "40700000000000");
+
+// ---------------------------------------------------------------------------
+// Live prices — the payments contract is the single source of truth.
+//
+// The owner can change the ETH prices on-chain at any time (and PaymentsV3
+// re-quotes them from the Chainlink ETH/USD feed on every call). A second copy
+// in env drifts: it was 135x stale once already — env said $0.0074 while the
+// contract charged $1.00, so every wallet reverted with InsufficientPayment.
+// So we read the prices from chain, refresh them periodically, and use env only
+// until the first successful read.
+// ---------------------------------------------------------------------------
+const PRICE_READ_ABI = [
+  // V3 (USD-pegged, oracle-derived) — preferred when the contract has them
+  "function quotePaidGameWei() view returns (uint256)",
+  "function quoteSaveLeaderboardWei() view returns (uint256)",
+  // V2 (fixed wei in storage)
+  "function paidGamePriceWei() view returns (uint256)",
+  "function saveLeaderboardPriceWei() view returns (uint256)"
+];
+const PRICE_REFRESH_MS = Number(process.env.PRICE_REFRESH_MS || 5 * 60 * 1000);
+// A payment is verified after the fact, so the price may have moved (V3) or been
+// changed by the owner between the tx landing and this check. Accept a small
+// shortfall rather than rejecting a payment the contract itself accepted.
+const PRICE_TOLERANCE_BPS = BigInt(process.env.PRICE_TOLERANCE_BPS || 500); // 5%
+
+const livePrices = {
+  paidGameWei: PAID_GAME_PRICE_WEI,
+  saveLeaderboardWei: SAVE_LEADERBOARD_PRICE_WEI,
+  fromChain: false,
+  updatedAt: 0
+};
+
+async function refreshOnChainPrices() {
+  if (!PAYMENTS_CONTRACT) return;
+  try {
+    const [paid, save] = await withRpcFallback(async (provider) => {
+      const c = new ethers.Contract(PAYMENTS_CONTRACT, PRICE_READ_ABI, provider);
+      // V3 first; a V2 contract has no quote* functions and the call reverts.
+      const readPaid = c.quotePaidGameWei().catch(() => c.paidGamePriceWei());
+      const readSave = c.quoteSaveLeaderboardWei().catch(() => c.saveLeaderboardPriceWei());
+      return Promise.all([readPaid, readSave]);
+    });
+    if (paid > 0n && save > 0n) {
+      livePrices.paidGameWei = BigInt(paid);
+      livePrices.saveLeaderboardWei = BigInt(save);
+      livePrices.fromChain = true;
+      livePrices.updatedAt = Date.now();
+    }
+  } catch (e) {
+    // Keep the last known good prices — never fall back to a stale env value
+    // once a real on-chain price has been read.
+    console.warn("[prices] on-chain refresh failed:", e.message);
+  }
+}
+
+/// Minimum value a payment must carry, tolerance applied.
+function minAcceptedWei(priceWei) {
+  return (priceWei * (10_000n - PRICE_TOLERANCE_BPS)) / 10_000n;
+}
+
+// Read the first `count` uint256 words of a log's data. Reading words instead of
+// decoding the whole tuple keeps verification working across contract versions:
+// V3 adds a `priceWei` field after the ones we care about, and the leading
+// fields (value / score) keep their position.
+function readEventWords(data, count) {
+  const body = data.startsWith("0x") ? data.slice(2) : data;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const word = body.slice(i * 64, (i + 1) * 64);
+    if (word.length < 64) throw new Error("event data too short");
+    out.push(BigInt("0x" + word));
+  }
+  return out;
+}
+
+refreshOnChainPrices();
+setInterval(refreshOnChainPrices, PRICE_REFRESH_MS).unref();
 
 const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
 const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000, 5000]);
@@ -216,8 +305,10 @@ app.get("/health", (req, res) => {
 app.get("/api/game-config", (req, res) => {
   res.json({
     treasuryAddress: TREASURY_ADDRESS || null,
-    paidGamePriceWei: PAID_GAME_PRICE_WEI.toString(),
-    saveLeaderboardPriceWei: SAVE_LEADERBOARD_PRICE_WEI.toString(),
+    paidGamePriceWei: livePrices.paidGameWei.toString(),
+    saveLeaderboardPriceWei: livePrices.saveLeaderboardWei.toString(),
+    // false = the on-chain read hasn't succeeded yet and these are env values
+    pricesFromChain: livePrices.fromChain,
     paymentsContract: PAYMENTS_CONTRACT || null,
     paymasterUrl: PAYMASTER_URL || ""
   });
@@ -357,7 +448,9 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
   if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
     return res.status(400).json({ ok: false, error: "Invalid txHash" });
   }
-  if (!TREASURY_ADDRESS) {
+  // Fail closed: without the payments contract there is nothing to verify the
+  // payment against, and any confirmed tx would buy a paid session.
+  if (!TREASURY_ADDRESS || !PAYMENTS_CONTRACT) {
     return res.status(503).json({ ok: false, error: "Paid games not configured" });
   }
   if (await isTxHashUsed(txHash, "paid_game")) {
@@ -384,20 +477,18 @@ app.post("/api/session/start-paid", requireAuth, async (req, res) => {
     }
 
     // Verify PaidGame event from payments contract
-    if (PAYMENTS_CONTRACT) {
+    {
       const playerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
       const paidLog = receipt.logs.find(log =>
         log.address.toLowerCase() === PAYMENTS_CONTRACT &&
-        log.topics[0] === PAID_GAME_EVENT_TOPIC &&
+        PAID_GAME_TOPICS.has(log.topics[0]) &&
         log.topics[1]?.toLowerCase() === playerTopic
       );
       if (!paidLog) {
         return res.status(400).json({ ok: false, error: "PaidGame event not found in transaction" });
       }
-      const [value] = ethers.AbiCoder.defaultAbiCoder().decode(
-        ["uint256", "uint256", "uint256"], paidLog.data
-      );
-      if (BigInt(value) < PAID_GAME_PRICE_WEI) {
+      const [value] = readEventWords(paidLog.data, 1);
+      if (value < minAcceptedWei(livePrices.paidGameWei)) {
         return res.status(400).json({ ok: false, error: "Insufficient payment value" });
       }
     }
@@ -797,16 +888,14 @@ app.post("/api/leaderboard/save", requireAuth, async (req, res) => {
     const playerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
     const savedLog = receipt.logs.find(log =>
       log.address.toLowerCase() === PAYMENTS_CONTRACT &&
-      log.topics[0] === LEADERBOARD_SAVED_TOPIC &&
+      LEADERBOARD_SAVED_TOPICS.has(log.topics[0]) &&
       log.topics[1]?.toLowerCase() === playerTopic
     );
     if (!savedLog) {
       return res.status(400).json({ ok: false, error: "LeaderboardSaved event not found" });
     }
-    const [paidScore, paidValue] = ethers.AbiCoder.defaultAbiCoder().decode(
-      ["uint256", "uint256", "uint256", "uint256"], savedLog.data
-    );
-    if (BigInt(paidValue) < SAVE_LEADERBOARD_PRICE_WEI) {
+    const [paidScore, paidValue] = readEventWords(savedLog.data, 2);
+    if (paidValue < minAcceptedWei(livePrices.saveLeaderboardWei)) {
       return res.status(400).json({ ok: false, error: "Insufficient payment" });
     }
     // The paid score must match the score being registered.
@@ -1117,7 +1206,9 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
   if (!VALID_COIN_PACKAGES.has(Number(coins))) {
     return res.status(400).json({ ok: false, error: "Invalid coin package" });
   }
-  if (!TREASURY_ADDRESS) {
+  // Fail closed — without the contract address the CoinsPurchased event can't be
+  // attributed, and any confirmed tx would mint coins.
+  if (!TREASURY_ADDRESS || !PAYMENTS_CONTRACT) {
     return res.status(503).json({ ok: false, error: "Store not configured" });
   }
   if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
@@ -1141,23 +1232,21 @@ app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
 
     // Verify CoinsPurchased event from payments contract
     const expectedUSDC = COIN_PACKAGE_USDC.get(Number(coins)) ?? (USDC_PER_COIN * BigInt(coins));
-    if (PAYMENTS_CONTRACT) {
+    {
       const buyerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
       const coinsLog = receipt.logs.find(log =>
         log.address.toLowerCase() === PAYMENTS_CONTRACT &&
-        log.topics[0] === COINS_PURCHASED_TOPIC &&
+        COINS_PURCHASED_TOPICS.has(log.topics[0]) &&
         log.topics[1]?.toLowerCase() === buyerTopic
       );
       if (!coinsLog) {
         return res.status(400).json({ ok: false, error: "CoinsPurchased event not found" });
       }
-      const [coinsAmt, usdcAmt] = ethers.AbiCoder.defaultAbiCoder().decode(
-        ["uint256", "uint256", "uint256", "uint256"], coinsLog.data
-      );
+      const [coinsAmt, usdcAmt] = readEventWords(coinsLog.data, 2);
       if (Number(coinsAmt) !== Number(coins)) {
         return res.status(400).json({ ok: false, error: "Coins amount mismatch" });
       }
-      if (BigInt(usdcAmt) < expectedUSDC) {
+      if (usdcAmt < expectedUSDC) {
         return res.status(400).json({ ok: false, error: "Insufficient USDC payment" });
       }
     }
