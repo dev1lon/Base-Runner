@@ -151,6 +151,10 @@ async function markTxHashUsed(txHash, kind, address) {
 const PAYMENTS_CONTRACT = (process.env.PAYMENTS_CONTRACT || "").toLowerCase();
 const PAID_GAME_EVENT_TOPIC   = ethers.id("PaidGame(address,uint256,uint256,uint256)");
 const COINS_PURCHASED_TOPIC   = ethers.id("CoinsPurchased(address,uint256,uint256,uint256,uint256)");
+const LEADERBOARD_SAVED_TOPIC = ethers.id("LeaderboardSaved(address,uint256,uint256,uint256,uint256)");
+// Price to register a score on the leaderboard (PaymentsV2.saveLeaderboard).
+// Default 30000000000000 wei = 0.00003 ETH ~= $0.10 at ~$3333/ETH.
+const SAVE_LEADERBOARD_PRICE_WEI = BigInt(process.env.SAVE_LEADERBOARD_PRICE_WEI || "30000000000000");
 
 const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
 const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000, 5000]);
@@ -213,6 +217,8 @@ app.get("/api/game-config", (req, res) => {
   res.json({
     treasuryAddress: TREASURY_ADDRESS || null,
     paidGamePriceWei: PAID_GAME_PRICE_WEI.toString(),
+    saveLeaderboardPriceWei: SAVE_LEADERBOARD_PRICE_WEI.toString(),
+    paymentsContract: PAYMENTS_CONTRACT || null,
     paymasterUrl: PAYMASTER_URL || ""
   });
 });
@@ -743,13 +749,29 @@ app.get("/api/leaderboard", (req, res) => {
 // Players save their (already on-chain) record to the leaderboard.
 // Server validates score does not exceed user's tracked best_score and is
 // strictly higher than the existing leaderboard_score before storing.
+// Registering a score on the leaderboard is a PAID action: the client must pass
+// the txHash of a confirmed PaymentsV2.saveLeaderboard() call. Nothing is written
+// to the database unless that payment verifies on-chain for this exact score.
 app.post("/api/leaderboard/save", requireAuth, async (req, res) => {
   const score = Number(req.body?.score);
+  const txHash = req.body?.txHash;
   if (!Number.isFinite(score) || score < 1) {
     return res.status(400).json({ ok: false, error: "Invalid score" });
   }
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ ok: false, error: "Payment txHash required" });
+  }
+  if (!PAYMENTS_CONTRACT) {
+    return res.status(503).json({ ok: false, error: "Payments not configured" });
+  }
+  if (await isTxHashUsed(txHash, "leaderboard_save")) {
+    return res.status(400).json({ ok: false, error: "Transaction already used" });
+  }
+
   try {
     const db = require("./shared/db");
+
+    // 1) The score must be one the player actually achieved this session.
     const { rows } = await db.query(
       `SELECT best_score, leaderboard_score FROM users WHERE address = $1`,
       [req.user.address]
@@ -759,6 +781,45 @@ app.post("/api/leaderboard/save", requireAuth, async (req, res) => {
     if (score > Number(best_score)) {
       return res.status(400).json({ ok: false, error: "Score exceeds best_score" });
     }
+
+    // 2) Verify the payment on-chain (retry — backend RPC may lag the wallet).
+    let receipt = null;
+    for (let i = 0; i < 5; i++) {
+      try {
+        receipt = await withRpcFallback((p) => p.getTransactionReceipt(txHash));
+      } catch { /* timeout — try next iteration */ }
+      if (receipt) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    if (!receipt) return res.status(400).json({ ok: false, error: "Transaction not found on chain" });
+    if (receipt.status !== 1) return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
+
+    const playerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
+    const savedLog = receipt.logs.find(log =>
+      log.address.toLowerCase() === PAYMENTS_CONTRACT &&
+      log.topics[0] === LEADERBOARD_SAVED_TOPIC &&
+      log.topics[1]?.toLowerCase() === playerTopic
+    );
+    if (!savedLog) {
+      return res.status(400).json({ ok: false, error: "LeaderboardSaved event not found" });
+    }
+    const [paidScore, paidValue] = ethers.AbiCoder.defaultAbiCoder().decode(
+      ["uint256", "uint256", "uint256", "uint256"], savedLog.data
+    );
+    if (BigInt(paidValue) < SAVE_LEADERBOARD_PRICE_WEI) {
+      return res.status(400).json({ ok: false, error: "Insufficient payment" });
+    }
+    // The paid score must match the score being registered.
+    if (Number(paidScore) !== score) {
+      return res.status(400).json({ ok: false, error: "Score does not match payment" });
+    }
+
+    // 3) Atomic claim — a concurrent request can't reuse the same payment.
+    if (!(await markTxHashUsed(txHash, "leaderboard_save", req.user.address))) {
+      return res.status(400).json({ ok: false, error: "Transaction already used" });
+    }
+
+    // 4) Only now touch the database.
     if (score <= Number(leaderboard_score)) {
       return res.json({ ok: true, updated: false, leaderboardScore: Number(leaderboard_score) });
     }

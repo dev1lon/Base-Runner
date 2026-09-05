@@ -131,7 +131,6 @@ const BASE_CHAIN_PARAMS = {
 };
 // Contract addresses (Base Mainnet)
 const NFT_CONTRACT_ADDRESS = "0xF2cE35c71c356048C3e807430225287Bea788131";
-const RUN_RECORDER_ADDRESS = "0x44D090F487fF730aCd94f6E3E9f832ff6b933d36";
 
 // ERC-8021 Builder Code suffix for Base leaderboard attribution
 // Code: bc_d5td9rtw
@@ -464,10 +463,14 @@ const BACKEND_TIMEOUT_MS = 25000;
 const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const CHECKIN_STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
 
-// Payments contract (RugPullRunPayments on Base mainnet)
+// Payments contract (RugPullRunPaymentsV2 on Base mainnet)
+// TODO: swap to the V2 address after deploying contracts/RugPullRunPaymentsV2.sol.
+// The V1 address below has no saveLeaderboard()/donate() — those calls revert until swapped.
 const PAYMENTS_CONTRACT = "0x33e269ae12e0d1E4226A199fd6042d2fe9742855";
 const PAYMENTS_ABI = [
     "function playPaidGame() payable",
+    "function saveLeaderboard(uint256 score) payable",
+    "function donate() payable",
     "function buyCoins(uint256 coinsAmount, uint256 usdcAmount)"
 ];
 
@@ -518,38 +521,6 @@ const NFT_ABI = [
     "function getOwnedCharacterList(address wallet) external view returns (uint8[])",
     "function balanceOf(address owner) external view returns (uint256)"
 ];
-
-const RUN_RECORDER_ABI = [
-    "function recordRun(uint256 score) external"
-];
-
-// Record completed run on-chain, then notify backend.
-// Returns true if on-chain tx confirmed, false otherwise.
-const RECORD_RUN_TIMEOUT_MS = 45_000;
-async function recordRunOnChain(finalScore) {
-    if (!RUN_RECORDER_ADDRESS || !walletReady) return false;
-    try {
-        const p = getEthereumProvider();
-        if (!p) return false;
-        const ethersProvider = new ethers.BrowserProvider(p);
-        const signer = await ethersProvider.getSigner();
-        const contract = new ethers.Contract(RUN_RECORDER_ADDRESS, RUN_RECORDER_ABI, signer);
-        const tx = await sendWithBuilderCode(signer, contract, 'recordRun', [finalScore]);
-        // Race tx.wait() against a hard timeout so a hung RPC doesn't lock
-        // the Save Record button forever.
-        await Promise.race([
-            tx.wait(),
-            new Promise((_, reject) => setTimeout(
-                () => reject(new Error('record-run-timeout')),
-                RECORD_RUN_TIMEOUT_MS
-            )),
-        ]);
-        return true;
-    } catch (e) {
-        console.error('recordRunOnChain failed:', e);
-        return false;
-    }
-}
 
 // UI State Machine
 const UI_STATE = {
@@ -638,7 +609,12 @@ let checkinState = {
     message: "",
     _rewardAnimating: false
 };
-let gameConfig = { treasuryAddress: null, paidGamePriceWei: "3000000000000", paymasterUrl: "" };
+let gameConfig = {
+    treasuryAddress: null,
+    paidGamePriceWei: "3000000000000",
+    saveLeaderboardPriceWei: "30000000000000",
+    paymasterUrl: ""
+};
 let isPaidGame = false;
 let pendingPaidTxHash = null;
 let backendSessionId = null;
@@ -1121,6 +1097,7 @@ async function fetchGameConfig() {
                 const data = await res.json();
                 gameConfig.treasuryAddress = data.treasuryAddress || null;
                 gameConfig.paidGamePriceWei = data.paidGamePriceWei || "3000000000000";
+                gameConfig.saveLeaderboardPriceWei = data.saveLeaderboardPriceWei || "30000000000000";
                 gameConfig.paymasterUrl = data.paymasterUrl || "";
                 PAYMASTER_URL = gameConfig.paymasterUrl;
                 return;
@@ -1331,43 +1308,125 @@ function setGameOverState() {
         const saveBtn = document.getElementById('save-record-btn');
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Save record to leaderboard';
+            saveBtn.textContent = 'Save record to leaderboard · $0.10';
             saveBtn.style.display = '';
         }
         gameOverOverlay.classList.remove('hidden');
     }
 }
 
+// Send a payable call to the payments contract using the same fallback chain as
+// the paid-game flow: EIP-5792 via bridge -> EIP-5792 via provider -> bridge
+// sendTransaction -> plain ethers. Returns the confirmed txHash.
+async function sendPaymentsCall(fnName, args, valueWei, onStatus) {
+    const provider = getEthereumProvider();
+    const iface = new ethers.Interface(PAYMENTS_ABI);
+    const data = iface.encodeFunctionData(fnName, args) + BUILDER_CODE_SUFFIX.slice(2);
+    const valueHex = '0x' + BigInt(valueWei).toString(16);
+    const bridge = window.__walletBridge;
+    const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+        ? { paymasterService: { url: PAYMASTER_URL } }
+        : {};
+    let txHash;
+
+    if (bridge?.sendCalls) {
+        try {
+            const raw = await bridge.sendCalls({
+                account: walletAddress,
+                chainId: 8453,
+                atomicRequired: true,
+                calls: [{ to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data }],
+                capabilities: pmCaps
+            });
+            const id = extractCallsId(raw);
+            if (!id) throw new Error('sendCalls returned no id');
+            if (onStatus) onStatus('Confirming…');
+            txHash = await waitForBridgeCallsTxHash(id);
+        } catch (err) {
+            if (err.code !== -32601) throw err;
+        }
+    }
+
+    if (!txHash && provider?.request) {
+        try {
+            const raw = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '2.0.0',
+                    chainId: '0x2105',
+                    from: walletAddress,
+                    atomicRequired: true,
+                    calls: [{ to: PAYMENTS_CONTRACT, value: valueHex, data }],
+                    capabilities: pmCaps
+                }]
+            });
+            const id = extractCallsId(raw);
+            if (!id) throw new Error('wallet_sendCalls returned no id');
+            if (onStatus) onStatus('Confirming…');
+            txHash = await waitForCallsTxHash(provider, id);
+        } catch (err) {
+            if (err.code !== -32601) throw err;
+        }
+    }
+
+    if (!txHash && bridge?.sendTransaction) {
+        txHash = await bridge.sendTransaction({ to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data });
+        if (onStatus) onStatus('Confirming…');
+        if (provider) {
+            await new ethers.BrowserProvider(provider).waitForTransaction(txHash);
+        }
+    } else if (!txHash) {
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        const tx = await signer.sendTransaction({ to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data });
+        if (onStatus) onStatus('Confirming…');
+        const rc = await tx.wait();
+        txHash = rc.hash || tx.hash;
+    }
+
+    return txHash;
+}
+
+// Saving a record is a PAID action: pay saveLeaderboard(score) on-chain, then
+// hand the txHash to the backend. Nothing is stored (locally or in the DB)
+// unless that payment confirms and verifies server-side.
 async function handleSaveRecord(e) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     const btn = document.getElementById('save-record-btn');
     if (!btn || btn.disabled) return;
-    if (!RUN_RECORDER_ADDRESS || !walletReady) {
+    if (!walletReady || !authToken) {
         btn.textContent = 'Wallet not ready';
         return;
     }
-    btn.disabled = true;
-    btn.textContent = 'Saving…';
     const finalScore = lastFinalScoreForRecord || score;
+    if (!finalScore || finalScore < 1) {
+        btn.textContent = 'No score to save';
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Confirm payment…';
     try {
-        const ok = await recordRunOnChain(finalScore);
-        if (ok) {
-            btn.textContent = 'Saved ✓';
-            // After on-chain confirmation, register score on the leaderboard
-            try {
-                await fetch(`${BACKEND_URL}/api/leaderboard/save`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                    body: JSON.stringify({ score: finalScore }),
-                });
-            } catch (_) { /* leaderboard sync is best-effort */ }
-        } else {
-            btn.textContent = 'Failed — Tap to retry';
-            btn.disabled = false;
-        }
+        const txHash = await sendPaymentsCall(
+            'saveLeaderboard',
+            [finalScore],
+            gameConfig.saveLeaderboardPriceWei,
+            (s) => { btn.textContent = s; }
+        );
+        if (!txHash) throw new Error('No transaction hash');
+
+        btn.textContent = 'Saving…';
+        const res = await fetch(`${BACKEND_URL}/api/leaderboard/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ score: finalScore, txHash }),
+        }).then(r => r.json());
+        if (!res.ok) throw new Error(res.error || 'Save failed');
+
+        btn.textContent = 'Saved ✓';
     } catch (err) {
         console.error('Save record failed:', err);
-        btn.textContent = 'Failed — Tap to retry';
+        const rejected = err.code === 4001 || /reject|denied/i.test(err.message || '');
+        btn.textContent = rejected ? 'Cancelled — Tap to retry' : 'Failed — Tap to retry';
         btn.disabled = false;
     }
 }
