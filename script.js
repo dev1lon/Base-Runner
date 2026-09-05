@@ -192,7 +192,23 @@ async function getBaseWalletCapabilities(provider) {
     }
 }
 
-// Poll wallet_getCallsStatus until we have a real transactionHash (receipts populated) or FAILED.
+function confirmedCallsTxHash(status) {
+    const state = String(status?.status ?? '').toLowerCase();
+    const code = Number(status?.statusCode ?? status?.status);
+    if (state === 'failed' || state === 'failure' || (code >= 300 && code < 700)) {
+        throw new Error('Transaction failed');
+    }
+    const confirmed = ['confirmed', 'success', 'completed'].includes(state)
+        || (code >= 200 && code < 300);
+    if (!confirmed) return null;
+
+    // A calls ID identifies the wallet batch, not its on-chain transaction.
+    // viem normalizes the status to "success" and keeps the hash in receipts.
+    const txHash = status?.receipts?.[0]?.transactionHash || status?.receipts?.[0]?.hash;
+    return typeof txHash === 'string' && /^0x[0-9a-fA-F]{64}$/.test(txHash) ? txHash : null;
+}
+
+// Poll until a confirmed receipt contains the real transaction hash.
 async function waitForCallsTxHash(provider, callsId) {
     for (let i = 0; i < 60; i++) {
         await new Promise(r => setTimeout(r, 2000));
@@ -203,14 +219,8 @@ async function waitForCallsTxHash(provider, callsId) {
             console.warn('[pm] getCallsStatus error:', err.code, err.message);
             continue;
         }
-        const s = status?.status;
-        const txHash = status?.receipts?.[0]?.transactionHash;
-        if ((s === 'CONFIRMED' || s === 200 || s === '200') && txHash) {
-            return txHash;
-        }
-        if (s === 'FAILED' || s === 400 || s === 500 || s === '400' || s === '500') {
-            throw new Error('Transaction failed');
-        }
+        const txHash = confirmedCallsTxHash(status);
+        if (txHash) return txHash;
     }
     throw new Error('Transaction timeout');
 }
@@ -221,17 +231,8 @@ async function waitForBridgeCallsTxHash(callsId) {
         for (let i = 0; i < 60; i++) {
             await new Promise(r => setTimeout(r, 2000));
             const status = await bridge.getCallsStatus(callsId).catch(() => null);
-            const s = status?.status;
-            const txHash = status?.receipts?.[0]?.transactionHash || status?.receipts?.[0]?.hash || status?.transactionHash || status?.hash;
-            if ((s === 'CONFIRMED' || s === 200 || s === '200') && txHash) {
-                return txHash;
-            }
-            if (s === 'CONFIRMED' || s === 'SUCCESS' || s === 'COMPLETED' || s === 'success' || s === 'completed' || s === 200 || s === '200') {
-                return callsId;
-            }
-            if (s === 'FAILED' || s === 400 || s === 500 || s === '400' || s === '500') {
-                throw new Error('Transaction failed');
-            }
+            const txHash = confirmedCallsTxHash(status);
+            if (txHash) return txHash;
         }
         throw new Error('Transaction timeout');
     }
@@ -240,7 +241,7 @@ async function waitForBridgeCallsTxHash(callsId) {
     if (provider?.request) {
         return waitForCallsTxHash(provider, callsId);
     }
-    return callsId;
+    throw new Error('Wallet cannot retrieve the payment transaction receipt');
 }
 
 async function waitForTransactionHash(txHash) {
@@ -1432,7 +1433,9 @@ async function handleSaveRecord(e) {
             gameConfig.saveLeaderboardPriceWei,
             (s) => { btn.textContent = s; }
         );
-        if (!txHash) throw new Error('No transaction hash');
+        if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+            throw new Error('Wallet returned an invalid payment transaction hash');
+        }
 
         btn.textContent = 'Saving…';
         const res = await fetch(`${BACKEND_URL}/api/leaderboard/save`, {
