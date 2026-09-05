@@ -640,13 +640,6 @@ let backendSessionActive = false;
 let backendRunSubmitted = false;
 let runRecordedOnChain = false; // prevent duplicate recordRun calls per game
 let rng = null;
-let verifiedRun = null;
-let runInputQueue = [];
-let runFrameRemainder = 0;
-let startingRun = false;
-let lastRunSubmission = null;
-let lastSubmitResult = null;
-let gameOverHandled = false;
 
 function getViewportSize() {
     if (window.visualViewport) {
@@ -1081,9 +1074,6 @@ async function sendCheckinTransaction() {
 }
 
 function resetBackendSession() {
-    verifiedRun = null;
-    runInputQueue = [];
-    runFrameRemainder = 0;
     backendSessionId = null;
     backendSeed = null;
     backendInputLog = [];
@@ -1096,8 +1086,6 @@ function resetBackendSession() {
 }
 
 function resetFullSession() {
-    lastRunSubmission = null;
-    lastSubmitResult = null;
     resetBackendSession();
     isPaidGame = false;
     pendingPaidTxHash = null;
@@ -1109,9 +1097,8 @@ function recordInput(type) {
     if (!backendSessionActive || gameState === GAME_STATE.GAME_OVER || showWelcome || isPaused) {
         return;
     }
-    if (!verifiedRun || !gameActive || verifiedRun.over) return;
-    backendInputLog.push({ frame: verifiedRun.frame, type });
-    runInputQueue.push(type);
+    const elapsed = Math.round(performance.now() - backendSessionStartMs);
+    backendInputLog.push({ t: elapsed, type });
 }
 
 async function fetchGameConfig() {
@@ -1137,78 +1124,151 @@ async function fetchGameConfig() {
 }
 
 async function startPaidBackendSession(txHash) {
-    return startBackendSession(txHash);
-}
-
-async function startBackendSession(txHash = null) {
-    if (pendingSubmitPromise) await pendingSubmitPromise.catch(() => null);
+    const savedStartMs = backendSessionStartMs; // set by restartGame() before this call
     resetBackendSession();
-    if (!BACKEND_URL || !authToken) throw new Error('Wallet not ready');
-    const address = walletAddress;
+    backendSessionStartMs = savedStartMs;
+    isPaidGame = true; // restore after reset — must stay true during the game
+    if (!BACKEND_URL || !authToken) { return false; }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
     backendSessionPromise = (async () => {
-        try {
-            const response = await fetch(`${BACKEND_URL}/api/session/${txHash ? 'start-paid' : 'start'}`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', Authorization: `Bearer ${authToken}`},
-                body: JSON.stringify({txHash, characterId: activeRunCharacterId ?? 0,
-                    boardWidth: Math.max(300, Math.min(2000, boardWidth / gameScale)), gameVersion: RunEngine.VERSION,
-                    speedTestTier: walletIsAdmin ? adminSpeedTestTier : 0}),
-                signal: controller.signal,
-            });
-            const data = await response.json();
-            if (!response.ok || !data.ok) throw new Error(data.error || 'Could not start game');
-            if (walletAddress !== address) throw new Error('Wallet changed');
-            if (data.gameVersion !== RunEngine.VERSION || !data.sessionId) throw new Error('Please reload the game');
-            if (data.expiresAt <= Date.now()) throw new Error('Game session expired');
-            backendSessionId = data.sessionId;
-            backendSeed = data.seed;
-            activeRunCharacterId = data.characterId;
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/session/start-paid`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ txHash, characterId: activeRunCharacterId ?? selectedCharacter ?? 0 }),
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || `Backend start-paid failed: ${response.status}`);
+        }
+        const data = await response.json();
+        backendSessionId = data.sessionId || null;
+        backendSeed = data.seed || null;
+        if (Number.isFinite(data.characterId) && data.characterId === activeRunCharacterId) {
             activeRunLevel = clampCharacterLevel(data.characterLevel);
-            verifiedRun = RunEngine.createRun(data.seed, data);
-            backendInputLog = [];
-            runInputQueue = [];
-            runFrameRemainder = 0;
-            backendSessionActive = true;
-            return true;
-        } finally { clearTimeout(timeoutId); }
+        }
+        // backendSessionStartMs already set in restartGame() — don't overwrite
+        backendInputLog = [];
+        backendSessionActive = !!backendSessionId;
+        rng = backendSeed ? createRng(backendSeed) : null;
+        return backendSessionActive;
+    } catch (err) {
+        console.warn('[paid-session] failed:', err.message);
+        backendSessionActive = false;
+        // don't call resetBackendSession — preserves backendSessionPromise so submitBackendRun can detect completion
+        return false;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+    })();
+    return backendSessionPromise;
+}
+
+async function startBackendSession() {
+    // Wait for any in-flight submit to settle so backend writes stay in order.
+    if (pendingSubmitPromise) {
+        try { await pendingSubmitPromise; } catch { /* ignored */ }
+    }
+    const savedStartMs = backendSessionStartMs; // set by restartGame() before this call
+    resetBackendSession();
+    backendSessionStartMs = savedStartMs;
+    if (!BACKEND_URL || !authToken) {
+        return false;
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+    backendSessionPromise = (async () => {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/session/start`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ characterId: activeRunCharacterId ?? selectedCharacter ?? 0 }),
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            throw new Error(`Backend start failed: ${response.status}`);
+        }
+        const data = await response.json();
+        backendSessionId = data.sessionId || null;
+        backendSeed = data.seed || null;
+        if (Number.isFinite(data.characterId) && data.characterId === activeRunCharacterId) {
+            activeRunLevel = clampCharacterLevel(data.characterLevel);
+        }
+        // backendSessionStartMs already set in restartGame() — don't overwrite
+        backendInputLog = [];
+        backendSessionActive = !!backendSessionId;
+        rng = backendSeed ? createRng(backendSeed) : null;
+        return backendSessionActive;
+    } catch (err) {
+        console.warn("Backend session start failed", err.message);
+        backendSessionActive = false;
+        // don't call resetBackendSession — preserves backendSessionPromise so submitBackendRun can detect completion
+        return false;
+    } finally {
+        clearTimeout(timeoutId);
+    }
     })();
     return backendSessionPromise;
 }
 
 async function submitBackendRun(finalScore) {
-    if (!lastRunSubmission) {
-        if (!backendSessionActive || !verifiedRun) throw new Error('Game session not ready');
-        lastRunSubmission = {
-            address: walletAddress,
-            payload: {sessionId: backendSessionId, reportedScore: finalScore,
-                inputLog: backendInputLog.slice(), frameCount: verifiedRun.frame, gameVersion: RunEngine.VERSION},
-        };
+    if (backendRunSubmitted || !BACKEND_URL) return;
+    backendRunSubmitted = true; // set immediately to prevent double-submit
+    // If session is still starting (slow mobile / Render cold start / paid-tx indexing),
+    // wait up to BACKEND_TIMEOUT_MS for it — otherwise coins awarded this run are lost.
+    if (!backendSessionActive && backendSessionPromise) {
+        await Promise.race([
+            backendSessionPromise,
+            new Promise(r => setTimeout(r, BACKEND_TIMEOUT_MS))
+        ]);
     }
-    const submission = lastRunSubmission;
-    if (submission.address !== walletAddress) throw new Error('Reconnect the wallet used for this run');
-    if (lastSubmitResult?.ok) return lastSubmitResult;
+    if (!backendSessionActive) {
+        return;
+    }
+    const gameElapsedMs = Math.round(performance.now() - backendSessionStartMs);
+    const payload = {
+        sessionId: backendSessionId,
+        reportedScore: finalScore,
+        inputLog: backendInputLog,
+        gameElapsedMs: gameElapsedMs
+    };
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
     try {
         const response = await fetch(`${BACKEND_URL}/api/session/submit`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', Authorization: `Bearer ${authToken}`},
-            body: JSON.stringify(submission.payload), signal: controller.signal,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal
         });
-        const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.error || 'Could not sync score');
-        if (submission !== lastRunSubmission || submission.address !== walletAddress) return data;
-        lastSubmitResult = data;
-        backendRunSubmitted = true;
-        if (Number.isFinite(data.coinBalance)) { coinCount = data.coinBalance; saveCoins(); }
-        if (Number.isFinite(data.bestScore)) {
-            bestScore = data.bestScore;
-            localStorage.setItem('baseapp_runner_best_score', String(bestScore));
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(`submit ${response.status}: ${errBody.error || ''}`);
         }
-        return data;
-    } finally { clearTimeout(timeoutId); }
+        const data = await response.json();
+        if (data && data.ok) {
+            if (Number.isFinite(data.coinBalance)) {
+                coinCount = data.coinBalance;
+                saveCoins();
+            }
+            if (Number.isFinite(data.bestScore)) {
+                bestScore = data.bestScore;
+                localStorage.setItem("baseapp_runner_best_score", String(bestScore));
+            }
+        }
+    } catch (err) {
+        console.warn('submit failed:', err.message);
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 let lastFinalScoreForRecord = 0;
@@ -1216,16 +1276,14 @@ let lastFinalScoreForRecord = 0;
 let pendingSubmitPromise = null;
 
 function handleGameOver() {
-    if (gameOverHandled) return;
-    gameOverHandled = true;
-    lastRunSubmission = null;
-    lastSubmitResult = null;
-    const promise = submitBackendRun(rawScore);
-    pendingSubmitPromise = promise;
-    promise.catch(error => console.warn('Score sync failed:', error.message)).finally(() => {
-        if (pendingSubmitPromise === promise) pendingSubmitPromise = null;
+    // Fire-and-track: a new session start must wait for the prior submit to
+    // settle so the backend writes don't arrive out of order.
+    pendingSubmitPromise = submitBackendRun(rawScore).finally(() => {
+        pendingSubmitPromise = null;
     });
+    // Remember the multiplied score for the manual Save Record button
     lastFinalScoreForRecord = score;
+    // Paid game is one-shot — consume the flag so any restart becomes a free game
     isPaidGame = false;
     pendingPaidTxHash = null;
 }
@@ -1264,144 +1322,143 @@ function setGameOverState() {
         const saveBtn = document.getElementById('save-record-btn');
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Save record to leaderboard';
+            saveBtn.textContent = 'Save record to leaderboard · $0.10';
             saveBtn.style.display = '';
         }
         gameOverOverlay.classList.remove('hidden');
     }
 }
 
-function paymentKey(fnName, address = walletAddress) {
-    return `runner_payment:${PAYMENTS_CONTRACT.toLowerCase()}:${address.toLowerCase()}:${fnName}`;
-}
-
-function readPendingPayment(fnName, address = walletAddress) {
-    const raw = localStorage.getItem(paymentKey(fnName, address));
-    return raw ? JSON.parse(raw) : null;
-}
-
-function clearPendingPayment(fnName, address = walletAddress) {
-    localStorage.removeItem(paymentKey(fnName, address));
-}
-
-// Persist the batch ID or hash immediately, before waiting for confirmation.
-// Retrying resumes this operation, including after a reload.
+// Send a payable call to the payments contract using the same fallback chain as
+// the paid-game flow: EIP-5792 via bridge -> EIP-5792 via provider -> bridge
+// sendTransaction -> plain ethers. Returns the confirmed txHash.
 async function sendPaymentsCall(fnName, args, valueWei, onStatus) {
-    const address = walletAddress;
-    const key = paymentKey(fnName, address);
-    let pending = readPendingPayment(fnName, address);
-    const store = patch => {
-        pending = {...pending, ...patch};
-        localStorage.setItem(key, JSON.stringify(pending));
-    };
-    if (pending && JSON.stringify(pending.args) !== JSON.stringify(args)) throw new Error('Finish the pending payment first');
-    const provider = getEthereumProvider() || window.__walletBridge?.provider;
+    const provider = getEthereumProvider();
+    const iface = new ethers.Interface(PAYMENTS_ABI);
+    const data = iface.encodeFunctionData(fnName, args) + BUILDER_CODE_SUFFIX.slice(2);
+    const valueHex = '0x' + BigInt(valueWei).toString(16);
     const bridge = window.__walletBridge;
-    try {
-        if (!pending) {
-            const contract = new ethers.Contract(PAYMENTS_CONTRACT, PAYMENTS_ABI, new ethers.BrowserProvider(provider));
-            const quote = fnName === 'saveLeaderboard' ? await contract.quoteSaveLeaderboardWei() : await contract.quotePaidGameWei();
-            valueWei = quote.toString();
-            const data = new ethers.Interface(PAYMENTS_ABI).encodeFunctionData(fnName, args) + BUILDER_CODE_SUFFIX.slice(2);
-            const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
-                ? {paymasterService: {url: PAYMASTER_URL}} : {};
-            // Also guard the uncertain interval between wallet submission and its response.
-            store({args, stage: 'requesting'});
-            let unsupported = true;
-            if (bridge?.sendCalls) {
-                try {
-                    const raw = await bridge.sendCalls({account: address, chainId: 8453, atomicRequired: true,
-                        calls: [{to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data}], capabilities: pmCaps});
-                    store({callsId: extractCallsId(raw), transport: 'bridge', stage: 'submitted'});
-                    unsupported = false;
-                } catch (error) { if (error.code !== -32601 && error.code !== 4200) throw error; }
-            }
-            if (unsupported && provider?.request) {
-                try {
-                    const raw = await provider.request({method: 'wallet_sendCalls', params: [{version: '2.0.0',
-                        chainId: '0x2105', from: address, atomicRequired: true,
-                        calls: [{to: PAYMENTS_CONTRACT, value: '0x' + BigInt(valueWei).toString(16), data}], capabilities: pmCaps}]});
-                    store({callsId: extractCallsId(raw), transport: 'provider', stage: 'submitted'});
-                    unsupported = false;
-                } catch (error) { if (error.code !== -32601 && error.code !== 4200) throw error; }
-            }
-            if (unsupported) {
-                if (bridge?.sendTransaction) {
-                    const hash = await bridge.sendTransaction({to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data});
-                    store({txHash: hash, stage: 'submitted'});
-                } else {
-                    const signer = await new ethers.BrowserProvider(provider).getSigner();
-                    const tx = await signer.sendTransaction({to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data});
-                    store({txHash: tx.hash, stage: 'submitted'});
-                }
-            }
+    const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+        ? { paymasterService: { url: PAYMASTER_URL } }
+        : {};
+    let txHash;
+
+    if (bridge?.sendCalls) {
+        try {
+            const raw = await bridge.sendCalls({
+                account: walletAddress,
+                chainId: 8453,
+                atomicRequired: true,
+                calls: [{ to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data }],
+                capabilities: pmCaps
+            });
+            const id = extractCallsId(raw);
+            if (!id) throw new Error('sendCalls returned no id');
+            if (onStatus) onStatus('Confirming…');
+            txHash = await waitForBridgeCallsTxHash(id);
+        } catch (err) {
+            if (err.code !== -32601) throw err;
         }
-        if (onStatus) onStatus('Confirming...');
-        if (!pending.txHash && pending.callsId) {
-            const hash = pending.transport === 'bridge'
-                ? await waitForBridgeCallsTxHash(pending.callsId) : await waitForCallsTxHash(provider, pending.callsId);
-            store({txHash: hash, confirmed: true});
-        }
-        if (!pending.txHash) throw new Error('Check wallet: payment status is unknown');
-        if (!/^0x[0-9a-fA-F]{64}$/.test(pending.txHash)) throw new Error('Invalid payment transaction hash');
-        if (!pending.confirmed) {
-            const receipt = await new ethers.BrowserProvider(provider).waitForTransaction(pending.txHash, 1, 120000);
-            if (receipt?.status === 0) throw Object.assign(new Error('Transaction failed'), {paymentFailed: true});
-            if (!receipt) throw new Error('Payment confirmation pending');
-            store({confirmed: true});
-        }
-        return pending.txHash;
-    } catch (error) {
-        if (error.code === 4001 || error.code === 'ACTION_REJECTED' || error.paymentFailed
-            || error.receipt?.status === 0 || error.message === 'Transaction failed') localStorage.removeItem(key);
-        throw error;
     }
+
+    if (!txHash && provider?.request) {
+        try {
+            const raw = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '2.0.0',
+                    chainId: '0x2105',
+                    from: walletAddress,
+                    atomicRequired: true,
+                    calls: [{ to: PAYMENTS_CONTRACT, value: valueHex, data }],
+                    capabilities: pmCaps
+                }]
+            });
+            const id = extractCallsId(raw);
+            if (!id) throw new Error('wallet_sendCalls returned no id');
+            if (onStatus) onStatus('Confirming…');
+            txHash = await waitForCallsTxHash(provider, id);
+        } catch (err) {
+            if (err.code !== -32601) throw err;
+        }
+    }
+
+    if (!txHash && bridge?.sendTransaction) {
+        txHash = await bridge.sendTransaction({ to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data });
+        if (onStatus) onStatus('Confirming…');
+        if (provider) {
+            await new ethers.BrowserProvider(provider).waitForTransaction(txHash);
+        }
+    } else if (!txHash) {
+        const ethersProvider = new ethers.BrowserProvider(provider);
+        const signer = await ethersProvider.getSigner();
+        const tx = await signer.sendTransaction({ to: PAYMENTS_CONTRACT, value: BigInt(valueWei), data });
+        if (onStatus) onStatus('Confirming…');
+        const rc = await tx.wait();
+        txHash = rc.hash || tx.hash;
+    }
+
+    return txHash;
 }
 
-let saveRecordInFlight = false;
+// Saving a record is a PAID action: pay saveLeaderboard(score) on-chain, then
+// hand the txHash to the backend. Nothing is stored (locally or in the DB)
+// unless that payment confirms and verifies server-side.
 async function handleSaveRecord(e) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     const btn = document.getElementById('save-record-btn');
-    if (!btn || btn.disabled || saveRecordInFlight) return;
-    if (!walletReady || !authToken) { btn.textContent = 'Wallet not ready'; return; }
-    const address = walletAddress;
-    const token = authToken;
+    if (!btn || btn.disabled) return;
+    if (!walletReady || !authToken) {
+        btn.textContent = 'Wallet not ready';
+        return;
+    }
+    const finalScore = lastFinalScoreForRecord || score;
+    if (!finalScore || finalScore < 1) {
+        btn.textContent = 'No score to save';
+        return;
+    }
     btn.disabled = true;
-    saveRecordInFlight = true;
+    // The run's score reaches the backend through submitBackendRun, which is
+    // fire-and-forget. Paying before it lands means the backend still has the
+    // old best_score and rejects the save — with the $0.10 already spent.
+    if (pendingSubmitPromise) {
+        btn.textContent = 'Syncing score…';
+        try { await pendingSubmitPromise; } catch { /* submit logs its own failure */ }
+    }
+    btn.textContent = 'Confirm payment…';
     try {
-        const pending = readPendingPayment('saveLeaderboard', address);
-        const finalScore = pending?.args?.[0] ?? (lastFinalScoreForRecord || score);
-        if (!Number.isSafeInteger(finalScore) || finalScore < 1) throw new Error('No score to save');
-        if (!pending) {
-            btn.textContent = 'Syncing score...';
-            if (pendingSubmitPromise) await pendingSubmitPromise.catch(() => null);
-            const result = lastSubmitResult?.ok ? lastSubmitResult : await submitBackendRun(rawScore);
-            if (!result?.ok || result.finalScore !== finalScore) throw new Error('Score has not synced yet');
-            const preflight = await fetch(`${BACKEND_URL}/api/leaderboard/prepare`, {
-                method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-                body: JSON.stringify({score: finalScore}),
-            }).then(r => r.json());
-            if (!preflight.ok) throw new Error(preflight.error || 'Could not verify score');
-            if (preflight.paymentsContract?.toLowerCase() !== PAYMENTS_CONTRACT.toLowerCase()) throw new Error('Payment configuration changed. Please reload');
-            if (preflight.alreadySaved) { btn.textContent = 'Saved \u2713'; return; }
+        const txHash = await sendPaymentsCall(
+            'saveLeaderboard',
+            [finalScore],
+            gameConfig.saveLeaderboardPriceWei,
+            (s) => { btn.textContent = s; }
+        );
+        if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+            throw new Error('Wallet returned an invalid payment transaction hash');
         }
-        if (walletAddress !== address) throw new Error('Wallet changed');
-        btn.textContent = 'Confirm payment...';
-        const txHash = await sendPaymentsCall('saveLeaderboard', [finalScore], gameConfig.saveLeaderboardPriceWei,
-            status => { btn.textContent = status; });
-        btn.textContent = 'Saving...';
-        const result = await fetch(`${BACKEND_URL}/api/leaderboard/save`, {
-            method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-            body: JSON.stringify({score: finalScore, txHash}),
+
+        btn.textContent = 'Saving…';
+        const res = await fetch(`${BACKEND_URL}/api/leaderboard/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ score: finalScore, txHash }),
         }).then(r => r.json());
-        if (!result.ok) throw new Error(result.error || 'Save failed');
-        clearPendingPayment('saveLeaderboard', address);
-        btn.textContent = 'Saved \u2713';
-    } catch (error) {
-        console.error('Save record failed:', error);
-        btn.textContent = `${String(error.message || 'Save failed').slice(0, 60)} - Tap to retry`;
+        if (!res.ok) throw new Error(res.error || 'Save failed');
+
+        btn.textContent = 'Saved ✓';
+    } catch (err) {
+        console.error('Save record failed:', err);
+        const rejected = err.code === 4001 || /reject|denied/i.test(err.message || '');
+        // Show the backend's own reason. A bare "Failed" hides the important
+        // case: the on-chain payment went through and the server refused the
+        // save (stale score, unrecognised event), which needs a different fix
+        // than a rejected signature — and the player has already been charged.
+        const detail = String(err.message || '').slice(0, 60);
+        btn.textContent = rejected
+            ? 'Cancelled — Tap to retry'
+            : (detail ? `${detail} — Tap to retry` : 'Failed — Tap to retry');
         btn.disabled = false;
-    } finally { saveRecordInFlight = false; }
+    }
 }
 
 function setWalletError(message) {
@@ -2170,7 +2227,7 @@ window.onload = function() {
     nextCoinScore = 1000;
 
     drawStaticFrame(); // Draw platform once; full loop starts on game start
-    // Obstacles spawn on the shared simulation clock, including after pauses.
+    setInterval(placeObstacle, 1000); //1000 milliseconds = 1 second
     setInterval(updateCheckinUI, 1000);
     document.addEventListener("keydown", movePlayer);
     document.addEventListener("touchstart", handleTouchStart, { passive: false });
@@ -2536,11 +2593,6 @@ function updateAdminSpeedControls(showControls) {
 function handleAdminSpeedChange(event) {
     if (!walletIsAdmin) return;
     adminSpeedTestTier = clampAdminSpeedTestTier(event.target.value);
-    if (verifiedRun?.speedTesting && !verifiedRun.over && backendSessionActive) {
-        const type = `speed:${adminSpeedTestTier}`;
-        backendInputLog.push({frame: verifiedRun.frame, type});
-        runInputQueue.push(type);
-    }
     localStorage.setItem(ADMIN_SPEED_TIER_STORAGE_KEY, String(adminSpeedTestTier));
     if (adminSpeedSlider) adminSpeedSlider.value = String(adminSpeedTestTier);
     if (adminSpeedSliderPause) adminSpeedSliderPause.value = String(adminSpeedTestTier);
@@ -2824,8 +2876,88 @@ async function handlePayGame() {
     }
 
     try {
-        const txHash = await sendPaymentsCall('playPaidGame', [], gameConfig.paidGamePriceWei,
-            status => { if (payGameButton) payGameButton.textContent = status; });
+        const provider = getEthereumProvider();
+        const priceHex = '0x' + BigInt(gameConfig.paidGamePriceWei).toString(16);
+        let txHash;
+
+        // Try EIP-5792 wallet_sendCalls first (Base App / Coinbase Smart Wallet)
+        const paymentsIface = new ethers.Interface(PAYMENTS_ABI);
+        const playCalldata = paymentsIface.encodeFunctionData("playPaidGame") + BUILDER_CODE_SUFFIX.slice(2);
+        const bridge = window.__walletBridge;
+
+        if (bridge?.sendCalls) {
+            try {
+                const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+                    ? { paymasterService: { url: PAYMASTER_URL } }
+                    : {};
+                const raw = await bridge.sendCalls({
+                    account: walletAddress,
+                    chainId: 8453,
+                    atomicRequired: true,
+                    calls: [{ to: PAYMENTS_CONTRACT, value: BigInt(gameConfig.paidGamePriceWei), data: playCalldata }],
+                    capabilities: pmCaps
+                });
+                const callsId = extractCallsId(raw);
+                if (!callsId) throw new Error('sendCalls returned no id');
+                if (payGameButton) payGameButton.textContent = "Confirming...";
+                txHash = await waitForBridgeCallsTxHash(callsId);
+            } catch (e) {
+                if (e.code !== -32601) throw e;
+            }
+        }
+
+        if (!txHash && provider?.request) {
+            try {
+                const pmCaps = PAYMASTER_URL && !PAYMASTER_URL.includes('YOUR_CDP_API_KEY')
+                    ? { paymasterService: { url: PAYMASTER_URL } }
+                    : {};
+                const raw = await provider.request({
+                    method: 'wallet_sendCalls',
+                    params: [{
+                        version: '2.0.0',
+                        chainId: '0x2105',
+                        from: walletAddress,
+                        atomicRequired: true,
+                        calls: [{ to: PAYMENTS_CONTRACT, value: priceHex, data: playCalldata }],
+                        capabilities: pmCaps
+                    }]
+                });
+                const callsId = extractCallsId(raw);
+                if (!callsId) throw new Error('wallet_sendCalls returned no id');
+                if (payGameButton) payGameButton.textContent = "Confirming...";
+                txHash = await waitForCallsTxHash(provider, callsId);
+            } catch (e) {
+                if (e.code === -32601) {
+                    // wallet_sendCalls not supported — fall through to ethers
+                } else {
+                    throw e;
+                }
+            }
+        }
+
+        // Fallback: ethers contract call
+        if (!txHash && bridge?.sendTransaction) {
+            txHash = await bridge.sendTransaction({
+                to: PAYMENTS_CONTRACT,
+                value: BigInt(gameConfig.paidGamePriceWei),
+                data: playCalldata
+            });
+            if (payGameButton) payGameButton.textContent = "Confirming...";
+            if (provider) {
+                const ethersProvider = new ethers.BrowserProvider(provider);
+                await ethersProvider.waitForTransaction(txHash);
+            }
+        } else if (!txHash) {
+            const ethersProvider = new ethers.BrowserProvider(provider);
+            const signer = await ethersProvider.getSigner();
+            const paymentsContract = new ethers.Contract(PAYMENTS_CONTRACT, PAYMENTS_ABI, signer);
+            const populated = await paymentsContract.playPaidGame.populateTransaction({ value: BigInt(gameConfig.paidGamePriceWei) });
+            populated.data = populated.data + BUILDER_CODE_SUFFIX.slice(2);
+            const tx = await signer.sendTransaction(populated);
+            if (payGameButton) payGameButton.textContent = "Confirming...";
+            const receipt = await tx.wait();
+            txHash = receipt.hash || tx.hash;
+        }
 
         isPaidGame = true;
         pendingPaidTxHash = txHash;
@@ -2848,7 +2980,7 @@ async function handlePayGame() {
         if (err.code === 4001 || (err.message && err.message.includes("user rejected"))) {
             // User cancelled — silent
         } else {
-            alert(err.message || "Could not start paid game. Tap Pay game to retry the existing payment.");
+            alert("Payment failed. Please try again.");
         }
     } finally {
         payGameInFlight = false;
@@ -4522,9 +4654,7 @@ function togglePause() {
 // Apply scaling based on canvas dimensions
 function applyGameScale() {
     // Scale based on height ratio
-    gameScale = verifiedRun && backendSessionActive
-        ? Math.min(boardHeight / BASE_BOARD_HEIGHT, boardWidth / verifiedRun.width)
-        : boardHeight / BASE_BOARD_HEIGHT;
+    gameScale = boardHeight / BASE_BOARD_HEIGHT;
     
     // Platform position
     platform.x = 0;
@@ -4686,34 +4816,6 @@ function drawStaticFrame() {
     }
 }
 
-function advanceVerifiedRun(deltaMs, shouldUpdate) {
-    if (!verifiedRun || !backendSessionActive) return;
-    if (shouldUpdate) {
-        runFrameRemainder += deltaMs;
-        while (runFrameRemainder + 1e-8 >= RunEngine.FRAME_MS && !verifiedRun.over) {
-            RunEngine.stepRun(verifiedRun, runInputQueue);
-            runInputQueue = [];
-            runFrameRemainder -= RunEngine.FRAME_MS;
-        }
-    }
-    const offsetX = (boardWidth - verifiedRun.width * gameScale) / 2;
-    player.x = offsetX + verifiedRun.x * gameScale;
-    player.y = groundY + (verifiedRun.y - 300) * gameScale;
-    player.width = 63 * gameScale;
-    player.height = verifiedRun.height * gameScale;
-    const project = item => ({...item, x: offsetX + item.x * gameScale,
-        y: groundY + (item.y - 300) * gameScale, width: item.width * gameScale, height: item.height * gameScale});
-    tokenArray = verifiedRun.tokens.map(project);
-    birdArray = verifiedRun.birds.map(project);
-    rawScore = verifiedRun.score;
-    scoreFloat = rawScore;
-    score = getAdjustedScore(rawScore);
-    if (verifiedRun.over && gameState !== GAME_STATE.GAME_OVER) {
-        setGameOverState();
-        handleGameOver();
-    }
-}
-
 function update(timestamp) {
     _rafId = requestAnimationFrame(update);
 
@@ -4761,9 +4863,45 @@ function update(timestamp) {
         return;
     }
 
-    advanceVerifiedRun(deltaMs, shouldUpdate);
-    const canDuck = verifiedRun?.canDuck || false;
+    // Tiers unlock at 10k, 20k, 40k, 80k...; admins may preview a tier immediately.
+    const earnedSpeedTier = getSpeedTierForScore(score);
+    const testSpeedTier = walletIsAdmin ? adminSpeedTestTier : 0;
+    const speedTier = Math.max(earnedSpeedTier, testSpeedTier);
+    speed = SPEED_START * Math.pow(SPEED_INCREASE_MULTIPLIER, speedTier);
+    velocityX = -speed * gameScale;
+    const frameVelocityX = velocityX * stepScale;
 
+    //player physics
+    const prevY = player.y;
+    const prevHeight = player.height;
+    const prevGroundY = groundY - prevHeight;
+    const wasAirborne = prevY < prevGroundY - 1;
+    const onGround = !wasAirborne;
+    const canDuck = isDucking && onGround;
+
+    // Only duck on ground (prevents shrink while jumping)
+    player.height = canDuck ? playerDuckHeight : playerHeight;
+    const playerGroundY = groundY - player.height;
+
+    if (wasAirborne) {
+        // In air: keep top position to avoid "extra jump" on duck toggle
+        player.y = prevY;
+    } else {
+        // On ground: keep feet planted
+        player.y = playerGroundY;
+        if (velocityY > 0) {
+            velocityY = 0;
+        }
+    }
+
+    // Apply gravity and velocity
+    velocityY += gravity * stepScale;
+    player.y = Math.min(player.y + velocityY * stepScale, playerGroundY);
+    if (player.y >= playerGroundY) {
+        velocityY = 0;
+    }
+    player.x = playerX;
+    
     // Visual offset to align sprite feet with platform (sprite has transparent bottom padding)
     const visualFootOffset = Math.round(8 * gameScale);
     
@@ -4806,7 +4944,7 @@ function update(timestamp) {
     //token obstacles (ground) - iterate backwards for in-place removal
     for (let i = tokenArray.length - 1; i >= 0; i--) {
         let token = tokenArray[i];
-
+        token.x += frameVelocityX;
 
         // Remove off-screen tokens
         if (token.x + token.width < 0) {
@@ -4832,13 +4970,20 @@ function update(timestamp) {
             context.strokeRect(tokenHitbox.x, tokenHitbox.y, tokenHitbox.width, tokenHitbox.height);
         }
         
-
+        if (shouldUpdate && detectCollision(playerHitbox, tokenHitbox)) {
+            setGameOverState();
+            // Update best score
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('baseapp_runner_best_score', String(bestScore));
+            }
+        }
     }
 
     //bird obstacles (flying) - iterate backwards for in-place removal
     for (let i = birdArray.length - 1; i >= 0; i--) {
         let bird = birdArray[i];
-
+        bird.x += frameVelocityX;
 
         // Remove off-screen birds
         if (bird.x + bird.width < 0) {
@@ -4868,7 +5013,14 @@ function update(timestamp) {
         
         // Use a head-focused hitbox for birds (prevents passing through head)
         let playerBirdHitbox = getPlayerBirdHitbox(playerBirdHitboxScratch);
-
+        if (shouldUpdate && detectCollision(playerBirdHitbox, birdHitboxScratch)) {
+            setGameOverState();
+            // Update best score
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('baseapp_runner_best_score', String(bestScore));
+            }
+        }
     }
 
     if (isGameOver) {
@@ -4889,6 +5041,17 @@ function update(timestamp) {
     // Re-check gameState because setGameOverState() may have been called mid-frame
     // (collision detection happens before this) — without this the score bumps
     // once more after the overlay captured it, causing UI/overlay mismatch.
+    const scoreStep = gameState === GAME_STATE.GAME_OVER ? 0 : stepScale;
+    scoreFloat += scoreStep;
+    const nextRawScore = Math.floor(scoreFloat);
+    if (nextRawScore !== rawScore) {
+        rawScore = nextRawScore;
+    }
+    const nextScore = getAdjustedScore(rawScore);
+    if (nextScore !== score) {
+        score = nextScore;
+    }
+
     // Add coins at score milestones (every 1000 points)
     if (score >= nextCoinScore) {
         const increments = Math.floor((score - nextCoinScore) / 1000) + 1;
@@ -5044,8 +5207,12 @@ function drawCoin(x, y, size) {
 }
 
 function triggerJump() {
-    if (!verifiedRun || !gameActive || isPaused) return;
-    if (verifiedRun.y >= 300 - verifiedRun.height - 1) recordInput('jump');
+    const playerGroundY = groundY - player.height;
+    if (player.y >= playerGroundY - 1) {
+        //jump - tuned for reliable obstacle clearing with good airtime
+        velocityY = jumpVelocity;
+        recordInput("jump");
+    }
 }
 
 function setDucking(nextState) {
@@ -5323,10 +5490,6 @@ function detectCollision(a, b) {
 }
 
 async function restartGame() {
-    if (startingRun) return;
-    startingRun = true;
-    gameActive = false;
-    try {
     // Check wallet is still connected
     if (!canPlayGame()) {
         openWalletMenu();
@@ -5339,13 +5502,11 @@ async function restartGame() {
     }
     
     // Recompute all scaling (ensures identical state on each run)
-    verifiedRun = null;
     applyGameScale();
     lockActiveRunCharacter();
     
     // Reset all game state variables
-    gameState = GAME_STATE.IDLE;
-    gameOverHandled = false;
+    gameState = GAME_STATE.RUNNING;
     gameOverTimestamp = 0;
     gameOver = false;
     rawScore = 0;
@@ -5374,23 +5535,13 @@ async function restartGame() {
     tokenArray = [];
     birdArray = [];
     
-    const paidHash = isPaidGame ? pendingPaidTxHash : null;
-    const address = walletAddress;
-    await startBackendSession(paidHash);
-    if (!canPlayGame() || walletAddress !== address || currentUIState !== UI_STATE.RUNNING) return;
-    applyGameScale();
-    backendSessionStartMs = performance.now();
-    lastFrameTime = null;
-    gameState = GAME_STATE.RUNNING;
     gameActive = true;
-    if (paidHash) clearPendingPayment('playPaidGame', address);
-    } catch (error) {
-        gameActive = false;
-        gameState = GAME_STATE.IDLE;
-        currentUIState = UI_STATE.MENU;
-        showWelcome = true;
-        updateUIState();
-        alert(error.message || 'Could not start game. Please retry.');
-    } finally { startingRun = false; }
-
+    // Record game start time NOW — before the async session call — so
+    // gameElapsedMs in submitBackendRun covers the full actual play time.
+    backendSessionStartMs = performance.now();
+    if (isPaidGame && pendingPaidTxHash) {
+        startPaidBackendSession(pendingPaidTxHash); // fire-and-forget
+    } else {
+        startBackendSession(); // fire-and-forget, don't block game start
+    }
 }

@@ -5,7 +5,7 @@ const vm = require('node:vm');
 
 const source = readFileSync(require.resolve('../script.js'), 'utf8');
 const receiptCode = source.slice(source.indexOf('function confirmedCallsTxHash('), source.indexOf('async function waitForTransactionHash('));
-const saveCode = source.slice(source.indexOf('function paymentKey('), source.indexOf('function setWalletError('));
+const saveCode = source.slice(source.indexOf('async function sendPaymentsCall('), source.indexOf('function setWalletError('));
 const txHash = '0x' + 'ab'.repeat(32);
 const callsId = 'wallet-batch-id';
 const receipts = [{ transactionHash: txHash }];
@@ -75,95 +75,30 @@ test('no status API fails instead of treating a batch ID as payment', async () =
     await assert.rejects(context.waitForBridgeCallsTxHash(callsId), /cannot retrieve/);
 });
 
-function saveHarness(options = {}) {
+test('Save sends the real receipt hash to the backend after a viem success', async () => {
     const button = { disabled: false, textContent: '' };
     const requests = [];
-    const storage = options.storage || new Map();
     const { context } = harness([{ status: 'success', receipts }], {
         document: { getElementById: () => button },
-        ethers: {
-            Interface: class { encodeFunctionData() { return '0x1234'; } },
-            BrowserProvider: class {},
-            Contract: class { async quoteSaveLeaderboardWei() { return 123n; } },
-        },
-        localStorage: {getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
+        ethers: { Interface: class { encodeFunctionData() { return '0x1234'; } } },
         BUILDER_CODE_SUFFIX: '0x00', PAYMENTS_ABI: [], PAYMENTS_CONTRACT: '0xcontract', PAYMASTER_URL: '',
         walletAddress: '0xplayer', walletReady: true, authToken: 'token',
-        lastFinalScoreForRecord: 200, score: 200, rawScore: 200, pendingSubmitPromise: null,
-        lastSubmitResult: {ok: true, finalScore: 200},
-        submitBackendRun: async () => {throw new Error('Score sync failed');},
+        lastFinalScoreForRecord: 200, score: 200, pendingSubmitPromise: null,
         gameConfig: { saveLeaderboardPriceWei: '100' }, BACKEND_URL: 'https://backend.test',
         extractCallsId: (raw) => raw.id,
-        console: {error() {}, warn() {}},
         fetch: async (url, request) => {
             requests.push({ url, body: JSON.parse(request.body) });
-            if (options.failSave && url.endsWith('/save')) throw new Error('Network lost');
-            return { json: async () => ({ ok: true, paymentsContract: '0xcontract' }) };
+            return { json: async () => ({ ok: true }) };
         },
     });
     let payments = 0;
-    context.window.__walletBridge.sendCalls = async (params) => {
-        assert.equal(params.calls[0].value, 123n); // refreshed quote, not the stale config
-        payments++; return { id: callsId };
-    };
+    context.window.__walletBridge.sendCalls = async () => { payments++; return { id: callsId }; };
     vm.runInContext(saveCode, context);
-    return {context, button, requests, storage, payments: () => payments};
-}
-
-test('Save sends the real receipt hash after syncing and preflighting the score', async () => {
-    const {context, button, requests, payments} = saveHarness();
     await context.handleSaveRecord();
-    assert.equal(payments(), 1);
-    assert.deepEqual(requests.at(-1), {
+    assert.equal(payments, 1);
+    assert.deepEqual(requests, [{
         url: 'https://backend.test/api/leaderboard/save',
         body: { score: 200, txHash },
-    });
+    }]);
     assert.equal(button.textContent, 'Saved ✓');
-});
-
-test('failed Save resumes the same payment after both a click retry and a page reload', async () => {
-    const first = saveHarness({failSave: true});
-    await first.context.handleSaveRecord();
-    await first.context.handleSaveRecord();
-    assert.equal(first.payments(), 1);
-    assert.equal(first.storage.size, 1);
-    const reloaded = saveHarness({storage: first.storage});
-    await reloaded.context.handleSaveRecord();
-    assert.equal(reloaded.payments(), 0);
-    assert.equal(reloaded.requests.length, 1);
-    assert.equal(reloaded.requests[0].body.txHash, txHash);
-    assert.equal(reloaded.storage.size, 0);
-});
-
-test('failed score sync prevents payment', async () => {
-    const h = saveHarness();
-    h.context.lastSubmitResult = null;
-    await h.context.handleSaveRecord();
-    assert.equal(h.payments(), 0);
-    assert.equal(h.requests.length, 0);
-    assert.match(h.button.textContent, /Score sync failed/);
-});
-
-test('unconfirmed batch resumes polling without sending another wallet call', async () => {
-    const h = saveHarness();
-    h.storage.set(h.context.paymentKey('saveLeaderboard'), JSON.stringify({args: [200], callsId, transport: 'bridge'}));
-    await h.context.handleSaveRecord();
-    assert.equal(h.payments(), 0);
-    assert.equal(h.requests.at(-1).body.txHash, txHash);
-});
-
-test('unknown wallet submission status never automatically pays again', async () => {
-    const h = saveHarness();
-    h.storage.set(h.context.paymentKey('saveLeaderboard'), JSON.stringify({args: [200], stage: 'requesting'}));
-    await h.context.handleSaveRecord();
-    assert.equal(h.payments(), 0);
-    assert.match(h.button.textContent, /status is unknown/);
-});
-
-test('saving an already registered record does not charge', async () => {
-    const h = saveHarness();
-    h.context.fetch = async () => ({json: async () => ({ok: true, alreadySaved: true, paymentsContract: '0xcontract'})});
-    await h.context.handleSaveRecord();
-    assert.equal(h.payments(), 0);
-    assert.equal(h.button.textContent, 'Saved ✓');
 });

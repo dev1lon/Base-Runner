@@ -3,8 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
-const { FRAME_MS, VERSION, simulateRun } = require("./run-engine");
-const { normalizeTxHash, applyPayment } = require("./shared/payments");
+const { simulateRun, DEFAULT_CONFIG } = require("./sim");
 
 // Character sprite files mapping (ID -> filename)
 const CHARACTER_SPRITES = {
@@ -24,8 +23,15 @@ const CHARACTER_PREVIEWS = Object.fromEntries(
 );
 const SPRITE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const PRIVATE_SPRITE_CACHE_CONTROL = "private, max-age=31536000, immutable";
-const { createSession, completeSession, cleanupSessions } = require("./modules/session/sessionStore");
-const { getOrCreateUser } = require("./modules/user/userRepo");
+const {
+  createSession,
+  getSession,
+  claimSession,
+  releaseSession,
+  cleanupSessions
+} = require("./modules/session/sessionStore");
+const { getOrCreateUser, addCoins } = require("./modules/user/userRepo");
+const { applyScore } = require("./modules/user/userService");
 const {
   getCharacters,
   addCharacter,
@@ -117,6 +123,31 @@ const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || "").toLowerCase().split(
 const PAID_GAME_PRICE_WEI = BigInt(process.env.PAID_GAME_PRICE_WEI || "407000000000000");
 const GC_PER_COIN = 5;
 
+// Persisted in `used_tx_hashes` table — prevents tx replay across backend restarts.
+async function isTxHashUsed(txHash, kind) {
+  const { query } = require("./shared/db");
+  const r = await query(`SELECT 1 FROM used_tx_hashes WHERE tx_hash = $1 AND kind = $2`, [txHash, kind]);
+  return r.rowCount > 0;
+}
+// Returns true ONLY if this call inserted the row (i.e. won the claim). On a
+// conflict the row already existed, so the caller lost the replay race and
+// must NOT credit. This is the atomic gate against concurrent double-spend.
+async function markTxHashUsed(txHash, kind, address) {
+  const { query } = require("./shared/db");
+  try {
+    const r = await query(
+      `INSERT INTO used_tx_hashes (tx_hash, kind, address) VALUES ($1, $2, $3)
+       ON CONFLICT (tx_hash, kind) DO NOTHING
+       RETURNING tx_hash`,
+      [txHash, kind, address || null]
+    );
+    return r.rowCount > 0;
+  } catch (e) {
+    console.error("[tx-replay] failed to persist", kind, txHash, e.message);
+    return false;
+  }
+}
+
 // Payments contract (RugPullRunPayments) — handles paid game + coin purchases
 const PAYMENTS_CONTRACT = (process.env.PAYMENTS_CONTRACT || "").toLowerCase();
 // Accept both the V2 and V3 signatures: V3 adds a trailing `priceWei` field, so
@@ -156,6 +187,11 @@ const PRICE_READ_ABI = [
   "function saveLeaderboardPriceWei() view returns (uint256)"
 ];
 const PRICE_REFRESH_MS = Number(process.env.PRICE_REFRESH_MS || 5 * 60 * 1000);
+// A payment is verified after the fact, so the price may have moved (V3) or been
+// changed by the owner between the tx landing and this check. Accept a small
+// shortfall rather than rejecting a payment the contract itself accepted.
+const PRICE_TOLERANCE_BPS = BigInt(process.env.PRICE_TOLERANCE_BPS || 500); // 5%
+
 const livePrices = {
   paidGameWei: PAID_GAME_PRICE_WEI,
   saveLeaderboardWei: SAVE_LEADERBOARD_PRICE_WEI,
@@ -186,6 +222,11 @@ async function refreshOnChainPrices() {
   }
 }
 
+/// Minimum value a payment must carry, tolerance applied.
+function minAcceptedWei(priceWei) {
+  return (priceWei * (10_000n - PRICE_TOLERANCE_BPS)) / 10_000n;
+}
+
 // Read the first `count` uint256 words of a log's data. Reading words instead of
 // decoding the whole tuple keeps verification working across contract versions:
 // V3 adds a `priceWei` field after the ones we care about, and the leading
@@ -204,7 +245,12 @@ function readEventWords(data, count) {
 refreshOnChainPrices();
 setInterval(refreshOnChainPrices, PRICE_REFRESH_MS).unref();
 
+const USDC_PER_COIN = BigInt(100_000); // 0.1 USDC (6 decimals)
 const VALID_COIN_PACKAGES = new Set([10, 20, 50, 100, 500, 1000, 5000]);
+const COIN_PACKAGE_USDC = new Map([
+  [5000, BigInt(400_000_000)] // $400.00
+]);
+
 if (ALLOWED_ORIGIN === "*") {
   console.warn("⚠️  ALLOWED_ORIGIN is '*' — set a specific domain for production!");
 }
@@ -366,117 +412,231 @@ app.post("/auth/siwe-verify", authLimiter, async (req, res) => {
   }
 });
 
-function sessionOptions(req) {
-  const { characterId = 0, boardWidth = 750, gameVersion } = req.body || {};
-  if (gameVersion !== VERSION) throw new Error('Please reload the game');
-  if (!Number.isInteger(characterId) || characterId < 0 || characterId > 9) throw new Error('Invalid character');
-  if (!Number.isFinite(boardWidth) || boardWidth < 300 || boardWidth > 2000) throw new Error('Invalid board width');
-  const speedTesting = isAdminAddress(req.user.address);
-  const speedTestTier = speedTesting ? Math.max(0, Math.min(10, Math.floor(Number(req.body.speedTestTier) || 0))) : 0;
-  return {characterId, boardWidth, speedTesting, speedTestTier};
-}
+app.post("/api/session/start", requireAuth, async (req, res) => {
+  const addressNorm = req.user.address;
+  const { characterId = 0 } = req.body || {};
+  const seed = randomSeed();
+  const lockedCharacterId = Number(characterId) || 0;
+  const characterLevel = await getCharacterLevel(addressNorm, lockedCharacterId);
+  const session = createSession({
+    address: addressNorm,
+    seed,
+    ttlMs: SESSION_TTL_MS,
+    characterId: lockedCharacterId,
+    characterLevel,
+  });
+  res.json({
+    sessionId: session.sessionId,
+    seed: session.seed,
+    characterId: lockedCharacterId,
+    characterLevel,
+    issuedAt: session.issuedAt,
+    expiresAt: session.expiresAt,
+    config: {
+      frameMs: DEFAULT_CONFIG.frameMs,
+      speedStart: DEFAULT_CONFIG.speedStart,
+      speedMax: DEFAULT_CONFIG.speedMax,
+      speedMaxScore: DEFAULT_CONFIG.speedMaxScore,
+      gravity: DEFAULT_CONFIG.gravity,
+      jumpVelocity: DEFAULT_CONFIG.jumpVelocity
+    }
+  });
+});
 
-function sessionResponse(session) {
-  return {ok: true, ...session, config: {frameMs: FRAME_MS}};
-}
-
-function gameRequestError(res, error) {
-  const expected = new Set([
-    'Please reload the game', 'Invalid character', 'Invalid board width', 'Invalid score',
-    'Invalid frame count', 'Invalid input log', 'Unknown session', 'Session expired',
-    'Session address mismatch', 'Score exceeds time limit', 'Score does not match replay',
-    'Payments not configured', 'Transaction not found on chain', 'Transaction failed on-chain',
-    'Payment event not found', 'Transaction already used', 'User not found',
-    'Score has not synced yet', 'Score does not match payment', 'Score exceeds best_score',
-    'Coins amount mismatch',
-  ]);
-  const known = expected.has(error.message);
-  return res.status(known ? 400 : 503).json({ok: false,
-    error: known ? error.message : 'Could not complete request. Please retry.'});
-}
-
-async function paymentLog(txHash, address, topics) {
-  if (!PAYMENTS_CONTRACT) throw new Error('Payments not configured');
-  let receipt;
-  for (let i = 0; i < 5; i++) {
-    try { receipt = await withRpcFallback(p => p.getTransactionReceipt(txHash)); } catch { /* RPC lag */ }
-    if (receipt) break;
-    await new Promise(resolve => setTimeout(resolve, 1500));
+app.post("/api/session/start-paid", requireAuth, async (req, res) => {
+  const { txHash, characterId = 0 } = req.body || {};
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ ok: false, error: "Invalid txHash" });
   }
-  if (!receipt) throw new Error('Transaction not found on chain');
-  if (receipt.status !== 1) throw new Error('Transaction failed on-chain');
-  const playerTopic = '0x' + address.slice(2).padStart(64, '0');
-  const log = receipt.logs.find(log => log.address.toLowerCase() === PAYMENTS_CONTRACT
-    && topics.has(log.topics[0]) && log.topics[1]?.toLowerCase() === playerTopic);
-  if (!log) throw new Error('Payment event not found');
-  // An authentic event from the configured contract proves that its price
-  // checks passed at execution. Today's oracle quote cannot invalidate it.
-  return log;
-}
+  // Fail closed: without the payments contract there is nothing to verify the
+  // payment against, and any confirmed tx would buy a paid session.
+  if (!TREASURY_ADDRESS || !PAYMENTS_CONTRACT) {
+    return res.status(503).json({ ok: false, error: "Paid games not configured" });
+  }
+  if (await isTxHashUsed(txHash, "paid_game")) {
+    return res.status(400).json({ ok: false, error: "Transaction already used" });
+  }
 
-const sessionStartLimiter = rateLimit({windowMs: 60000, max: 30});
-const submitLimiter = rateLimit({windowMs: 60000, max: 120});
-
-app.post("/api/session/start", requireAuth, sessionStartLimiter, async (req, res) => {
   try {
-    const options = sessionOptions(req);
-    const characterLevel = await getCharacterLevel(req.user.address, options.characterId);
-    const session = await createSession({address: req.user.address, seed: randomSeed(), ttlMs: SESSION_TTL_MS,
-      ...options, characterLevel});
-    res.json(sessionResponse(session));
-  } catch (error) {
-    gameRequestError(res, error);
+    // Verify txHash is a real confirmed tx on Base mainnet (not fabricated).
+    // Retry a few times — backend RPC may lag behind the wallet; on timeout
+    // withRpcFallback retries via the paid LEADERBOARD_RPC_URL.
+    let receipt = null;
+    for (let i = 0; i < 5; i++) {
+      try {
+        receipt = await withRpcFallback((p) => p.getTransactionReceipt(txHash));
+      } catch { /* timeout — try next iteration */ }
+      if (receipt) break;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    if (!receipt) {
+      return res.status(400).json({ ok: false, error: "Transaction not found on chain" });
+    }
+    if (receipt.status !== 1) {
+      return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
+    }
+
+    // Verify PaidGame event from payments contract
+    {
+      const playerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
+      const paidLog = receipt.logs.find(log =>
+        log.address.toLowerCase() === PAYMENTS_CONTRACT &&
+        PAID_GAME_TOPICS.has(log.topics[0]) &&
+        log.topics[1]?.toLowerCase() === playerTopic
+      );
+      if (!paidLog) {
+        return res.status(400).json({ ok: false, error: "PaidGame event not found in transaction" });
+      }
+      const [value] = readEventWords(paidLog.data, 1);
+      if (value < minAcceptedWei(livePrices.paidGameWei)) {
+        return res.status(400).json({ ok: false, error: "Insufficient payment value" });
+      }
+    }
+
+    // Atomic claim — if a concurrent request already claimed this tx, bail.
+    if (!(await markTxHashUsed(txHash, "paid_game", req.user.address))) {
+      return res.status(400).json({ ok: false, error: "Transaction already used" });
+    }
+
+    const addressNorm = req.user.address;
+    const seed = randomSeed();
+    const lockedCharacterId = Number(characterId) || 0;
+    const characterLevel = await getCharacterLevel(addressNorm, lockedCharacterId);
+    const session = createSession({
+      address: addressNorm,
+      seed,
+      ttlMs: SESSION_TTL_MS,
+      paid: true,
+      characterId: lockedCharacterId,
+      characterLevel,
+    });
+    res.json({
+      ok: true,
+      sessionId: session.sessionId,
+      seed: session.seed,
+      characterId: lockedCharacterId,
+      characterLevel,
+      issuedAt: session.issuedAt,
+      expiresAt: session.expiresAt,
+      config: {
+        frameMs: DEFAULT_CONFIG.frameMs,
+        speedStart: DEFAULT_CONFIG.speedStart,
+        speedMax: DEFAULT_CONFIG.speedMax,
+        speedMaxScore: DEFAULT_CONFIG.speedMaxScore,
+        gravity: DEFAULT_CONFIG.gravity,
+        jumpVelocity: DEFAULT_CONFIG.jumpVelocity
+      }
+    });
+  } catch (err) {
+    console.error("start-paid error:", err);
+    res.status(500).json({ ok: false, error: "Failed to verify payment" });
   }
 });
 
-app.post("/api/session/start-paid", requireAuth, sessionStartLimiter, async (req, res) => {
-  const txHash = normalizeTxHash(req.body?.txHash);
-  if (!txHash) return res.status(400).json({ok: false, error: 'Invalid txHash'});
-  try {
-    const options = sessionOptions(req);
-    const result = await applyPayment(txHash, 'paid_game', req.user.address, async client => {
-      await paymentLog(txHash, req.user.address, PAID_GAME_TOPICS);
-      const characterLevel = await getCharacterLevel(req.user.address, options.characterId);
-      const session = await createSession({address: req.user.address, seed: randomSeed(), ttlMs: SESSION_TTL_MS,
-        paid: true, ...options, characterLevel}, client);
-      return sessionResponse(session);
-    });
-    res.json(result);
-  } catch (error) {
-    console.error('start-paid:', error);
-    gameRequestError(res, error);
-  }
-});
+app.post("/api/session/submit", requireAuth, async (req, res) => {
+  const { sessionId, inputLog, reportedScore, gameElapsedMs } = req.body || {};
 
-app.post("/api/session/submit", requireAuth, submitLimiter, async (req, res) => {
-  const {sessionId, inputLog, reportedScore, frameCount, gameVersion} = req.body || {};
-  if (typeof sessionId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sessionId)) {
-    return res.status(400).json({ok: false, error: 'Invalid sessionId'});
+  if (!sessionId) {
+    res.status(400).json({ ok: false, error: "Missing sessionId" });
+    return;
   }
-  try {
-    const result = await completeSession(sessionId, req.user.address, async (session, client) => {
-      if (gameVersion !== VERSION || session.gameVersion !== VERSION) throw new Error('Please reload the game');
-      if (!Number.isSafeInteger(reportedScore) || reportedScore < 0) throw new Error('Invalid score');
-      const maxFrames = Math.floor((Date.now() - session.issuedAt) / FRAME_MS) + 5;
-      if (!Number.isSafeInteger(frameCount) || frameCount > maxFrames) throw new Error('Score exceeds time limit');
-      const replay = simulateRun({seed: session.seed, frameCount, inputEvents: inputLog, config: session});
-      if (replay.score !== reportedScore || replay.frameCount !== frameCount) throw new Error('Score does not match replay');
-      const charLevel = session.characterLevel;
-      const scoreMultiplier = LEVEL_SCORE_MULTIPLIER[charLevel] || 1;
-      const adjustedScore = Math.floor(replay.score * scoreMultiplier);
-      const coinsAwarded = Math.floor(adjustedScore / 1000) * ((session.paid ? 5 : 1) + (LEVEL_COIN_BONUS[charLevel] || 0));
-      const {rows} = await client.query(
-        'UPDATE users SET coins = coins + $2, best_score = GREATEST(best_score, $3), updated_at = NOW() WHERE address = $1 RETURNING coins, best_score',
-        [req.user.address, coinsAwarded, adjustedScore]);
-      if (!rows.length) throw new Error('User not found');
-      return {ok: true, finalScore: adjustedScore, rawScore: replay.score, coinsAwarded,
-        coinBalance: rows[0].coins, bestScore: rows[0].best_score, charLevel, scoreMultiplier};
+  const session = getSession(sessionId);
+  if (!session) {
+    res.status(400).json({ ok: false, error: "Unknown session" });
+    return;
+  }
+  if (session.used) {
+    res.status(400).json({ ok: false, error: "Session already used" });
+    return;
+  }
+  if (session.expiresAt <= Date.now()) {
+    res.status(400).json({ ok: false, error: "Session expired" });
+    return;
+  }
+
+  const addressNorm = req.user.address;
+  if (!addressNorm || addressNorm !== session.address) {
+    console.log("❌ 403: Session address mismatch", { addressNorm, sessionAddress: session.address });
+    res.status(403).json({ ok: false, error: "Session address mismatch" });
+    return;
+  }
+
+  // Anti-cheat: the score ceiling must be derived from SERVER time only.
+  // Trusting client-reported gameElapsedMs let a tampered client claim an
+  // arbitrary duration and therefore an arbitrary score (→ unlimited coins).
+  // The client value is accepted only when SHORTER than server time (a real
+  // run can never last longer than wall-clock since session start).
+  const clientElapsedMs = Number.isFinite(Number(gameElapsedMs)) ? Number(gameElapsedMs) : 0;
+  const serverDurationMs = Date.now() - session.issuedAt;
+  const gameDurationMs = clientElapsedMs > 0
+    ? Math.min(clientElapsedMs, serverDurationMs)
+    : serverDurationMs;
+
+  console.log("⏱️ Duration:", { clientElapsedMs, serverDurationMs, gameDurationMs });
+
+  const reported = Number.isFinite(Number(reportedScore))
+    ? Number(reportedScore)
+    : null;
+  const tolerance = 5;
+  const maxScore = Math.floor(gameDurationMs / DEFAULT_CONFIG.frameMs) + tolerance;
+
+  if (reported === null) {
+    res.status(400).json({ ok: false, error: "Missing reportedScore" });
+    return;
+  }
+
+  if (reported > maxScore) {
+    console.log("❌ 403: Score exceeds time limit", { reported, maxScore, serverDurationMs });
+    res.status(403).json({
+      ok: false,
+      error: "Score exceeds time limit",
+      maxScore
     });
-    res.json(result);
-  } catch (error) {
-    console.error('submit:', error);
-    gameRequestError(res, error);
+    return;
   }
+
+  // Anti-cheat: maxScore check (time-based limit)
+  console.log("📊 Score info:", { reported, maxScore, gameDurationMs });
+
+  const rawScore = Math.min(reported, maxScore);
+
+  // Character level is locked at session start, so upgrades during a paused run do not affect it.
+  const charLevel = Number.isFinite(Number(session.characterLevel)) ? Number(session.characterLevel) : 0;
+  const scoreMultiplier  = LEVEL_SCORE_MULTIPLIER[charLevel] || 1.0;
+  const levelCoinBonus   = LEVEL_COIN_BONUS[charLevel] || 0;
+  const adjustedScore    = Math.floor(rawScore * scoreMultiplier);
+  const baseCoins        = session.paid ? 5 : 1;
+  const coinsAwarded     = Math.floor(adjustedScore / 1000) * (baseCoins + levelCoinBonus);
+
+  console.log("💰 Awarding:", { rawScore, adjustedScore, coinsAwarded, paid: session.paid, charLevel, address: addressNorm });
+  // Atomically claim the session BEFORE the DB write so two concurrent submits
+  // of the same session can't both be credited. Release on failure so a
+  // transient DB error doesn't burn the session.
+  if (!claimSession(sessionId)) {
+    res.status(400).json({ ok: false, error: "Session already used" });
+    return;
+  }
+  let result;
+  try {
+    result = await applyScore(addressNorm, adjustedScore, coinsAwarded);
+  } catch (err) {
+    releaseSession(sessionId);
+    console.error("submit applyScore failed:", err);
+    res.status(500).json({ ok: false, error: "Failed to apply score" });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    finalScore: adjustedScore,
+    rawScore,
+    maxScore,
+    coinsAwarded,
+    coinBalance: result ? result.coins : 0,
+    bestScore: result ? result.best_score : adjustedScore,
+    charLevel,
+    scoreMultiplier,
+  });
 });
 
 app.get("/api/user/me", requireAuth, async (req, res) => {
@@ -677,39 +837,89 @@ app.get("/api/leaderboard", (req, res) => {
   });
 });
 
-// Preflight avoids charging for an unsynced score or one already on the board.
-app.post('/api/leaderboard/prepare', requireAuth, async (req, res) => {
-  const score = req.body?.score;
-  if (!Number.isSafeInteger(score) || score < 1) return res.status(400).json({ok: false, error: 'Invalid score'});
-  try {
-    if (!PAYMENTS_CONTRACT) throw new Error('Payments not configured');
-    const {rows} = await require('./shared/db').query('SELECT best_score, leaderboard_score FROM users WHERE address = $1', [req.user.address]);
-    if (!rows.length) throw new Error('User not found');
-    if (score > Number(rows[0].best_score)) throw new Error('Score has not synced yet');
-    res.json({ok: true, alreadySaved: score <= Number(rows[0].leaderboard_score), paymentsContract: PAYMENTS_CONTRACT});
-  } catch (error) { gameRequestError(res, error); }
-});
+// Players save their (already on-chain) record to the leaderboard.
+// Server validates score does not exceed user's tracked best_score and is
+// strictly higher than the existing leaderboard_score before storing.
+// Registering a score on the leaderboard is a PAID action: the client must pass
+// the txHash of a confirmed PaymentsV2.saveLeaderboard() call. Nothing is written
+// to the database unless that payment verifies on-chain for this exact score.
+app.post("/api/leaderboard/save", requireAuth, async (req, res) => {
+  const score = Number(req.body?.score);
+  const txHash = req.body?.txHash;
+  if (!Number.isFinite(score) || score < 1) {
+    return res.status(400).json({ ok: false, error: "Invalid score" });
+  }
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ ok: false, error: "Payment txHash required" });
+  }
+  if (!PAYMENTS_CONTRACT) {
+    return res.status(503).json({ ok: false, error: "Payments not configured" });
+  }
+  if (await isTxHashUsed(txHash, "leaderboard_save")) {
+    return res.status(400).json({ ok: false, error: "Transaction already used" });
+  }
 
-app.post('/api/leaderboard/save', requireAuth, async (req, res) => {
-  const score = req.body?.score;
-  const txHash = normalizeTxHash(req.body?.txHash);
-  if (!Number.isSafeInteger(score) || score < 1) return res.status(400).json({ok: false, error: 'Invalid score'});
-  if (!txHash) return res.status(400).json({ok: false, error: 'Payment txHash required'});
   try {
-    const result = await applyPayment(txHash, 'leaderboard_save', req.user.address, async client => {
-      const log = await paymentLog(txHash, req.user.address, LEADERBOARD_SAVED_TOPICS);
-      const [paidScore] = readEventWords(log.data, 1);
-      if (paidScore !== BigInt(score)) throw new Error('Score does not match payment');
-      const {rows} = await client.query('SELECT best_score, leaderboard_score FROM users WHERE address = $1 FOR UPDATE', [req.user.address]);
-      if (!rows.length) throw new Error('User not found');
-      if (score > Number(rows[0].best_score)) throw new Error('Score exceeds best_score');
-      await client.query('UPDATE users SET leaderboard_score = GREATEST(leaderboard_score, $2), updated_at = NOW() WHERE address = $1', [req.user.address, score]);
-      return {ok: true, updated: score > Number(rows[0].leaderboard_score), leaderboardScore: Math.max(score, Number(rows[0].leaderboard_score))};
-    });
-    res.json(result);
-  } catch (error) {
-    console.error('leaderboard/save:', error);
-    gameRequestError(res, error);
+    const db = require("./shared/db");
+
+    // 1) The score must be one the player actually achieved this session.
+    const { rows } = await db.query(
+      `SELECT best_score, leaderboard_score FROM users WHERE address = $1`,
+      [req.user.address]
+    );
+    if (!rows.length) return res.status(404).json({ ok: false, error: "User not found" });
+    const { best_score, leaderboard_score } = rows[0];
+    if (score > Number(best_score)) {
+      return res.status(400).json({ ok: false, error: "Score exceeds best_score" });
+    }
+
+    // 2) Verify the payment on-chain (retry — backend RPC may lag the wallet).
+    let receipt = null;
+    for (let i = 0; i < 5; i++) {
+      try {
+        receipt = await withRpcFallback((p) => p.getTransactionReceipt(txHash));
+      } catch { /* timeout — try next iteration */ }
+      if (receipt) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    if (!receipt) return res.status(400).json({ ok: false, error: "Transaction not found on chain" });
+    if (receipt.status !== 1) return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
+
+    const playerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
+    const savedLog = receipt.logs.find(log =>
+      log.address.toLowerCase() === PAYMENTS_CONTRACT &&
+      LEADERBOARD_SAVED_TOPICS.has(log.topics[0]) &&
+      log.topics[1]?.toLowerCase() === playerTopic
+    );
+    if (!savedLog) {
+      return res.status(400).json({ ok: false, error: "LeaderboardSaved event not found" });
+    }
+    const [paidScore, paidValue] = readEventWords(savedLog.data, 2);
+    if (paidValue < minAcceptedWei(livePrices.saveLeaderboardWei)) {
+      return res.status(400).json({ ok: false, error: "Insufficient payment" });
+    }
+    // The paid score must match the score being registered.
+    if (Number(paidScore) !== score) {
+      return res.status(400).json({ ok: false, error: "Score does not match payment" });
+    }
+
+    // 3) Atomic claim — a concurrent request can't reuse the same payment.
+    if (!(await markTxHashUsed(txHash, "leaderboard_save", req.user.address))) {
+      return res.status(400).json({ ok: false, error: "Transaction already used" });
+    }
+
+    // 4) Only now touch the database.
+    if (score <= Number(leaderboard_score)) {
+      return res.json({ ok: true, updated: false, leaderboardScore: Number(leaderboard_score) });
+    }
+    await db.query(
+      `UPDATE users SET leaderboard_score = $1, updated_at = NOW() WHERE address = $2`,
+      [score, req.user.address]
+    );
+    res.json({ ok: true, updated: true, leaderboardScore: score });
+  } catch (e) {
+    console.error("leaderboard/save error:", e);
+    res.status(500).json({ ok: false, error: "Failed to save record" });
   }
 });
 
@@ -989,22 +1199,68 @@ app.post("/api/shop/claim-free", requireAuth, async (req, res) => {
 
 // Buy coins with USDC
 app.post("/api/shop/buy-coins", requireAuth, async (req, res) => {
-  const coins = Number(req.body?.coins);
-  const txHash = normalizeTxHash(req.body?.txHash);
-  if (!VALID_COIN_PACKAGES.has(coins) || !txHash) return res.status(400).json({ok: false, error: 'Invalid purchase'});
+  const { coins, txHash } = req.body || {};
+  if (!coins || !txHash) {
+    return res.status(400).json({ ok: false, error: "Missing coins or txHash" });
+  }
+  if (!VALID_COIN_PACKAGES.has(Number(coins))) {
+    return res.status(400).json({ ok: false, error: "Invalid coin package" });
+  }
+  // Fail closed — without the contract address the CoinsPurchased event can't be
+  // attributed, and any confirmed tx would mint coins.
+  if (!TREASURY_ADDRESS || !PAYMENTS_CONTRACT) {
+    return res.status(503).json({ ok: false, error: "Store not configured" });
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ ok: false, error: "Invalid txHash" });
+  }
+  if (await isTxHashUsed(txHash, "coin_purchase")) {
+    return res.status(400).json({ ok: false, error: "Transaction already used" });
+  }
+
   try {
-    const result = await applyPayment(txHash, 'coin_purchase', req.user.address, async client => {
-      const log = await paymentLog(txHash, req.user.address, COINS_PURCHASED_TOPICS);
-      const [coinsAmount] = readEventWords(log.data, 1);
-      if (coinsAmount !== BigInt(coins)) throw new Error('Coins amount mismatch');
-      const {rows} = await client.query('UPDATE users SET coins = coins + $2, updated_at = NOW() WHERE address = $1 RETURNING coins', [req.user.address, coins]);
-      if (!rows.length) throw new Error('User not found');
-      return {ok: true, coinsAdded: coins, newBalance: rows[0].coins};
-    });
-    res.json(result);
-  } catch (error) {
-    console.error('buy-coins:', error);
-    gameRequestError(res, error);
+    let receipt = null;
+    for (let i = 0; i < 5; i++) {
+      try {
+        receipt = await withRpcFallback((p) => p.getTransactionReceipt(txHash));
+      } catch { /* timeout — try next iteration */ }
+      if (receipt) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    if (!receipt) return res.status(400).json({ ok: false, error: "Transaction not found on chain" });
+    if (receipt.status !== 1) return res.status(400).json({ ok: false, error: "Transaction failed on-chain" });
+
+    // Verify CoinsPurchased event from payments contract
+    const expectedUSDC = COIN_PACKAGE_USDC.get(Number(coins)) ?? (USDC_PER_COIN * BigInt(coins));
+    {
+      const buyerTopic = "0x" + req.user.address.slice(2).padStart(64, "0");
+      const coinsLog = receipt.logs.find(log =>
+        log.address.toLowerCase() === PAYMENTS_CONTRACT &&
+        COINS_PURCHASED_TOPICS.has(log.topics[0]) &&
+        log.topics[1]?.toLowerCase() === buyerTopic
+      );
+      if (!coinsLog) {
+        return res.status(400).json({ ok: false, error: "CoinsPurchased event not found" });
+      }
+      const [coinsAmt, usdcAmt] = readEventWords(coinsLog.data, 2);
+      if (Number(coinsAmt) !== Number(coins)) {
+        return res.status(400).json({ ok: false, error: "Coins amount mismatch" });
+      }
+      if (usdcAmt < expectedUSDC) {
+        return res.status(400).json({ ok: false, error: "Insufficient USDC payment" });
+      }
+    }
+
+    // Atomic claim — if a concurrent request already claimed this tx, bail
+    // before crediting so the purchase can't be double-counted.
+    if (!(await markTxHashUsed(txHash, "coin_purchase", req.user.address))) {
+      return res.status(400).json({ ok: false, error: "Transaction already used" });
+    }
+    const updatedUser = await addCoins(req.user.address, Number(coins));
+    res.json({ ok: true, coinsAdded: Number(coins), newBalance: updatedUser?.coins ?? 0 });
+  } catch (err) {
+    console.error("Buy coins error:", err);
+    res.status(500).json({ ok: false, error: "Failed to process purchase" });
   }
 });
 
@@ -1227,7 +1483,7 @@ app.post("/api/user/test-notification", requireAuth, async (req, res) => {
 // Hourly job: remind users whose 24h cooldown expired before their streak times out
 setTimeout(runCheckinReminderJob, 30 * 1000);
 setInterval(runCheckinReminderJob, 60 * 60 * 1000).unref();
-setInterval(() => cleanupSessions().catch(console.error), 60 * 1000).unref();
+setInterval(cleanupSessions, 60 * 1000).unref();
 
 async function startServer() {
   try {

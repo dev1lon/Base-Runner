@@ -40,7 +40,6 @@
          run after first paint instead of blocking it (improves LCP). Execution
          order is preserved: ethers → script.js → main.jsx. -->
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
-    <script defer src="/run-engine.js"></script>
     <script defer src="/script.js"></script>
     <script type="module" src="/src/main.jsx"></script>
     <!-- Cloudflare Web Analytics -->
@@ -92,7 +91,7 @@
                     <div id="game-over-score-line" class="game-over-score-line"></div>
                     <div id="game-over-submit-status" style="font-size:11px;color:#888;margin:4px 0;min-height:16px;"></div>
                     <div class="game-over-buttons">
-                        <button id="save-record-btn" class="btn game-over-save-btn">Save record to leaderboard</button>
+                        <button id="save-record-btn" class="btn game-over-save-btn">Save record to leaderboard · $0.10</button>
                         <button id="game-over-home-btn" class="btn game-over-home-btn">Home</button>
                     </div>
                     <div class="game-over-restart">TAP to restart</div>
@@ -346,7 +345,7 @@
                 <section class="rules-section">
                     <h3 class="rules-h">Leaderboard</h3>
                     <ul class="rules-list">
-                        <li>Press <b>Save record to leaderboard</b> after a run to submit your best score</li>
+                        <li>Press <b>Save record to leaderboard · $0.10</b> after a run to submit your best score</li>
                         <li>Only scores you submit count — your wallet ranks by your highest saved score</li>
                     </ul>
                 </section>
@@ -408,7 +407,7 @@
                     <div class="tournament-prize"><span class="tp-medal">🥈</span><span class="tp-place">2nd</span><span class="tp-amount">$15</span></div>
                     <div class="tournament-prize"><span class="tp-medal">🥉</span><span class="tp-place">3rd</span><span class="tp-amount">$10</span></div>
                 </div>
-                <p class="tournament-desc">Climb the <b>Leaderboard</b> — the top 3 players when the timer ends win. Hit <b>Save record to leaderboard</b> after a run to enter!</p>
+                <p class="tournament-desc">Climb the <b>Leaderboard</b> — the top 3 players when the timer ends win. Hit <b>Save record to leaderboard · $0.10</b> after a run to enter!</p>
                 <div class="tournament-countdown">
                     <span class="tc-label">Ends in</span>
                     <span id="tournament-timer" class="tc-time">--d --h --m</span>
