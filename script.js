@@ -1322,7 +1322,7 @@ function setGameOverState() {
         const saveBtn = document.getElementById('save-record-btn');
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Save record to leaderboard · $0.10';
+            saveBtn.textContent = 'Save record to leaderboard';
             saveBtn.style.display = '';
         }
         gameOverOverlay.classList.remove('hidden');
