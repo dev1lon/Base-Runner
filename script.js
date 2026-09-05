@@ -464,9 +464,8 @@ const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const CHECKIN_STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
 
 // Payments contract (RugPullRunPaymentsV2 on Base mainnet)
-// TODO: swap to the V2 address after deploying contracts/RugPullRunPaymentsV2.sol.
-// The V1 address below has no saveLeaderboard() — that call reverts until swapped.
-const PAYMENTS_CONTRACT = "0x33e269ae12e0d1E4226A199fd6042d2fe9742855";
+// V1 was 0x33e269ae12e0d1E4226A199fd6042d2fe9742855 (no saveLeaderboard) — retired.
+const PAYMENTS_CONTRACT = "0xd2c7739c702032E4Fb505081Ceb81d7832f5694D";
 const PAYMENTS_ABI = [
     "function playPaidGame() payable",
     "function saveLeaderboard(uint256 score) payable",
