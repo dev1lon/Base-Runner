@@ -463,6 +463,11 @@ const BACKEND_TIMEOUT_MS = 25000;
 const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const CHECKIN_STREAK_TIMEOUT_MS = 36 * 60 * 60 * 1000;
 
+// Button label restored after a paid-game attempt ends (success, failure or
+// user cancel). Kept next to the payment config so the price shown in the UI
+// can't drift from the price actually charged.
+const PAY_GAME_LABEL = "Pay Game · $1";
+
 // Payments contract (RugPullRunPaymentsV2 on Base mainnet)
 // V1 was 0x33e269ae12e0d1E4226A199fd6042d2fe9742855 (no saveLeaderboard) — retired.
 const PAYMENTS_CONTRACT = "0xd2c7739c702032E4Fb505081Ceb81d7832f5694D";
@@ -2954,7 +2959,7 @@ async function handlePayGame() {
         payGameInFlight = false;
         if (payGameButton) {
             payGameButton.disabled = false;
-            payGameButton.textContent = "Pay Game · $0.01";
+            payGameButton.textContent = PAY_GAME_LABEL;
         }
     }
 }
