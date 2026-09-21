@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "migrate-db": "node scripts/migrate-db.js"
   },
   "engines": {
     "node": ">=18"
