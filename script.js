@@ -1449,14 +1449,7 @@ async function handleSaveRecord(e) {
     } catch (err) {
         console.error('Save record failed:', err);
         const rejected = err.code === 4001 || /reject|denied/i.test(err.message || '');
-        // Show the backend's own reason. A bare "Failed" hides the important
-        // case: the on-chain payment went through and the server refused the
-        // save (stale score, unrecognised event), which needs a different fix
-        // than a rejected signature — and the player has already been charged.
-        const detail = String(err.message || '').slice(0, 60);
-        btn.textContent = rejected
-            ? 'Cancelled — Tap to retry'
-            : (detail ? `${detail} — Tap to retry` : 'Failed — Tap to retry');
+        btn.textContent = rejected ? 'Cancelled — Tap to retry' : 'Failed — Tap to retry';
         btn.disabled = false;
     }
 }
